@@ -69,8 +69,6 @@ ReSkate owns camera activation, spring, head hiding and restoration. This mod su
 
 This release builds successfully and passes the automated checks. Native code and movement vtable contracts were also checked against the installed executable. Live bail/foot/board transitions, recovery, respawns and multiplayer still require player testing.
 
-## On-foot right-stick look
-
 Press **F9** to hide/show only the first-person companion panel, including in the build editor. The panel remembers its hidden state until toggled again during that game session. It still requires ReSkate's menu to be open; Insert remains unchanged. Use **Bind menu key**, **Clear menu key** and **Cancel key recording** at the top of the panel to customize the saved keyboard binding. Insert, Escape and modifier-only bindings are reserved. Losing focus or closing the panel cancels recording. Loading the recommended preset preserves your menu key.
 
 For a tested starting point, press **Load Jish's recommended preset** in the mod's Insert panel. This applies the bundled tested controller bindings, camera/spring values, independent look smoothing, comfort options and on-foot stick settings, and saves automatically. The recommended snapshot now enables Disable Spring on foot, keeping camera Spring on board and making walking and parkour more responsive. Existing settings are retained until you press the button. The preset does not toggle First Person or change stock Noclip/boost bindings; conflicting stock chords are marked and paused while the other preset settings apply. The bundled file is scripts/Custom/presets/recommended.ini.
