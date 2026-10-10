@@ -4,8 +4,6 @@ Adds the exact verified official 2.0.2 compatibility profile, native sampler and
 
 # JishsFirstPersonMod
 
-Close Skate, then copy both the scripts and Mods folders from this package into the ReSkate folder containing Skate.exe and reskate.dll (Skate\ReSkate for this installation). Both JishsFirstPersonMod.dll and jishs_first_person_mod.lua now belong together in scripts/Custom/. Remove the previous JishsFirstPersonMod.dll beside Skate.exe when upgrading. Keep the same Lua filename and remove the old MyMod bootstrap if still present. Keep normal reskate.dll. Settings and logs remain under %LOCALAPPDATA%/JishsFirstPersonMod.
-
 Press Insert to configure controls and camera settings in-game. Settings save automatically to %LOCALAPPDATA%\JishsFirstPersonMod\settings.ini. The startup and failure log is JishsFirstPersonMod.log in the same directory.
 
 My custom mod for more control over 1st person
