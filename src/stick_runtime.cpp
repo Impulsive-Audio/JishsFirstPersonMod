@@ -170,7 +170,7 @@ bool attach_stick_runtime(std::uintptr_t base) {
     if(status==HookOk) {
         original_motion=reinterpret_cast<Motion>(original);
         status=hook_queue_enable(reinterpret_cast<void*>(target));
-        if(status==HookOk) status=hook_apply_queued();
+        if(status==HookOk) status=apply_owned_hooks();
     }
     if(status!=HookOk) { log("ERROR: native facing hook attach failed: "+std::to_string(status));return false; }
     if(!install_stick_input_filter()) { log("ERROR: stick input filters unavailable; stick look remains disabled.");return false; }

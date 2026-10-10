@@ -284,7 +284,7 @@ bool start_stock_bridge(HMODULE module) {
         original_console=reinterpret_cast<QueueConsole>(console);
         if(hook_queue_enable(reinterpret_cast<void*>(callbacks[5]))!=HookOk) return false;
     }
-    if(hook_queue_enable(reinterpret_cast<void*>(callbacks[1]))!=HookOk || hook_queue_enable(reinterpret_cast<void*>(callbacks[3]))!=HookOk || hook_apply_queued()!=HookOk) {
+    if(hook_queue_enable(reinterpret_cast<void*>(callbacks[1]))!=HookOk || hook_queue_enable(reinterpret_cast<void*>(callbacks[3]))!=HookOk || apply_owned_hooks()!=HookOk) {
         log("ERROR: stock camera settings bridge hook transaction failed.");return false;
     }
     set_camera_sink(send_camera);

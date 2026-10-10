@@ -39,7 +39,7 @@ bool install_native_camera_interop(void* module) {
     using namespace dingosdk;
     if(!stock_contract::is_v2()) return true;
     const std::string_view version(stock_contract::contract().version);
-    if(version!="2.0.0" && version!="2.0.1" && version!="2.0.2" && version!="2.0.3" && version!="2.0.4") return false;
+    if(version!="2.0.0" && version!="2.0.1" && version!="2.0.2" && version!="2.0.3" && version!="2.0.4" && version!="2.0.5") return false;
     // The exact-hash reviewed 2.0.x DLLs use this sampler. Refuse a modified
     // entry rather than patching an unknown function or another mod's detour.
     const auto sample_rva=stock_contract::native_sampler_rva();
@@ -56,7 +56,7 @@ bool install_native_camera_interop(void* module) {
     if(result==HookOk) {
         original_sample=reinterpret_cast<Sample>(forwarding);
         result=hook_queue_enable(reinterpret_cast<void*>(target));
-        if(result==HookOk) result=hook_apply_queued();
+        if(result==HookOk) result=apply_owned_hooks();
     }
     if(result!=HookOk) { log("ERROR: native sampler hook failed: "+std::to_string(result));return false; }
     log("Native camera coordination active: stabilization and Follow flips yield to mod head locks; saved preferences untouched.");

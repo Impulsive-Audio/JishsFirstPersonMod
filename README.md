@@ -1,10 +1,10 @@
-# Jish's First Person Mod 1.22
+# Jish's First Person Mod 1.23
 
-First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.4**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
+First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.5**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
 ## Install
 
-Download `JishsFirstPersonMod-1.22-reskate-2.0.4-install.zip` from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
+Download `JishsFirstPersonMod-1.23-reskate-2.0.5.zip` from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
 
 Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
 
@@ -42,9 +42,9 @@ Settings and logs are under `%LOCALAPPDATA%/JishsFirstPersonMod`. Bail trace fil
 
 Windows x64, Visual Studio C++ tools and CMake are required. Run `./build.ps1`, then `./package.ps1`. The release install ZIP contains only Mods, scripts, dinput8.dll and LICENSE.txt.
 
-All 24 Windows tests and nine release-fixture bridge checks pass. The 2.0.4 offsets and bridge layouts are verified against the official tagged source and exact release DLL. The final 1.22 package was tested in-game on ReSkate 2.0.4 and confirmed working. Replay pre-entry and general scripted-camera detection remain existing limitations; successful attachment alone does not establish every multiplayer or movement transition.
+All 25 Windows tests, ten release-fixture bridge checks and 31 game-offset checks pass. The 2.0.5 bridge addresses and layouts are verified against the official tagged source and exact release DLL. The final 1.23 startup-fix build initialized successfully on 2.0.5; logs confirm camera/input hooks, menu binding, native recording and controller First Person activation. Replay pre-entry and general scripted-camera detection remain existing limitations; successful attachment alone does not establish every multiplayer or movement transition.
 
-See [2.0.4 update notes](UPDATE_1_22.md), [2.0.4 offset audit](OFFSET_AUDIT_2_0_4.md), [previous release notes](UPDATE_1_21.md), and [historical notes](HISTORY.md).
+See [2.0.5 update notes](UPDATE_1_23.md), [2.0.5 offset audit](OFFSET_AUDIT_2_0_5.md), [2.0.4 notes](UPDATE_1_22.md), [previous release notes](UPDATE_1_21.md), and [historical notes](HISTORY.md).
 
 ## License
 

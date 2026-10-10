@@ -100,6 +100,6 @@ bool install_stick_input_filter() {
        !add("GetRawInputBuffer",reinterpret_cast<void*>(&filtered_buffer),&buffer)) return false;
     original_data=reinterpret_cast<RawData>(data);original_buffer=reinterpret_cast<RawBuffer>(buffer);
     for(auto* target:pending) if(hook_queue_enable(target)!=HookOk) return false;
-    return hook_apply_queued()==HookOk;
+    return apply_owned_hooks()==HookOk;
 }
 }

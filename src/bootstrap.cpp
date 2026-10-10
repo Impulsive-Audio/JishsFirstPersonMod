@@ -78,7 +78,7 @@ DWORD WINAPI worker(void*) noexcept {
         wchar_t path[32768]{};
         if (!GetModuleFileNameW(self_module, path, 32768)) { status = 3; return 0; }
         directory = std::filesystem::path(path).parent_path();
-        jishsfirstpersonmod::log("version 1.21 initialisation worker started; native setup runs outside DllMain");
+        jishsfirstpersonmod::log("version " JISH_MOD_VERSION " initialisation worker started; native setup runs outside DllMain");
         if (!host_matches()) { jishsfirstpersonmod::log("ERROR: host is not Skate.exe; no hooks installed"); status = 3; return 0; }
         wchar_t game_path[32768]{};
         if(!GetModuleFileNameW(nullptr,game_path,32768)) { status=3;return 0; }

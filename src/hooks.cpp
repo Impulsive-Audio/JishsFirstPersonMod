@@ -56,11 +56,11 @@ bool install_hooks(std::uintptr_t base) {
     if(result==HookOk) {
         original_tick=reinterpret_cast<Tick>(forwarding);
         result=hook_queue_enable(target);
-        if(result==HookOk) result=hook_apply_queued();
+        if(result==HookOk) result=apply_owned_hooks();
     }
-    if(result!=HookOk) { log("ERROR: controller tick hook failed: "+std::to_string(result));return false; }
+    if(result!=HookOk) { log("ERROR: controller tick hook failed: "+hook_failure_description(result));return false; }
     active.store(true,std::memory_order_release);
-    log("Controller input tick installed. Native ReSkate camera and pose lifecycle remain in control.");
+    log("Controller input tick installed; thread retries="+std::to_string(owned_hook_retries)+". Native ReSkate camera and pose lifecycle remain in control.");
     install_comfort_observer(base);
     install_game_camera_observer(base);
     if(!install_native_camera_interop(GetModuleHandleW(L"reskate.dll"))) return false;

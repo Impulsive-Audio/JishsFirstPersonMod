@@ -219,7 +219,7 @@ void install_comfort_observer(std::uintptr_t base) {
     if(result==HookOk) {
         original_choose=reinterpret_cast<ChooseState>(forwarding);
         result=hook_queue_enable(reinterpret_cast<void*>(handler));
-        if(result==HookOk) result=hook_apply_queued();
+        if(result==HookOk) result=apply_owned_hooks();
     }
     observer_installed=result==HookOk;
     log(observer_installed ? "Pre-remap selector observer chained; original state and return value preserved.":

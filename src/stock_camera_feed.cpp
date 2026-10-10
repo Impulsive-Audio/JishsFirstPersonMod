@@ -190,7 +190,7 @@ bool install_stock_camera_feed(std::uintptr_t base,HMODULE stock) {
     if(prepared!=HookOk) { log("ERROR: stock FOV hook preparation failed: "+std::to_string(prepared));return false; }
     original_fov=reinterpret_cast<WriteFov>(fov);
     auto result=hook_queue_enable(fov_target);
-    if(result==HookOk) result=hook_apply_queued();
+    if(result==HookOk) result=apply_owned_hooks();
     if(result!=HookOk) { log("ERROR: stock FOV hook attach failed: "+std::to_string(result));return false; }
     log("Native camera input feed prepared without patching Skate camera code.");return true;
 }

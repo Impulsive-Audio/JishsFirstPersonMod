@@ -2,6 +2,8 @@
 #include "Engine/Core/Hooks/hooks.h"
 #include <vector>
 #include <mutex>
+#include <string>
+#include <string_view>
 namespace dingosdk {
 class OwnedHookLedger {
     std::vector<void*> targets_;
@@ -23,6 +25,29 @@ inline HookStatus owned_hook_prepare(void* target,void* replacement,void** origi
     const auto status=hook_prepare(target,replacement,original);
     if(status==HookOk) owned_hook_ledger.remember(target);
     return status;
+}
+// The backend aborts failed transactions before returning. Only retry thread
+// collection/enlistment races; never omit an inaccessible live thread.
+inline thread_local unsigned owned_hook_retries{};
+inline HookStatus apply_owned_hooks() {
+    owned_hook_retries=0;
+    for(unsigned attempt=0;;++attempt) {
+        const auto result=hook_apply_queued();
+        const auto detail=hook_last_failure();
+        const std::string_view operation(detail.operation);
+        const bool thread_failure=operation=="open thread" || operation=="query thread owner" ||
+            operation=="enumerate threads" || operation=="enlist thread";
+        if(result==HookOk || attempt==39 || !thread_failure ||
+            (detail.error!=ERROR_ACCESS_DENIED && detail.error!=ERROR_INVALID_PARAMETER)) return result;
+        ++owned_hook_retries;
+        Sleep(50); // No transaction is active and no thread remains suspended.
+    }
+}
+inline std::string hook_failure_description(HookStatus result) {
+    const auto detail=hook_last_failure();
+    return std::to_string(result)+" ("+hook_status_string(result)+
+        "; operation="+detail.operation+"; Win32="+std::to_string(detail.error)+
+        "; thread="+std::to_string(detail.thread_id)+"; retries="+std::to_string(owned_hook_retries)+")";
 }
 inline bool rollback_owned_hooks() {
     std::lock_guard lock(owned_hook_mutex);
