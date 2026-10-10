@@ -43,6 +43,7 @@ bool live_foot(const Request& value) {
 Request snapshot() { std::lock_guard lock(mutex);return request; }
 void motion_hook(std::uintptr_t rig,std::uintptr_t context,const Matrix* supplied,std::uint8_t flags) {
     const auto error=GetLastError();const auto value=snapshot();
+    if(menu_snapshot().config.look_only) { original_motion(rig,context,supplied,flags);return; }
     alignas(16) Matrix matrix{};
     if(value.turn && value.aim.active && character_facing_allowed(comfort_snapshot(),live_camera_movement()) && rig==value.owner.rig && context==value.owner.context && live_foot(value) && supplied &&
        dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(supplied),matrix) && dingosdk::valid_flight_transform(matrix)) {
@@ -153,7 +154,7 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
     if(!eligible || time-heading_time>=.5) { look.reset();request={};return; }
     const float body_heading=matrix_heading(body);
     if(request.owner.core && std::array<std::uintptr_t,4>{request.owner.core,request.owner.entity,request.owner.context,request.owner.rig}!=std::array<std::uintptr_t,4>{owner.core,owner.entity,owner.context,owner.rig}) { look.reset(); }
-    const bool turn=config.stick.turn_character && character_facing_allowed(owner,movement);
+    const bool turn=!config.look_only && config.stick.turn_character && character_facing_allowed(owner,movement);
     if(turn && !request.turn) look.rebase_facing(body_heading);
     auto aim=look.update(config.stick,{input.right_x,input.right_y},true,input.device,time,native_heading,body_heading,glance_settings(effective),displayed_pitch);
     request={owner,aim,turn,input.device,time,body_heading,head.valid};

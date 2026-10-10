@@ -4,7 +4,7 @@ First-person camera controls and comfort options for ReSkate, updated for **ReSk
 
 ## Install
 
-Download `JishsFirstPersonMod-1.21-reskate-2.0.3-install.zip` from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe. 
+Download `JishsFirstPersonMod-1.21-reskate-2.0.3-compatibility-update.zip` from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
 
 Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
 
@@ -16,6 +16,12 @@ Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-gam
 - Optional third person while bailing and first person on board only.
 - Coordination with native stabilization, Follow flips and spectator camera ownership.
 - Saved settings, binding recording and a recommended preset.
+
+## Compatibility mode
+
+Enable **Compatibility mode (look controls only)** in the mod panel to retain right-stick camera look, directional glances, the First Person checkbox and hotkey, and both comfort options. Camera position, FOV and Spring remain controlled by ReSkate; head attachment, bail camera holds, foot/board transition smoothing and character turning are disabled. Your saved settings are preserved when switching back to full mode.
+
+The compatibility update passed all 24 Windows tests and was confirmed working in-game. See [compatibility release notes](UPDATE_1_21_COMPATIBILITY.md).
 
 ## Recommended controls
 

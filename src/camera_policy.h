@@ -8,7 +8,7 @@ inline bool bail_camera_locked(const ComfortSnapshot& state,const CameraMovement
         state.wipeout_request || state.animation_wipeout || state.physics==player_state_contract::wipeout));
 }
 inline bool action_camera_locked(const Config& config,const CameraMovementSample& movement) {
-    return config.stick.enabled && ((config.stick.lock_mount_jump &&
+    return !config.look_only && config.stick.enabled && ((config.stick.lock_mount_jump &&
         (movement.mounting || (movement.jumping && !movement.hippy.active && !movement.hippy.candidate))) ||
         (config.stick.lock_hippy_jump && movement.hippy.active));
 }
@@ -28,10 +28,11 @@ inline bool character_facing_allowed(const ComfortSnapshot& state,const CameraMo
         !movement.jumping && !movement.mounting && !movement.hippy.active && !movement.hippy.candidate;
 }
 inline bool head_position_attached(const Config& config,const ComfortSnapshot& state,const CameraMovementSample& movement) {
-    return bail_camera_locked(state,movement) || (movement.mode==1 && !movement.custom_mode) ||
-        action_camera_locked(config,movement) || (config.disable_spring_on_foot && movement.mode==1);
+    return !config.look_only && (bail_camera_locked(state,movement) || (movement.mode==1 && !movement.custom_mode) ||
+        action_camera_locked(config,movement) || (config.disable_spring_on_foot && movement.mode==1));
 }
 inline Config effective_camera_config(Config config,bool active,const ComfortSnapshot& state,const CameraMovementSample& movement) {
+    if(config.look_only) return config;
     return camera_config_for_state(config,active,movement.mode,head_position_attached(config,state,movement));
 }
 }

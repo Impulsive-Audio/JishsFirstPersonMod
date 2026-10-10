@@ -52,6 +52,22 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
         if(dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(input),native) && dingosdk::valid_flight_transform(native)) {
             auto matrix=native;auto movement=live_camera_movement();
             const auto state=comfort_snapshot();const auto config=menu_snapshot().config;
+            if(config.look_only) {
+                dingosdk::first_person::Quat glance{0,0,0,1};
+                {
+                    std::lock_guard lock(smoothing_mutex);
+                    const std::array<std::uintptr_t,5> identity{state.core,state.client,state.entity,state.context,state.rig};
+                    if(smoothing_camera!=camera || identity!=transition_owner) { reset_camera_smoothing();smoothing_camera=camera;transition_owner=identity; }
+                    if(camera_look_allowed(config,state,movement)) {
+                        const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+                        glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(config),{look_pitch.load(),look_yaw.load()},look_frame.load(),config.link_smoothing));
+                        matrix=aim_camera(native,movement.mode==1 ? stick_camera_aim():StickAim{});
+                        dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{native[12],native[13],native[14]});
+                    } else { smoothing.reset();stop_stick_look(); }
+                }
+                note_camera_view(matrix,glance);
+                original_transform(camera,&matrix);return;
+            }
             const auto head=read_animation_head(state);const auto pitch=look_pitch.load(),yaw=look_yaw.load();
             bool suspended{},changed{};StickAim aim{};BailViewInfo view;
             dingosdk::first_person::Quat glance{0,0,0,1};
@@ -105,7 +121,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
     original_transform(camera,input);
 }
 bool fov_hook(std::uintptr_t camera,float value) {
-    if(!game_camera_suspended() && camera==watched_camera.load() && stock_first_person_requested() && menu_snapshot().config.fov==0 && from_stock(_ReturnAddress()))
+    if(!menu_snapshot().config.look_only && !game_camera_suspended() && camera==watched_camera.load() && stock_first_person_requested() && menu_snapshot().config.fov==0 && from_stock(_ReturnAddress()))
         value=game_fov.load();
     return original_fov(camera,value);
 }

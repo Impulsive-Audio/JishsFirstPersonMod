@@ -17,6 +17,7 @@ struct Config {
     float fov{};
     bool link_smoothing=true, look_smoothing_initialized=false;
     dingosdk::first_person::Settings look_spring;
+    bool look_only=false;
     bool third_person_bailing=false, on_board_only=false;
     bool disable_spring_on_foot=false;
     StickSettings stick;

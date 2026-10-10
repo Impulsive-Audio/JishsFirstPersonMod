@@ -138,6 +138,10 @@ void draw_panel_frame(const PanelFrame& frame) {
             model=menu_snapshot();config=model.config;
         }
         ImGui::TextWrapped("Applies Jish's tested bindings and camera settings, then saves automatically. First Person activation and stock controls stay as they are.");
+        if(ImGui::Checkbox("Compatibility mode (look controls only)",&config.look_only)) {
+            Command command;command.kind=CommandKind::look_only;command.enabled=config.look_only;submit_command(command);config=menu_snapshot().config;
+        }
+        if(config.look_only) ImGui::TextWrapped("Right-stick camera look, glance look, First Person activation and comfort options remain available. Camera position, FOV and Spring are left to ReSkate. Head attachment, bail camera holds, transition smoothing and character turning are disabled. Saved settings are preserved.");
         const auto comfort=comfort_snapshot();
         bool enabled=model.requested_enabled.value_or(comfort.initialized ? comfort.master:model.active);
         if(ImGui::Checkbox("Enable First Person",&enabled)) { Command command; command.kind=CommandKind::set_enabled; command.enabled=enabled; submit_command(command); }
@@ -155,7 +159,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         ImGui::BeginDisabled(!comfort.bail_available && !config.third_person_bailing);
         if(ImGui::Checkbox("Third person while bailing",&config.third_person_bailing)) comfort_change();
         ImGui::EndDisabled();
-        if(config.native.active) ImGui::TextWrapped("ReSkate stabilization works during normal play. During this mod's head attachment or bail hold, native stabilization and Follow flips are temporarily bypassed; saved ReSkate settings are preserved.");
+        if(config.native.active) ImGui::TextWrapped("ReSkate stabilization works during normal play. During this mod's head attachment or bail hold in full mode, native stabilization and Follow flips are temporarily bypassed; saved ReSkate settings are preserved.");
         if(!comfort.bail_available) ImGui::TextWrapped("Unavailable: native bail/movement contracts did not match. See the mod log.");
         ImGui::BeginDisabled(!comfort.board_available);
         if(ImGui::Checkbox("First person on board only",&config.on_board_only)) comfort_change();
@@ -173,10 +177,12 @@ void draw_panel_frame(const PanelFrame& frame) {
         ImGui::EndDisabled();
         if(!stick_runtime_ready()) ImGui::TextWrapped("Native stick-look input/facing bridge unavailable; see the mod log.");
         ImGui::BeginDisabled(!config.stick.enabled);
+        ImGui::BeginDisabled(config.look_only);
         int mode=config.stick.turn_character ? 1:0;
         if(ImGui::Combo("Look mode",&mode,"Camera only\0Camera and character\0")) {
             config.stick.turn_character=mode==1;stick_change();
         }
+        ImGui::EndDisabled();
         if(ImGui::SliderFloat("Horizontal sensitivity",&config.stick.yaw_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         if(ImGui::SliderFloat("Vertical sensitivity",&config.stick.pitch_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         float deadzone=config.stick.deadzone*100;
@@ -185,6 +191,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         }
         if(ImGui::Checkbox("Invert Y",&config.stick.invert_y)) stick_change();
         if(ImGui::Checkbox("Allow looking during jumps and climbing",&config.stick.look_during_parkour)) stick_change();
+        ImGui::BeginDisabled(config.look_only);
         if(ImGui::Checkbox("Attach head position during mounting / jumping",&config.stick.lock_mount_jump)) stick_change();
         if(ImGui::Checkbox("Attach head position during hippy jumps",&config.stick.lock_hippy_jump)) stick_change();
         ImGui::TextWrapped("Right-stick look pauses when the native mounting flag is active, as it does on board. Hippy-jump attachment leaves ollies and ordinary board airtime unchanged.");
@@ -196,6 +203,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(ImGui::SliderFloat("Getting off board smoothing",&config.stick.dismount_smoothing,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         ImGui::EndDisabled();
         ImGui::TextWrapped("Higher values soften the transition for longer. These controls are independent of camera and look Spring. Bails switch immediately.");
+        ImGui::EndDisabled();
         ImGui::EndDisabled();
         ImGui::TextWrapped("Release the stick to centre after entering first person or changing mode. On board, the right stick remains available for tricks.");
         ImGui::Spacing(); section("CONTROLLER BINDS");
@@ -257,6 +265,7 @@ void draw_panel_frame(const PanelFrame& frame) {
             ImGui::TextWrapped("Changing linkage during a look takes effect after returning to centre.");
             ImGui::Separator();
         }
+        ImGui::BeginDisabled(config.look_only);
         bool game_fov=config.fov==0;
         if(ImGui::Checkbox("Use game's default FOV",&game_fov)) { config.fov=game_fov ? 0.0f:90.0f; settings_change(config); }
         ImGui::BeginDisabled(game_fov);
@@ -284,6 +293,7 @@ void draw_panel_frame(const PanelFrame& frame) {
             ImGui::TextWrapped("Higher smoothing follows more slowly. Offsets also work with Spring off.");
             ImGui::TreePop();
         }
+        ImGui::EndDisabled();
         ImGui::Separator();
         if(!model.feedback.empty()) ImGui::TextWrapped("%s",model.feedback.c_str());
         if(model.unsaved && model.feedback.starts_with("Applied, but not saved")) {

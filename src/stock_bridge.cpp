@@ -65,6 +65,7 @@ bool queue_one(const Request& request,std::string& error) {
     error=result[0] ? result:"Stock settings queue unavailable."; return false;
 }
 bool send_camera(const Config& before,const Config& after,std::string& error) {
+    if(after.look_only) return true;
     { std::lock_guard lock(mirror_mutex); mirror.requested(before,after,GetTickCount64()); }
     bool accepted=true;
     auto send=[&](int action,float value,bool enabled=false) {
@@ -103,6 +104,7 @@ bool queue_hook(void* user,const Request& wire,char* result,std::size_t size) {
         return accepted;
     }
     const auto before=menu_snapshot().config;
+    if(before.look_only) return original_queue(user,wire,result,size);
     auto config=before;
     if(apply(config,request)) {
         Command command; command.kind=CommandKind::camera_settings; command.spring=config.spring; command.value=config.fov;
@@ -151,6 +153,14 @@ void read_hook(void* user,void* model) {
     if(game_camera_suspended()) message=game_camera_status();
     if(message.empty()) message=debug->camera_available ? "Ready. ReSkate owns the first-person camera.":"Waiting for ReSkate's native camera.";
     publish_runtime(debug->first_person,debug->camera_available,message);
+    if(snapshot.config.look_only) {
+        const auto comfort=comfort_snapshot();
+        if(snapshot.config.on_board_only || snapshot.config.native.board_only || snapshot.config.third_person_bailing || game_camera_managing()) {
+            if(comfort.initialized) debug->first_person=comfort.master;
+            if((comfort.suppressed || game_camera_suspended()) && !native_active.load()) acknowledge_master(comfort.master);
+        }
+        return;
+    }
     auto native=snapshot.config;native.fov=debug->fov;native.spring=debug->arm;
     const bool observed_spring=native.spring.enabled;native_spring=observed_spring ? 1:0;
     const auto movement=live_camera_movement();

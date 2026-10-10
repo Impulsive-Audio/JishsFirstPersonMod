@@ -20,12 +20,14 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         auto next=model_.config;
         bool immediate{};
         switch(command.kind) {
+        case CommandKind::look_only:
+            next.look_only=command.enabled;enabled_.reset();model_.requested_enabled.reset();immediate=true;break;
         case CommandKind::spring_on_foot: next.disable_spring_on_foot=command.enabled;immediate=true;break;
         case CommandKind::menu_key:
             if(native_key_overlap(command.action,next.native)) throw std::runtime_error("That panel key is used by a native ReSkate control.");
             next.menu_key=command.action;immediate=true;break;
         case CommandKind::recommended_preset:
-            next=command.preset;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;
+            next=command.preset;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.look_only=model_.config.look_only;
             validate_config(next);
             immediate=true;break;
         case CommandKind::stick_settings: next.stick=command.stick;break;

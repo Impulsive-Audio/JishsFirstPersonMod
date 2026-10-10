@@ -37,6 +37,28 @@ int main() {
     store.mark_enabled_queued(true);store.publish_runtime(false,true,"Temporarily third person");
     store.acknowledge_master(true);
     check(!store.snapshot().requested_enabled && !store.snapshot().active,"suppressed master acknowledgement changed native camera state");
+    command.kind=CommandKind::set_enabled;command.enabled=true;
+    check(store.submit(command,6),"pending activation setup failed");
+    command.kind=CommandKind::look_only;command.enabled=true;
+    check(store.submit(command,6),"compatibility switch rejected");store.flush_due(6);
+    check(!store.take_enabled() && !store.snapshot().requested_enabled,"compatibility retained pending activation");
+    config=read_config(path);
+    check(config.look_only && config.third_person_bailing && config.spring.offset==initial.spring.offset,
+        "compatibility persistence discarded saved camera settings");
+    command.kind=CommandKind::comfort_options;command.third_person_bailing=false;command.on_board_only=false;
+    check(store.submit(command,7) && store.snapshot().config.look_only && !store.snapshot().config.third_person_bailing && !store.snapshot().config.on_board_only,
+        "compatibility mode blocked comfort edits");
+    command.third_person_bailing=true;command.on_board_only=true;
+    check(store.submit(command,7),"compatibility comfort restore failed");store.flush_due(7);
+    config=read_config(path);
+    check(config.look_only && config.third_person_bailing && config.on_board_only,"compatibility comfort options did not persist");
+    command.kind=CommandKind::set_enabled;
+    check(store.submit(command,7) && store.take_enabled()==true,"compatibility mode blocked manual activation");
+    command.enabled=false;
+    check(store.submit(command,7) && store.take_enabled()==false,"compatibility mode blocked manual deactivation");
+    command.kind=CommandKind::look_only;command.enabled=false;
+    check(store.submit(command,8) && !store.snapshot().config.look_only && store.snapshot().config.third_person_bailing,
+        "leaving compatibility lost saved settings");
     ComfortPolicy policy;PlayerState riding{1,true,true,true,true,false,100};
     check(!policy.desired(riding,true,true),"uninitialized policy guessed master mode");
     policy.observe_native(true);

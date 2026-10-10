@@ -29,6 +29,17 @@ int main() {
     require(submit_command(command) && requests==2 && !last,"companion disable did not use native queue");
     publish_runtime(false,true,"Native First Person off");
     require(!menu_snapshot().active && !menu_snapshot().requested_enabled,"native disable echo not reflected");
+    command.kind=CommandKind::look_only;command.enabled=true;
+    require(submit_command(command) && menu_snapshot().config.look_only,"compatibility mode setup failed");
+    command.kind=CommandKind::set_enabled;command.enabled=true;
+    require(submit_command(command) && requests==3 && last && !take_enabled_command(),
+        "compatibility checkbox failed to forward activation exactly once");
+    publish_runtime(true,true,"Native First Person active");
+    require(menu_snapshot().active && !menu_snapshot().requested_enabled,"compatibility activation echo missing");
+    command.enabled=false;
+    require(submit_command(command) && requests==4 && !last && !take_enabled_command(),
+        "compatibility checkbox failed to forward deactivation exactly once");
+    publish_runtime(false,true,"Native First Person off");
     accept=false;command.enabled=true;
     require(!submit_command(command) && !menu_snapshot().requested_enabled && !take_enabled_command(),"rejected native request left phantom activation pending");
     std::cout<<"Native menu activation forwarding and acknowledgement passed without a controller tick\n";

@@ -57,3 +57,7 @@ For bail diagnostics, keep First Person enabled, turn Third person while bailing
 ## Game camera ownership (1.15)
 
 A new independent spectator ownership observer preserves the First Person master preference and all existing restrictions. It is enabled for verified ReSkate 1.1.8 and 2.0.0 through 2.0.3. Replay pre-entry and general scripted/game-mode takeover contracts remain unimplemented; see GAME_CAMERA_OWNERSHIP.md for signals, limitations and acceptance checks.
+
+## Compatibility mode
+
+Enable **Compatibility mode (look controls only)** in the mod panel, or set `look_only=1` in the mod INI. Right-stick camera look and directional glances remain available with their sensitivity, bindings and look smoothing. The First Person checkbox and hotkey remain available; manual activation uses ReSkate, and Third person while bailing / First person on board only continue to apply. The mod passes through camera position, FOV, Spring and stabilization, and disables character turning, head attachment, bail holds, transition smoothing. Comfort options remain active. Other saved settings are preserved for returning to full mode. Look controls still pause during bails, menus and unsupported player states, and on-board right-stick input remains available for tricks. This mode adds look rotation to ReSkate's supported first-person camera; compatibility with another mod replacing that camera requires in-game testing.

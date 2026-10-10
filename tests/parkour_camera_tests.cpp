@@ -50,6 +50,17 @@ int main() {
         movement.mounting=true;
     }
     movement.mounting=false;
+    config.look_only=true;config.disable_spring_on_foot=true;
+    config.stick.lock_mount_jump=config.stick.lock_hippy_jump=true;
+    movement.jumping=true;movement.hippy.active=true;
+    check(!head_position_attached(config,owner,movement) && !action_camera_locked(config,movement),
+        "compatibility mode retained head attachment");
+    config.stick.look_during_parkour=true;
+    check(camera_look_allowed(config,owner,movement),"compatibility mode disabled eligible look controls");
+    owner.bailing=true;
+    check(!head_position_attached(config,owner,movement) && !camera_look_allowed(config,owner,movement),
+        "compatibility mode attached bail camera or captured bail input");
+    owner.bailing=false;config.look_only=false;movement.jumping=false;movement.hippy.active=false;
     StickLookState stick;Settings immediate;StickSettings settings;settings.enabled=settings.turn_character=true;
     stick.seed(settings,1,0,40,15,100);
     auto before=stick.update(settings,{1,0},true,1,.016,40,100,immediate);

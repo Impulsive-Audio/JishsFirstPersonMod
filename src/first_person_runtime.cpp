@@ -32,10 +32,10 @@ void tick_mod(std::uintptr_t client) noexcept {
         if(context!=next_context) { context=next_context;camera=0;toggle={};look={};clear_comfort_state(); }
         const auto settings=menu_snapshot();
         if(settings.revision!=revision) {
-            bool changed=input_config.toggle!=settings.config.toggle;
+            bool changed=input_config.look_only!=settings.config.look_only || input_config.toggle!=settings.config.toggle;
             for(unsigned i=0;i<4;++i) changed=changed || input_config.look[i].combo!=settings.config.look[i].combo ||
                 input_config.look[i].angle!=settings.config.look[i].angle;
-            if(changed) { toggle={};look={}; }
+            if(changed) { toggle={};look={};stop_stick_look();clear_stock_camera_blends(); }
             input_config=settings.config; revision=settings.revision;
         }
         update_game_camera_ownership(client,base);
@@ -63,14 +63,14 @@ void tick_mod(std::uintptr_t client) noexcept {
         const auto input_route=route_controller_input(settings.config,blocked);
         const auto comfort=comfort_snapshot();
         auto movement=live_camera_movement();
-        tick_hippy_jump(settings.config,comfort,movement,source_flight_now());
+        if(!settings.config.look_only) tick_hippy_jump(settings.config,comfort,movement,source_flight_now());
         if(!stock_first_person_requested()) { set_bail_view_suspended(false);movement.view_hold=false; }
         const bool bail=bail_camera_locked(comfort,movement);
         if(!bail) { set_bail_view_suspended(false);movement.view_hold=false; }
         const bool native_camera=(settings.config.native.board_only && movement.mode==1) || game_camera_suspended() || !camera_look_allowed(settings.config,comfort,movement) || !read_animation_head(comfort).valid;
         static std::optional<bool> last_spring_target;
         const auto spring_target=effective_camera_config(settings.config,stock_first_person_requested(),comfort,movement).spring.enabled;
-        if(ready && last_spring_target!=spring_target) {
+        if(!settings.config.look_only && ready && last_spring_target!=spring_target) {
             poll_stock_camera(true);last_spring_target=spring_target;
         }
         const bool camera_interrupted=take_camera_suspension();
