@@ -1,28 +1,8 @@
-# JishsFirstPersonMod 1.20 � ReSkate 2.0.2
+# JishsFirstPersonMod 1.20 — ReSkate 2.0.2
 
 Adds the exact verified official 2.0.2 compatibility profile, native sampler and console callback addresses. Retains 1.19 camera behavior, launcher support, recording and preset fixes. See [UPDATE_1_20.md](UPDATE_1_20.md).
 
 # JishsFirstPersonMod
-
-**Version 1.19 — ReSkate 2.0.1:** Rebuilt from the working 1.15 source. Retains its camera mathematics and head-lock behavior, coordinates native first-person controls, and adds verified 2.0.x compatibility. Read [UPDATE_1_19.md](UPDATE_1_19.md) for current behavior, build instructions and validation limits. The version notes below describe historical releases, not validation of this update.
-
-**Version 1.15:** Adds Game Camera Ownership awareness. First Person temporarily releases during verified spectator camera takeovers and restores when local gameplay camera ownership returns, preserving the master preference and existing comfort/input rules. Game of Skate handoff tested successfully by the user. The config panel now shows the build version. Replay pre-entry release and general scripted camera detection remain unimplemented. See GAME_CAMERA_OWNERSHIP.md.
-
-**Version 1.14:** Adds checked automatic detection for unknown ReSkate releases in the unchanged 1.1.5-1.1.8 bridge family. Compiled profiles remain preferred; all required functions, callbacks and live camera slots are validated before activation. Unsupported structures leave the mod inactive. Mount-fix camera behavior is retained, with no jump-camera or input-resume experiments and no new saved settings. No Python, downloads or extra compatibility files are needed by players.
-
-**1.13 mount-fix for ReSkate 1.1.8:** Built directly from JishsFirstPersonMod-1.12-mount-fix-reskate-1.1.7-source.zip with the verified official 1.1.8 bridge profile added. Retains that archive's mount smoothing and original jump/input behavior. Later jump smoothing and held-stick resume edits are excluded. No settings migration is required. Release: JishsFirstPersonMod-1.13-mount-fix-reskate-1.1.8.zip.
-
-**1.12 mount handoff fix:** With right-stick look enabled, Smooth on/off board transitions now blends position and direction from the displayed view into the mounting head camera as soon as mounting begins. The blend continues through the on-board state change and input-lock release, using Mount smoothing even when mounting begins on foot. Right-stick input stays locked during mounting. Disable transition smoothing for an immediate handoff. No new settings are required.
-
-**Version 1.12:** Adds the verified ReSkate 1.1.7 bridge profile while retaining 1.1.5 and 1.1.6 support. Camera/input behavior and recommended settings remain unchanged from 1.11. Install the mod DLL/bootstrap only; retain the stock ReSkate DLL. Release: `JishsFirstPersonMod-1.12-reskate-1.1.7.zip`.
-
-**Version 1.11:** Removes the 1.10 predictive mounting state and special camera/Spring handoff. Restores the 1.9 camera and transition behavior, with one additional input gate: the native mounting flag disables custom right-stick/glance look regardless of parkour looking or jump-lock settings. No Y/Triangle prediction, confirmation window, mounting latch or new movement/facing behavior remains. Recommended settings and bail behavior are unchanged. Release: `JishsFirstPersonMod-1.11-reskate-1.1.6.zip`.
-
-**Version 1.9:** Non-bail handoffs now retain the last displayed attached-camera pose through mounting, dismounting, climbing and selected jumps. Resuming native movement or analog look blends from that final pose, including pitch and glance rotation. While head attachment remains active, position follows the head directly and only orientation blends. Foot/board, camera and look smoothing retain their separate controls; attachment turning native Spring off does not erase saved handoff strengths. Parkour looking stays optional and off by default. Bail release keeps the reverted 1.5 behavior. Release: `JishsFirstPersonMod-1.9-reskate-1.1.6.zip`.
-
-**Version 1.8:** Reverts the 1.6 bail handover changes to the 1.5 behavior: native orientation returns immediately when bail evidence clears, with no settle wait or orientation reconciliation. Stick/glance controls retain neutral re-entry after bails. The optional jump/climb looking from 1.7 remains, default off; head attachment and the separate jump toggles are retained. Release: `JishsFirstPersonMod-1.8-reskate-1.1.6.zip`.
-
-**Version 1.7:** **Allow looking during jumps and climbing** is a saved option (`look_during_parkour`), default off and off in the recommended preset. Off restores the pre-1.6 native view during climbing and enabled mounting/on-foot/hippy jump attachments, releasing custom stick/glance control until normal movement returns. On enables the 1.6 camera-only look behavior described below. Head attachment and separate jump toggles remain unchanged.
 
 Close Skate, then copy both the scripts and Mods folders from this package into the ReSkate folder containing Skate.exe and reskate.dll (Skate\ReSkate for this installation). Both JishsFirstPersonMod.dll and jishs_first_person_mod.lua now belong together in scripts/Custom/. Remove the previous JishsFirstPersonMod.dll beside Skate.exe when upgrading. Keep the same Lua filename and remove the old MyMod bootstrap if still present. Keep normal reskate.dll. Settings and logs remain under %LOCALAPPDATA%/JishsFirstPersonMod.
 
@@ -81,7 +61,7 @@ For bail diagnostics, keep First Person enabled, turn Third person while bailing
 
 **Version 1.6:** Preserves displayed direction through bail handover with immediate input restoration and independent orientation reconciliation. Climbing and enabled jump attachments now allow looking. Releases use `JishsFirstPersonMod-1.6-reskate-1.1.6.zip`.
 
-**Version 1.5 recommended preset:** Updated from Jish’s current saved settings. Hippy-jump locking, mounting/on-foot jump locking, Disable Spring on foot and Third person while bailing are enabled. Load the preset explicitly through the mod panel; loading retains your current menu key and stock reserved bindings.
+**Version 1.5 recommended preset:** Updated from Jishâ€™s current saved settings. Hippy-jump locking, mounting/on-foot jump locking, Disable Spring on foot and Third person while bailing are enabled. Load the preset explicitly through the mod panel; loading retains your current menu key and stock reserved bindings.
 
 
 ## Game camera ownership (1.15)
