@@ -8,6 +8,50 @@ Close Skate, then copy both the scripts and Mods folders from this package into 
 
 Press Insert to configure controls and camera settings in-game. Settings save automatically to %LOCALAPPDATA%\JishsFirstPersonMod\settings.ini. The startup and failure log is JishsFirstPersonMod.log in the same directory.
 
+My custom mod for more control over 1st person
+
+Press Insert to open settings, then choose Load Jish’s recommended preset for a ready-to-use setup.
+
+Supports ReSkate 2.0.2, including the new first-person camera options.
+
+Latest Update:
+[Jump to message](https://discord.com/channels/1512899126474571886/1558422220387258368/1558429802967605328)
+
+Install:
+Copy the scripts/mods folder into your ReSkate install folder. 
+
+Features
+
+- Look up, down, left and right while skating or walking, with custom button combinations and adjustable look angles.
+
+- Use the right stick to look around on foot, with adjustable sensitivity, deadzone, inverted controls and optional character turning.
+
+- Adjust look smoothing and how smoothly the camera returns after a glance.
+
+- Smooth getting on and off your board, with separate settings for each.
+
+- Optionally look around during jumps and climbing.
+
+- Keep the camera following your head during mounting, jumping and hippy jumps.
+
+- Automatically switch to third person while bailing, or use first person only while on your board.
+
+- Use ReSkate’s new first-person options alongside the mod’s controls.
+
+- Automatically switch to third person when watching other players during S.K.A.T.E. and Throwdowns, then return to first person when your turn resumes.
+
+- Dedicated settings panel, automatic saving and a recommended preset.
+Recommended controls
+
+- LB/L1 + D-pad direction: look in that direction; release to return.
+- LB/L1 + RB/R1 + D-pad Down: toggle first person.
+- Insert: open settings.
+- F9: hide or show the mod’s panel.
+
+Controller bindings and the panel shortcut can be changed. 
+
+## Detailed Information:
+
 ## Look smoothing
 
 Link look smoothing to camera spring is enabled by default. Unlink it to edit the hotkey look smoothing checkbox and four strengths independently. FOV, camera offsets and base rotations still sync with ReSkate. First unlink copies the current smoothing; subsequent relinks retain the independent values. Changing linkage during a held glance takes effect after returning to centre. Spring off turns immediately.
