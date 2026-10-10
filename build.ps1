@@ -14,7 +14,7 @@ try {
     if ($LASTEXITCODE) { throw 'Checks failed.' }
     & $cmake --install build --config Release --prefix release
     if ($LASTEXITCODE) { throw 'Install staging failed.' }
-    Copy-Item README.md,INTEGRATION.md,GAME_CAMERA_OWNERSHIP.md,UPDATE_1_19.md,UPDATE_1_20.md,UPDATE_1_21.md -Destination release
+    Copy-Item README.md,INTEGRATION.md,GAME_CAMERA_OWNERSHIP.md,UPDATE_1_19.md,UPDATE_1_20.md,UPDATE_1_21.md,UPDATE_1_22.md -Destination release
     Copy-Item vendor/LICENSE -Destination release/LICENSE.txt
     New-Item -ItemType Directory -Force release/licenses | Out-Null
     Copy-Item vendor/External/detours/LICENSE.txt -Destination release/licenses/Detours-LICENSE.txt

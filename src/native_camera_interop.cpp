@@ -39,7 +39,7 @@ bool install_native_camera_interop(void* module) {
     using namespace dingosdk;
     if(!stock_contract::is_v2()) return true;
     const std::string_view version(stock_contract::contract().version);
-    if(version!="2.0.0" && version!="2.0.1" && version!="2.0.2" && version!="2.0.3") return false;
+    if(version!="2.0.0" && version!="2.0.1" && version!="2.0.2" && version!="2.0.3" && version!="2.0.4") return false;
     // The exact-hash reviewed 2.0.x DLLs use this sampler. Refuse a modified
     // entry rather than patching an unknown function or another mod's detour.
     const auto sample_rva=stock_contract::native_sampler_rva();

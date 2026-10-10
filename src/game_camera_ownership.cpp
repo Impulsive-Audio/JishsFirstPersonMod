@@ -40,7 +40,7 @@ void install_game_camera_observer(std::uintptr_t base) {
     // is accepted here; automatic camera-bridge detection proves no party ABI.
     if((std::string_view(stock_contract::contract().version)!="1.1.8" && !stock_contract::is_v2()) ||
        !dingosdk::supported_build::running_image_matches(base)) {
-        log("Game camera observer unavailable: spectator contract requires verified ReSkate 1.1.8, 2.0.0, 2.0.1, 2.0.2 or 2.0.3.");return;
+        log("Game camera observer unavailable: spectator contract requires verified ReSkate 1.1.8, 2.0.0, 2.0.1, 2.0.2, 2.0.3 or 2.0.4.");return;
     }
     std::array<unsigned char,32> live{};
     const bool native=dingosdk::memory::read(base+spectator_active,live) && live==spectator_prefix;

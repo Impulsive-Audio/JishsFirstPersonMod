@@ -5,6 +5,8 @@ from pathlib import Path
 import pefile
 
 PROFILES = {
+    '9259c3de99626d6a9d6083b337927bc948ee144dbf4e698f7733148979aeb528':
+        (0x3d00f0, (0x3eab0d, 0x420198)),
     '083bd7c9636d7ff1432cb643842ba58159f26cf8ab3bbb1d2c22df322f865912':
         (0x3c6c80, (0x3e169d, 0x416858)),
     '082de47e7ce36f34ab395feee5a52f77531bdb5f73f0605c5a4f0ad17f94214e':

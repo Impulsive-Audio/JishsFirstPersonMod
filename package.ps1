@@ -1,4 +1,4 @@
-param([string]$ModVersion = "1.21", [string]$ReSkateVersion = "2.0.3")
+param([string]$ModVersion = "1.22", [string]$ReSkateVersion = "2.0.4")
 $ErrorActionPreference = 'Stop'
 $releaseName = "JishsFirstPersonMod-$ModVersion-reskate-$ReSkateVersion"
 $releasePath = Join-Path $PSScriptRoot ($releaseName + '.zip')
