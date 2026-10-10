@@ -4,7 +4,7 @@ First-person camera controls and comfort options for ReSkate, updated for **ReSk
 
 ## Install
 
-Download `JishsFirstPersonMod-1.21-reskate-2.0.3-install.zip` from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe. Merge the folders and keep the official ReSkate.dll. Do not overwrite another mod's existing dinput8.dll.
+Download `JishsFirstPersonMod-1.21-reskate-2.0.3-install.zip` from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe. 
 
 Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
 
