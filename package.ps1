@@ -17,7 +17,7 @@ try {
     try {
         foreach ($file in (Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File)) {
             $relative = [IO.Path]::GetRelativePath($PSScriptRoot, $file.FullName).Replace('\','/')
-            if ($relative -match '^(build|release|\.hook-tools)/|(^|/)__pycache__/|\.zip$|\.pyc$') { continue }
+            if ($relative -match '^(build|release|\.hook-tools|\.git)/|(^|/)__pycache__/|\.zip$|\.pyc$') { continue }
             [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $relative, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
         }
     } finally { $archive.Dispose(); $stream.Dispose() }
