@@ -1,0 +1,27 @@
+#pragma once
+#include "mod.h"
+#include "comfort_policy.h"
+#include "hippy_jump.h"
+namespace jishsfirstpersonmod {
+bool install_stick_runtime(std::uintptr_t base);
+void tick_stick_look(const Config&,const GameplayInput&,const ComfortSnapshot&,bool inhibited);
+void stop_stick_look();
+void note_native_camera_heading(const dingosdk::first_person::Matrix& pose);
+void note_camera_view(const dingosdk::first_person::Matrix&,dingosdk::first_person::Quat glance);
+StickAim stick_camera_aim();
+bool stick_captures_input(unsigned slot=~0u);
+bool stick_runtime_ready();
+struct CameraMovementSample {
+    int mode{}, custom_mode{};
+    bool non_bail{},bail_recovery{},mounting{},jumping{},view_hold{};
+    HippyJumpState hippy;
+    std::array<std::uintptr_t,4> state{};
+};
+CameraMovementSample live_camera_movement();
+void tick_hippy_jump(const Config&,const ComfortSnapshot&,CameraMovementSample&,double now);
+void set_bail_view_suspended(bool suspended);
+int live_camera_movement_mode();
+void suspend_custom_camera();
+bool take_camera_suspension();
+bool install_stick_input_filter();
+}

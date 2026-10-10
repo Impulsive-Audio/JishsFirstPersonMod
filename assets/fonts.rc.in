@@ -1,0 +1,3 @@
+FONT_BODY RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/vendor/External/fonts/Montserrat-SemiBold.ttf"
+FONT_HEADING RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/vendor/External/fonts/Montserrat-ExtraBold.ttf"
+FONT_BRUSH RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/vendor/External/fonts/PermanentMarker-Regular.ttf"

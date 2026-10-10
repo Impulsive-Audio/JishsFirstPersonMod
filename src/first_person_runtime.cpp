@@ -1,0 +1,98 @@
+#include "native.h"
+#include "mod.h"
+#include "settings.h"
+#include "stock_bridge.h"
+#include "comfort_policy.h"
+#include "game_camera_ownership.h"
+#include "stick_runtime.h"
+#include "camera_policy.h"
+#include "head_attachment.h"
+namespace jishsfirstpersonmod {
+void tick_mod(std::uintptr_t client) noexcept {
+    using namespace dingosdk;
+    using namespace dingosdk::client_source::detail;
+    static ControllerComboLatch toggle;
+    static ControllerLookState look;
+    static std::uint64_t revision{};
+    static Config input_config;
+    static std::uintptr_t context{},camera{};
+    static float saved_game_fov=90;
+    static std::string last_wait;
+    static bool reported{};
+    static std::mutex input_mutex;
+    std::unique_lock input_lock(input_mutex,std::try_to_lock);
+    if(!input_lock.owns_lock()) return;
+    try {
+        const auto base=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+        SourceReader reader;
+        source_require(reader.pointer(client)==base+addr::engine::client_vtable,"Waiting for native client input.");
+        const auto next_context=reader.pointer(client,8);
+        const auto state=reader.value<std::uint32_t>(client,0xc4);reader.verify();
+        if(!reported) { reported=true;log("Controller tick reached native client; state="+std::to_string(state)); }
+        if(context!=next_context) { context=next_context;camera=0;toggle={};look={};clear_comfort_state(); }
+        const auto settings=menu_snapshot();
+        if(settings.revision!=revision) {
+            bool changed=input_config.toggle!=settings.config.toggle;
+            for(unsigned i=0;i<4;++i) changed=changed || input_config.look[i].combo!=settings.config.look[i].combo ||
+                input_config.look[i].angle!=settings.config.look[i].angle;
+            if(changed) { toggle={};look={}; }
+            input_config=settings.config; revision=settings.revision;
+        }
+        update_game_camera_ownership(client,base);
+        update_comfort(client,base);
+        const bool world=state==13 || state==21;
+        if(world) {
+            try {
+                SourceTrial trial;trial.base=base;
+                const auto snapshot=source_camera_snapshot(trial,client);
+                camera=snapshot.identity.camera;
+                if(snapshot.mode==0 && snapshot.active) {
+                    float fov{};
+                    if(memory::read(snapshot.active+camera_fov_offset,fov) && std::isfinite(fov) && fov>1 && fov<175) saved_game_fov=fov;
+                }
+            } catch(const SourceGuard&) { /* Stock owns readiness; retain only the same world's last input target. */ }
+        } else camera=0;
+        bool visible{};
+        const bool menu_ready=overlay_available(visible);
+        const bool ready=world && stock_bridge_ready() && stock_camera_available();
+        const auto controller=read_controller();
+        DWORD foreground_pid{};
+        const auto foreground=GetForegroundWindow();
+        const bool focused=foreground && GetWindowThreadProcessId(foreground,&foreground_pid) && foreground_pid==GetCurrentProcessId();
+        const bool blocked=!ready || !menu_ready || visible || !controller.available || !focused;
+        const auto input_route=route_controller_input(settings.config,blocked);
+        const auto comfort=comfort_snapshot();
+        auto movement=live_camera_movement();
+        tick_hippy_jump(settings.config,comfort,movement,source_flight_now());
+        if(!stock_first_person_requested()) { set_bail_view_suspended(false);movement.view_hold=false; }
+        const bool bail=bail_camera_locked(comfort,movement);
+        if(!bail) { set_bail_view_suspended(false);movement.view_hold=false; }
+        const bool native_camera=(settings.config.native.board_only && movement.mode==1) || game_camera_suspended() || !camera_look_allowed(settings.config,comfort,movement) || !read_animation_head(comfort).valid;
+        static std::optional<bool> last_spring_target;
+        const auto spring_target=effective_camera_config(settings.config,stock_first_person_requested(),comfort,movement).spring.enabled;
+        if(ready && last_spring_target!=spring_target) {
+            poll_stock_camera(true);last_spring_target=spring_target;
+        }
+        const bool camera_interrupted=take_camera_suspension();
+        tick_stick_look(settings.config,controller,comfort,input_route.stick_blocked || native_camera || camera_interrupted || !stock_first_person_active() || comfort.suppressed);
+        const bool pressed=toggle.update(settings.config.toggle,controller,input_route.toggle_blocked);
+        if(pressed) log("Controller First Person chord detected.");
+        const bool script_toggle=take_toggle_request();
+        const auto angles=look.update(input_route.glance,controller,blocked || native_camera || camera_interrupted || !stock_first_person_active() || comfort_snapshot().suppressed);
+        set_stock_glance(camera,saved_game_fov,angles[0],angles[1]);
+        // Every activation uses stock's existing request queue. This DLL never
+        // switches modes, takes a camera lease, hides a head or restores a view.
+        if(ready) {
+            if(const auto request=take_enabled_command()) {
+                request_user_first_person(*request);
+            } else if((pressed || script_toggle) && !blocked) {
+                const bool enabled=!(comfort.initialized ? comfort.master:stock_first_person_requested());
+                request_user_first_person(enabled);
+            }
+        }
+        if(take_reload_request()) { Command retry;retry.kind=CommandKind::retry_save;submit_command(retry); }
+    } catch(const SourceGuard& error) { stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);if(last_wait!=error.message) { last_wait=error.message;log(std::string("Controller input waiting: ")+error.message); } }
+      catch(const std::exception& error) { stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);log(std::string("Controller input bridge: ")+error.what()); }
+      catch(...) { stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0); }
+}
+}

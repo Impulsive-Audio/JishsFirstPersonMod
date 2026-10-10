@@ -1,0 +1,6 @@
+build/
+.hook-tools/
+release/
+__pycache__/
+*.pyc
+*.zip

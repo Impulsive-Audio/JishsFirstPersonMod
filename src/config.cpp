@@ -1,0 +1,183 @@
+#include "mod.h"
+#include <fstream>
+#include <map>
+#include <set>
+#include <cmath>
+#include <stdexcept>
+#include <sstream>
+#include <iomanip>
+#include <limits>
+
+namespace jishsfirstpersonmod {
+Config read_config(const std::filesystem::path& path) {
+    Config cfg;
+    std::ifstream input(path);
+    if (!input) throw std::runtime_error("cannot read JishsFirstPersonMod.ini beside JishsFirstPersonMod.dll");
+    std::map<std::string,std::string> values;
+    std::string line;
+    const auto trim = [](std::string s) {
+        const auto start = s.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) return std::string{};
+        return s.substr(start, s.find_last_not_of(" \t\r\n") - start + 1);
+    };
+    while (std::getline(input,line)) {
+        line = trim(line.substr(0,line.find_first_of(";#")));
+        if (line.empty() || line == "[JishsFirstPersonMod]" || line == "[MyMod]") continue;
+        const auto split = line.find('=');
+        if (split == std::string::npos || !values.emplace(trim(line.substr(0,split)),trim(line.substr(split+1))).second)
+            throw std::runtime_error("invalid or duplicate JishsFirstPersonMod.ini setting");
+    }
+    const auto number = [&](const std::string& name, float fallback) {
+        const auto it = values.find(name);
+        if (it == values.end()) return fallback;
+        std::size_t used{};
+        const auto result = std::stof(it->second, &used);
+        if (used != it->second.size() || !std::isfinite(result)) throw std::runtime_error(name + " must be finite numeric text");
+        values.erase(it); return result;
+    };
+    const auto combo = [&](const std::string& name) {
+        const auto it = values.find(name);
+        if (it == values.end()) return std::uint32_t{};
+        if (it->second.empty() || it->second[0]=='-') throw std::runtime_error(name + " must be a nonnegative mask");
+        std::size_t used{};
+        const auto mask = std::stoull(it->second,&used,0);
+        if (used != it->second.size() || mask > dingosdk::controller_button_mask ||
+            !dingosdk::valid_controller_combo(static_cast<std::uint32_t>(mask)))
+            throw std::runtime_error(name + " contains unsupported controller buttons");
+        values.erase(it); return static_cast<std::uint32_t>(mask);
+    };
+    cfg.toggle = combo("first_person");
+    std::set<std::uint32_t> occupied;
+    // Stock reservations and the legacy toggle can become runtime conflicts.
+    // Keep their saved values; only duplicate glance rows are malformed.
+    unsigned reserved_index{};
+    for (const auto name : {"noclip", "forward_velocity", "up_velocity"}) {
+        const auto mask = combo(name);
+        cfg.reserved[reserved_index++]=mask;
+    }
+    for (unsigned i=0;i<4;++i) {
+        const std::string name = dingosdk::look_action_keys[i];
+        cfg.look[i].combo = combo(name);
+        if (cfg.look[i].combo && !occupied.insert(cfg.look[i].combo).second) throw std::runtime_error("duplicate look/controller binding");
+        cfg.look[i].angle = number(name+"_angle",cfg.look[i].angle);
+        if (cfg.look[i].angle < 1 || cfg.look[i].angle > dingosdk::look_angle_limit(i)) throw std::runtime_error(name + " angle out of range");
+    }
+    cfg.fov = number("fov",0);
+    if (cfg.fov != 0 && (cfg.fov < 40 || cfg.fov > 120)) throw std::runtime_error("FOV must be zero or 40..120");
+    const auto enabled = number("spring",0);
+    if (enabled != 0 && enabled != 1) throw std::runtime_error("spring must be 0 or 1");
+    cfg.spring.enabled = enabled != 0;
+    const char* offsets[]{"offset_x","offset_y","offset_z"};
+    const char* rotations[]{"pitch","yaw","roll"};
+    for (unsigned i=0;i<3;++i) {
+        cfg.spring.offset[i] = number(offsets[i],0);
+        cfg.spring.rotation[i] = number(rotations[i],0);
+    }
+    cfg.spring.up = number("strength_up",50); cfg.spring.down = number("strength_down",50);
+    cfg.spring.left = number("strength_left",50); cfg.spring.right = number("strength_right",50);
+    const auto boolean=[&](const char* key,bool fallback) {
+        const auto value=number(key,fallback ? 1.0f:0.0f);
+        if(value!=0 && value!=1) throw std::runtime_error(std::string(key)+" must be 0 or 1");
+        return value!=0;
+    };
+    cfg.link_smoothing=boolean("link_smoothing",true);
+    cfg.look_smoothing_initialized=boolean("look_smoothing_initialized",false);
+    cfg.look_spring.enabled=boolean("look_spring",false);
+    cfg.look_spring.up=number("look_strength_up",50); cfg.look_spring.down=number("look_strength_down",50);
+    cfg.look_spring.left=number("look_strength_left",50); cfg.look_spring.right=number("look_strength_right",50);
+    cfg.third_person_bailing=boolean("third_person_bailing",false);
+    cfg.on_board_only=boolean("on_board_only",false);
+    cfg.disable_spring_on_foot=boolean("disable_spring_on_foot",false);
+    cfg.stick.enabled=boolean("stick_look",false);
+    cfg.stick.turn_character=boolean("stick_turn_character",false);
+    cfg.stick.invert_y=boolean("stick_invert_y",false);
+    cfg.stick.yaw_speed=number("stick_yaw_speed",120);
+    cfg.stick.pitch_speed=number("stick_pitch_speed",90);
+    cfg.stick.deadzone=number("stick_deadzone",.15f);
+    const float menu_key=number("menu_key",VK_F9);
+    if(!std::isfinite(menu_key) || menu_key!=std::floor(menu_key) || menu_key<0 || menu_key>255) throw std::runtime_error("Invalid menu key.");
+    cfg.menu_key=static_cast<unsigned>(menu_key);
+    cfg.stick.smooth_transitions=boolean("smooth_transitions",true);
+    cfg.stick.lock_mount_jump=boolean("lock_camera_mount_jump",true);
+    cfg.stick.lock_hippy_jump=boolean("lock_camera_hippy_jump",false);
+    cfg.stick.look_during_parkour=boolean("look_during_parkour",false);
+    cfg.stick.mount_smoothing=number("mount_smoothing",70);
+    cfg.stick.dismount_smoothing=number("dismount_smoothing",35);
+    for(float strength:{cfg.stick.mount_smoothing,cfg.stick.dismount_smoothing})
+        if(!std::isfinite(strength) || strength<0 || strength>100) throw std::runtime_error("Transition smoothing must be 0–100 percent.");
+    if(!std::isfinite(cfg.stick.yaw_speed) || cfg.stick.yaw_speed<1 || cfg.stick.yaw_speed>720 ||
+       !std::isfinite(cfg.stick.pitch_speed) || cfg.stick.pitch_speed<1 || cfg.stick.pitch_speed>720 ||
+       !std::isfinite(cfg.stick.deadzone) || cfg.stick.deadzone<.01f || cfg.stick.deadzone>.5f)
+        throw std::runtime_error("Stick look settings outside supported ranges");
+    if(!dingosdk::first_person::valid(cfg.look_spring)) throw std::runtime_error("Look smoothing outside supported ranges");
+    if(!cfg.link_smoothing && !cfg.look_smoothing_initialized) {
+        cfg.look_spring=cfg.spring; cfg.look_spring.offset={}; cfg.look_spring.rotation={}; cfg.look_smoothing_initialized=true;
+    }
+    if (!dingosdk::first_person::valid(cfg.spring)) throw std::runtime_error("spring settings outside custom build's supported ranges");
+    if (!values.empty()) throw std::runtime_error("unknown JishsFirstPersonMod.ini setting: " + values.begin()->first);
+    return cfg;
+}
+
+void validate_config(const Config& cfg) {
+    if(cfg.menu_key>255 || (cfg.menu_key && (cfg.menu_key<=VK_XBUTTON2 || cfg.menu_key==VK_INSERT || cfg.menu_key==VK_ESCAPE || cfg.menu_key==VK_SHIFT || cfg.menu_key==VK_CONTROL || cfg.menu_key==VK_MENU || (cfg.menu_key>=VK_LSHIFT && cfg.menu_key<=VK_RMENU)))) throw std::runtime_error("Choose a keyboard key other than Insert, Escape or a modifier.");
+    for(float strength:{cfg.stick.mount_smoothing,cfg.stick.dismount_smoothing})
+        if(!std::isfinite(strength) || strength<0 || strength>100) throw std::runtime_error("Transition smoothing must be 0–100 percent.");
+    if(!std::isfinite(cfg.stick.yaw_speed) || cfg.stick.yaw_speed<1 || cfg.stick.yaw_speed>720 ||
+       !std::isfinite(cfg.stick.pitch_speed) || cfg.stick.pitch_speed<1 || cfg.stick.pitch_speed>720 ||
+       !std::isfinite(cfg.stick.deadzone) || cfg.stick.deadzone<.01f || cfg.stick.deadzone>.5f)
+        throw std::runtime_error("Stick look settings outside supported ranges.");
+    std::set<std::uint32_t> used;
+    const auto reserve=[&](std::uint32_t mask) {
+        if(!dingosdk::valid_controller_combo(mask)) throw std::runtime_error("Unsupported controller buttons.");
+        if(mask && !used.insert(mask).second) throw std::runtime_error("That combo is already assigned to another control.");
+    };
+    if(!dingosdk::valid_controller_combo(cfg.toggle)) throw std::runtime_error("Unsupported controller buttons.");
+    for(auto mask:cfg.reserved) if(!dingosdk::valid_controller_combo(mask)) throw std::runtime_error("Unsupported controller buttons.");
+    for(unsigned i=0;i<4;++i) {
+        reserve(cfg.look[i].combo);
+        const auto angle=cfg.look[i].angle;
+        if(!std::isfinite(angle) || angle<1 || angle>dingosdk::look_angle_limit(i)) throw std::runtime_error("Look angle is outside its supported range.");
+    }
+    if(!std::isfinite(cfg.fov) || (cfg.fov!=0 && (cfg.fov<40 || cfg.fov>120))) throw std::runtime_error("FOV must be the game default or 40–120 degrees.");
+    if(!dingosdk::first_person::valid(cfg.spring)) throw std::runtime_error("Camera spring settings are outside their supported ranges.");
+    if(!dingosdk::first_person::valid(cfg.look_spring)) throw std::runtime_error("Look smoothing is outside its supported range.");
+}
+void write_config(const std::filesystem::path& path,const Config& cfg) {
+    validate_config(cfg);
+    std::filesystem::create_directories(path.parent_path());
+    auto temporary=path; temporary+=L".tmp";
+    {
+        std::ofstream out(temporary,std::ios::binary|std::ios::trunc);
+        if(!out) throw std::runtime_error("Cannot create the settings file.");
+        out<<std::setprecision(std::numeric_limits<float>::max_digits10);
+        out<<"[JishsFirstPersonMod]\nfirst_person="<<cfg.toggle<<'\n';
+        for(unsigned i=0;i<4;++i) out<<dingosdk::look_action_keys[i]<<'='<<cfg.look[i].combo<<'\n'
+            <<dingosdk::look_action_keys[i]<<"_angle="<<cfg.look[i].angle<<'\n';
+        out<<"noclip="<<cfg.reserved[0]<<"\nforward_velocity="<<cfg.reserved[1]<<"\nup_velocity="<<cfg.reserved[2]
+            <<"\nfov="<<cfg.fov<<"\nspring="<<cfg.spring.enabled;
+        const char* offset[]{"offset_x","offset_y","offset_z"}; const char* rotation[]{"pitch","yaw","roll"};
+        for(unsigned i=0;i<3;++i) out<<'\n'<<offset[i]<<'='<<cfg.spring.offset[i]<<'\n'<<rotation[i]<<'='<<cfg.spring.rotation[i];
+        out<<"\nstrength_up="<<cfg.spring.up<<"\nstrength_down="<<cfg.spring.down
+            <<"\nstrength_left="<<cfg.spring.left<<"\nstrength_right="<<cfg.spring.right<<'\n';
+        out<<"link_smoothing="<<cfg.link_smoothing<<"\nlook_smoothing_initialized="<<cfg.look_smoothing_initialized
+            <<"\nlook_spring="<<cfg.look_spring.enabled<<"\nlook_strength_up="<<cfg.look_spring.up
+            <<"\nlook_strength_down="<<cfg.look_spring.down<<"\nlook_strength_left="<<cfg.look_spring.left
+            <<"\nlook_strength_right="<<cfg.look_spring.right<<"\nthird_person_bailing="<<cfg.third_person_bailing
+            <<"\non_board_only="<<cfg.on_board_only
+            <<"\ndisable_spring_on_foot="<<cfg.disable_spring_on_foot<<'\n';
+        out<<"stick_look="<<cfg.stick.enabled<<"\nstick_turn_character="<<cfg.stick.turn_character
+            <<"\nstick_invert_y="<<cfg.stick.invert_y<<"\nstick_yaw_speed="<<cfg.stick.yaw_speed
+            <<"\nstick_pitch_speed="<<cfg.stick.pitch_speed<<"\nstick_deadzone="<<cfg.stick.deadzone<<'\n';
+        out<<"smooth_transitions="<<cfg.stick.smooth_transitions<<"\nmount_smoothing="<<cfg.stick.mount_smoothing
+            <<"\ndismount_smoothing="<<cfg.stick.dismount_smoothing<<'\n';
+        out<<"lock_camera_mount_jump="<<cfg.stick.lock_mount_jump<<"\nlock_camera_hippy_jump="<<cfg.stick.lock_hippy_jump<<"\nlook_during_parkour="<<cfg.stick.look_during_parkour<<'\n';
+        out<<"menu_key="<<cfg.menu_key<<'\n';
+        out.flush(); if(!out) throw std::runtime_error("Writing settings failed.");
+    }
+    if(!MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)) {
+        const auto error=GetLastError();
+        std::error_code ignored; std::filesystem::remove(temporary,ignored);
+        throw std::runtime_error("Replacing settings failed (Windows error "+std::to_string(error)+").");
+    }
+}
+}
