@@ -145,7 +145,8 @@ Resolution resolve(const Image& image,const std::array<unsigned char,32>& hash,b
         }
         const auto ctor=one(constructors,"overlay constructor");
         // Require unmasked fields used by this bridge, independently of total allocation size.
-        const unsigned char cb[]{0x48,0x89,0xb7,static_cast<unsigned char>(v2 ? 0xb8:0xb0),0x04,0,0},model[]{0x48,0x8d,0x8f,static_cast<unsigned char>(v2 ? 0xe8:0xe0),0x04,0,0};
+        const auto cb_offset=stock_contract::profile_callbacks_offset(reviewed), mdl_offset=stock_contract::profile_model_offset(reviewed);
+        const unsigned char cb[]{0x48,0x89,0xb7,static_cast<unsigned char>(cb_offset),static_cast<unsigned char>(cb_offset>>8),0,0},model[]{0x48,0x8d,0x8f,static_cast<unsigned char>(mdl_offset),static_cast<unsigned char>(mdl_offset>>8),0,0};
         if(!image.contains(ctor,1024,executable)) throw std::runtime_error("constructor outside executable section");
         const auto begin=image.bytes.begin()+ctor,end=begin+1024;
         if(std::search(begin,end,std::begin(cb),std::end(cb))==end || std::search(begin,end,std::begin(model),std::end(model))==end) throw std::runtime_error("callback/model offsets changed");

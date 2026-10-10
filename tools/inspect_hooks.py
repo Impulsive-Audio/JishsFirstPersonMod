@@ -1,4 +1,5 @@
 """Offline bridge inspection. Reads PE files; never loads DLLs or edits profiles."""
+import struct
 import argparse
 import bisect
 import hashlib
@@ -81,14 +82,18 @@ def calls(code):
             result.append(i.operands[0].imm)
     return result
 
-def signature(old, new, rva, limit=96):
+def signature(old, new, rva, limit=96, layout_replacements=None):
     # MSVC unwind ranges can describe only a prologue or split function fragment.
     # Decode a complete bounded prefix rather than treating .pdata EndAddress as a return.
     instructions = old.code(rva, limit)
     if not instructions:
         raise InspectionError(f'Cannot decode baseline function {rva:#x}')
     size = instructions[-1].address + instructions[-1].size - rva
-    data = old.pe.get_data(rva, size)
+    data = bytearray(old.pe.get_data(rva, size))
+    for offset, (before, after) in (layout_replacements or {}).items():
+        if struct.unpack_from("<i", data, offset)[0] != before:
+            raise InspectionError("Reviewed status layout operand differs")
+        struct.pack_into("<i", data, offset, after)
     wild = set()
     for i in instructions:
         if rip(i):
@@ -156,10 +161,11 @@ def source_blocks(root):
     result[game_header] = re.sub(r'\s+', '', (root/game_header).read_text())
     return result
 
-def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0):
+def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0, new_callbacks_offset=None, new_model_offset=None):
     result = {}
     status = new.export('DingoSDKOverlayGetStatus')
-    expected_status = signature(old, new, baseline['status_rva'])
+    layout = {0x3a:(0x320,0x328),0x49:(0x321,0x329),0x50:(0x428,0x430),0x6d:(0x2b4,0x2bb),0x79:(0x328,0x330),0x85:(0x478,0x490)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
+    expected_status = signature(old, new, baseline['status_rva'],166, layout_replacements=layout)
     if status != expected_status:
         raise InspectionError('Status export no longer matches verified implementation')
     result['status_rva'] = status
@@ -174,19 +180,19 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0):
         raise InspectionError('Mutex lock thunk ABI changed')
     if new_lock[1].operands[0].imm != signature(old,new,old_lock[1].operands[0].imm) or unlock != signature(old,new,baseline['mutex_unlock_rva']):
         raise InspectionError('Status mutex functions differ from matched ABI')
-    if accessor != signature(old,new,old_calls[0],160):
+    if accessor != signature(old,new,old_calls[0],160, {0x14:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None):
         raise InspectionError('State accessor changed')
-    def constructor(image, getter):
+    def constructor(image, getter, cb_offset, mdl_offset):
         candidates = []
         for i in image.code(getter,160):
             if i.mnemonic!='call' or i.operands[0].type!=X86_OP_IMM:
                 continue
             address=i.operands[0].imm
             body=image.code(address,0x400)
-            if any(j.op_str==f'qword ptr [rdi + {callbacks_offset:#x}], rsi' for j in body) and any(j.op_str==f'rcx, [rdi + {model_offset:#x}]' for j in body):
+            if any(j.op_str==f'qword ptr [rdi + {cb_offset:#x}], rsi' for j in body) and any(j.op_str==f'rcx, [rdi + {mdl_offset:#x}]' for j in body):
                 candidates.append(address)
         return unique(candidates,'overlay constructor with callback/model layout')
-    if constructor(new,accessor)!=signature(old,new,constructor(old,old_calls[0])):
+    if constructor(new,accessor,new_callbacks_offset or callbacks_offset,new_model_offset or model_offset)!=signature(old,new,constructor(old,old_calls[0],callbacks_offset,model_offset)):
         raise InspectionError('Overlay constructor/layout changed')
     result['mutex_lock_rva'], result['mutex_unlock_rva'] = lock, unlock
     state_reads = [destination(i) for i in new.code(accessor, 0x33)
@@ -198,7 +204,7 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0):
         raise InspectionError('FOV writer no longer writes the verified camera field')
     old_init = source_initializer(old)
     init = source_initializer(new)
-    if signature(old,new,old_init) != init:
+    if signature(old,new,old_init,layout_replacements={0x29:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None) != init:
         raise InspectionError('SourceTrial initializer changed')
     old_code = old.code(old_init,max(old.function(old_init)[1]-old_init,256))
     new_code = new.code(init,max(new.function(init)[1]-init,256))
@@ -244,10 +250,33 @@ def main():
         if old.export('DingoSDKOverlayGetStatus') != baseline['status_rva']:
             raise InspectionError('Baseline export differs from compiled profile')
         a,b = source_blocks(args.baseline_source),source_blocks(args.source)
+        # Reviewed 2.0.3 additions: RoadRash follows the bridge's model prefix;
+        # State gains input flags and two resource pointers before callbacks.
+        # Require precisely these source edits; arbitrary layout changes still fail.
+        if args.version == "2.0.3" and old_version == "2.0.2":
+            model_key = 'Extension/UI/Overlay/overlay.h:Model'
+            state_key = 'Extension/UI/Overlay/overlay_internal.h:State'
+            if b[model_key].count('RoadRashModelroad_rash;') != 1:
+                raise InspectionError('Reviewed RoadRash model addition missing')
+            b[model_key] = b[model_key].replace('RoadRashModelroad_rash;', '', 1)
+            additions = [
+                'std::atomic<bool>hub_pointer{false},hub_typing{false};',
+                'std::atomic<bool>prompt_pointer{false};',
+                'std::atomic<bool>item_search_visible{false},item_search_focus_requested{false};',
+                'std::atomic<bool>item_search_character_pending{false},item_search_escape_pending{false};',
+                'std::atomic<bool>prompt_input_active{false};',
+                'ComPtr<ID3D12Resource>card_texture,card_upload;',
+            ]
+            for addition in additions:
+                if b[state_key].count(addition) != 1:
+                    raise InspectionError('Reviewed 2.0.3 State addition missing: '+addition)
+                b[state_key] = b[state_key].replace(addition, '', 1)
         changed = [key for key in a if a[key] != b[key]]
         if changed:
             raise InspectionError('Source layout/API changed; investigate: '+', '.join(changed))
-        result = inspect(old,new,baseline,0x4b8 if old_version.startswith("2.") else 0x4b0,0x4e8 if old_version.startswith("2.") else 0x4e0)
+        result = inspect(old,new,baseline,0x4d0 if old_version=="2.0.3" else 0x4b8 if old_version.startswith("2.") else 0x4b0,
+                         0x500 if old_version=="2.0.3" else 0x4e8 if old_version.startswith("2.") else 0x4e0,
+                         0x4d0 if args.version=="2.0.3" else None,0x500 if args.version=="2.0.3" else None)
         print(f'{old_version} -> {args.version}\nSHA-256: {new.digest}')
         for name in FIELDS:
             print(f'{name:24} {baseline[name]:#010x} -> {result[name]:#010x}  OK')

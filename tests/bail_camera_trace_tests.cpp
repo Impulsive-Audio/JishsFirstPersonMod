@@ -52,5 +52,20 @@ int main() {
     input.open(path);std::getline(input,line);count=0;
     while(std::getline(input,line)) { row=fields(line);check(row.size()==header.size(),"buffered CSV row malformed");++count; }
     check(count<=1026 && std::stoul(row[column("dropped")])>0,"diagnostic queue was unbounded");
-    std::cout<<"Bail trace pre-context, deferred I/O, missing pose handling and queue bounds passed\n";
+    input.close();
+    // Oversized existing traces rotate; recording continues in a fresh CSV.
+    std::filesystem::resize_file(path,8*1024*1024+1);
+    movement.bail_recovery=false;record_bail_camera(pose,pose,state,movement,config,{},0,0);
+    movement.bail_recovery=true;record_bail_camera(pose,pose,state,movement,config,{},0,0);
+    check(std::filesystem::file_size(path)==8*1024*1024+1,"rotation ran on camera thread");
+    flush_bail_camera_trace();
+    check(std::filesystem::exists(std::filesystem::path(path.string()+".1")),"large trace not archived");
+    check(std::filesystem::file_size(path)<8*1024*1024,"new trace not bounded");
+    input.open(path);std::getline(input,line);check(fields(line)==header,"new CSV lacks correct header");
+    check(bool(std::getline(input,line)) && fields(line).size()==header.size(),"new trace lost samples");input.close();
+    const auto before=std::filesystem::file_size(path);
+    movement.bail_recovery=false;record_bail_camera(pose,pose,state,movement,config,{},0,0);
+    movement.bail_recovery=true;record_bail_camera(pose,pose,state,movement,config,{},0,0);
+    flush_bail_camera_trace();check(std::filesystem::file_size(path)>before,"capture stopped after rotation");
+    std::cout<<"Bail trace pre-context, deferred I/O, queue bounds and rotation and continued capture passed\n";
 }

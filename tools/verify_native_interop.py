@@ -8,6 +8,7 @@ from pathlib import Path
 import pefile
 
 PROFILES = {
+    '083bd7c9636d7ff1432cb643842ba58159f26cf8ab3bbb1d2c22df322f865912': '2.0.3',
     '082de47e7ce36f34ab395feee5a52f77531bdb5f73f0605c5a4f0ad17f94214e': '2.0.2',
     'ff9b6f63e44fe95c4b902c8b4bb02f2cc8f891d60ccdc15ae486226c7cb1f3a7': '2.0.0',
     'abf77e2b21d133a8a7f635d601a0eff60feb2327f2c0e97bd7f38267552f3512': '2.0.1',
@@ -21,13 +22,15 @@ def verify(path):
     data = Path(path).read_bytes()
     digest = hashlib.sha256(data).hexdigest()
     if digest not in PROFILES:
-        raise ValueError('DLL is not one of the exact reviewed 2.0.0/2.0.1/2.0.2 releases')
+        raise ValueError('DLL is not one of the exact reviewed 2.0.0/2.0.1/2.0.2/2.0.3 releases')
     pe = pefile.PE(data=data)
     if pe.FILE_HEADER.Machine != 0x8664:
         raise ValueError('DLL is not x64')
     for name, (rva, hex_bytes) in ENTRIES.items():
         if PROFILES[digest] == "2.0.2":
             rva = 0x273020 if name == "native first-person sampler" else 0x3ec00
+        if PROFILES[digest] == "2.0.3":
+            rva = 0x210080 if name == "native first-person sampler" else 0x40e30
         expected = bytes.fromhex(hex_bytes)
         section = pe.get_section_by_rva(rva)
         if section is None or not section.Characteristics & 0x20000000:
@@ -36,8 +39,8 @@ def verify(path):
             raise ValueError(f'{name} prologue differs')
     # Both released DLLs call the same free-function sampler from the render
     # path and FrameSpring::sample. Check exact E8 relative call destinations.
-    sampler = 0x273020 if PROFILES[digest] == "2.0.2" else 0x26f810
-    calls = (0x271632, 0x27211b) if PROFILES[digest] == "2.0.2" else (0x26de22, 0x26e90b)
+    sampler = 0x210080 if PROFILES[digest] == "2.0.3" else 0x273020 if PROFILES[digest] == "2.0.2" else 0x26f810
+    calls = (0x20e692, 0x20f17b) if PROFILES[digest] == "2.0.3" else (0x271632, 0x27211b) if PROFILES[digest] == "2.0.2" else (0x26de22, 0x26e90b)
     for call_rva in calls:
         call = pe.get_data(call_rva, 5)
         if len(call) != 5 or call[0] != 0xe8:

@@ -30,14 +30,14 @@ int main() {
     }
     for(const auto& profile:contracts) {
         selected=&profile;
-        const bool v2=std::string_view(profile.version)=="2.0.0" || std::string_view(profile.version)=="2.0.1" || std::string_view(profile.version)=="2.0.2";
+        const bool v2=std::string_view(profile.version)=="2.0.0" || std::string_view(profile.version)=="2.0.1" || std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3";
         if(v2) {
-            const bool latest=std::string_view(profile.version)=="2.0.2";
-            require(native_sampler_rva()==(latest ? 0x273020:0x26f810),"wrong native sampler profile");
-            require(console_queue_rva()==(latest ? 0x3ec00:0x3ea30),"wrong console callback profile");
+            const bool latest=std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3";
+            require(native_sampler_rva()==(uses_v203_layout(&profile) ? 0x210080:latest ? 0x273020:0x26f810),"wrong native sampler profile");
+            require(console_queue_rva()==(uses_v203_layout(&profile) ? 0x40e30:latest ? 0x3ec00:0x3ea30),"wrong console callback profile");
         }
         require(is_v2()==v2,"reviewed version selected wrong bridge family");
-        require(callbacks_offset()==(v2 ? 0x4b8:0x4b0) && model_offset()==(v2 ? 0x4e8:0x4e0),"overlay layout mismatch");
+        require(callbacks_offset()==(uses_v203_layout(&profile) ? 0x4d0:v2 ? 0x4b8:0x4b0) && model_offset()==(uses_v203_layout(&profile) ? 0x500:v2 ? 0x4e8:0x4e0),"overlay layout mismatch");
         for(int action=first_person;action<=reset;++action) {
             const Request original{action,true,12.5f};
             const auto wire=to_native(original);Request decoded;

@@ -6,6 +6,7 @@
 #include "bridge_resolver.h"
 #include "owned_hooks.h"
 #include "launcher_mod.h"
+#include "rotating_log.h"
 #include <shellapi.h>
 #include <atomic>
 #include <fstream>
@@ -38,8 +39,8 @@ void log(const std::string& text) noexcept {
         std::lock_guard lock(*mutex);
         const auto dir=data_directory();
         std::filesystem::create_directories(dir);
-        std::ofstream out(dir / L"JishsFirstPersonMod.log", std::ios::app);
-        out << GetTickCount64() << " [JishsFirstPersonMod] " << text << '\n';
+        const auto record=std::to_string(GetTickCount64())+" [JishsFirstPersonMod] "+text+'\n';
+        append_rotating_log(dir/L"JishsFirstPersonMod.log",record,text_log_limit);
         OutputDebugStringA(("[JishsFirstPersonMod] " + text + "\n").c_str());
     } catch (...) {}
 }
@@ -77,7 +78,7 @@ DWORD WINAPI worker(void*) noexcept {
         wchar_t path[32768]{};
         if (!GetModuleFileNameW(self_module, path, 32768)) { status = 3; return 0; }
         directory = std::filesystem::path(path).parent_path();
-        jishsfirstpersonmod::log("version 1.19 initialisation worker started; native setup runs outside DllMain");
+        jishsfirstpersonmod::log("version 1.21 initialisation worker started; native setup runs outside DllMain");
         if (!host_matches()) { jishsfirstpersonmod::log("ERROR: host is not Skate.exe; no hooks installed"); status = 3; return 0; }
         wchar_t game_path[32768]{};
         if(!GetModuleFileNameW(nullptr,game_path,32768)) { status=3;return 0; }

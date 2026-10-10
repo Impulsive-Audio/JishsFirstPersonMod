@@ -4,3 +4,5 @@ release/
 __pycache__/
 *.pyc
 *.zip
+layout-probe.exe
+layout-probe.obj

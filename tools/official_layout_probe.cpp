@@ -3,8 +3,8 @@
 #include <cstddef>
 int main() {
     using namespace dingosdk::overlay;
-    static_assert(offsetof(dingosdk::overlay::detail::State,callbacks)==0x4b8);
-    static_assert(offsetof(dingosdk::overlay::detail::State,model)==0x4e8);
+    static_assert(offsetof(dingosdk::overlay::detail::State,callbacks)==0x4d0);
+    static_assert(offsetof(dingosdk::overlay::detail::State,model)==0x500);
     static_assert(offsetof(Model,debug)==128);
     static_assert(offsetof(Model,bindings)==0x5f50);
     static_assert(offsetof(dingosdk::ControllerBindingsModel,action_combos)==40);
@@ -17,6 +17,12 @@ int main() {
     static_assert(sizeof(DebugRequest)==12 && offsetof(DebugRequest,value)==8);
     static_assert(sizeof(CallbacksV3)==48 && offsetof(CallbacksV3,read_model)==8 && offsetof(CallbacksV3,queue_debug)==24);
     static_assert(int(DebugAction::set_first_person)==13 && int(DebugAction::set_first_person_spring_right)==25 && int(DebugAction::reset_first_person_arm)==33);
+    static_assert(offsetof(dingosdk::overlay::detail::State,started)==0x328);
+    static_assert(offsetof(dingosdk::overlay::detail::State,ready)==0x329);
+    static_assert(offsetof(dingosdk::overlay::detail::State,stop)==0x2bb);
+    static_assert(offsetof(dingosdk::overlay::detail::State,failed)==0x330);
+    static_assert(offsetof(dingosdk::overlay::detail::State,swapchain)==0x430);
+    static_assert(offsetof(dingosdk::overlay::detail::State,rendered_frames)==0x490);
     std::cout << "callbacks=" << offsetof(dingosdk::overlay::detail::State,callbacks) << '\n';
     std::cout << "model=" << offsetof(dingosdk::overlay::detail::State,model) << '\n';
     std::cout << "debug=" << offsetof(Model,debug) << '\n';

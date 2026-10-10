@@ -9,6 +9,8 @@
 #include <atomic>
 #include <fstream>
 #include <iomanip>
+#include <sstream>
+#include "rotating_log.h"
 namespace jishsfirstpersonmod {
 namespace {
 using namespace dingosdk::first_person;
@@ -27,7 +29,6 @@ std::vector<Sample> pending;
 std::uint64_t event{},start{},until{},next_sample{};
 std::uintptr_t owner{};
 bool previous_bail{};
-std::atomic<bool> full{};
 std::atomic<unsigned> dropped{};
 void matrix_fields(std::ostream& out,const Matrix& pose) {
     for(unsigned i=12;i<15;++i) out<<','<<pose[i];
@@ -36,7 +37,6 @@ void matrix_fields(std::ostream& out,const Matrix& pose) {
 }
 void record_bail_camera(const Matrix& native_pose,const Matrix& final_pose,const ComfortSnapshot& state,
     const CameraMovementSample& movement,const Config& config,const StickAim& aim,float pitch,float yaw,const BailViewInfo& view,const HeadPose& head) noexcept {
-    if(full.load()) return;
     try {
         std::unique_lock lock(trace_mutex,std::try_to_lock);if(!lock.owns_lock()) { ++dropped;return; }
         const auto now=GetTickCount64();
@@ -75,12 +75,8 @@ void flush_bail_camera_trace() noexcept {
         if(batch.empty()) return;
         const auto path=data_directory()/"bail-camera-trace-v3.csv";
         std::filesystem::create_directories(path.parent_path());
-        const bool exists=std::filesystem::exists(path);
-        const auto size=exists ? std::filesystem::file_size(path):0;
-        if(size>8*1024*1024) { full=true;log("Bail camera trace reached 8 MiB; archive the CSV and restart to capture more.");return; }
-        std::ofstream out(path,std::ios::app);
-        if(!out) { log("Could not write bail-camera-trace-v3.csv.");return; }
-        if(!size) out<<"time_ms,event,phase,mode,custom_mode,physics,active_child,child_vtable,state_valid,animation_valid,wipeout_request,animation_wipeout,recovery,bail_latched,selector_valid,selector_current,selector_next,requested,active,saved_spring,effective_spring,native_spring,disable_foot,lock_mount_jump,mounting,jumping,stick_enabled,stick_active,turn_character,look_pitch,look_yaw,native_x,native_y,native_z,native_qx,native_qy,native_qz,native_qw,final_x,final_y,final_z,final_qx,final_qy,final_qz,final_qw,facing_valid,facing_x,facing_y,facing_z,facing_qx,facing_qy,facing_qz,facing_qw,head_valid,root_x,root_y,root_z,root_qx,root_qy,root_qz,root_qw,head_x,head_y,head_z,head_qx,head_qy,head_qz,head_qw,camera_head_distance_m,custom_position_delta_m,custom_angle_delta_deg,dropped,hold_phase,view_blocked,head_attached,offset_calibrated,offset_x,offset_y,offset_z,lock_hippy_jump,hippy_candidate,hippy_active,hippy_rising_samples,hippy_up_speed,reconciling,reconcile_remaining_deg,manual_takeover,facing_eligible\n";
+        const std::string_view header="time_ms,event,phase,mode,custom_mode,physics,active_child,child_vtable,state_valid,animation_valid,wipeout_request,animation_wipeout,recovery,bail_latched,selector_valid,selector_current,selector_next,requested,active,saved_spring,effective_spring,native_spring,disable_foot,lock_mount_jump,mounting,jumping,stick_enabled,stick_active,turn_character,look_pitch,look_yaw,native_x,native_y,native_z,native_qx,native_qy,native_qz,native_qw,final_x,final_y,final_z,final_qx,final_qy,final_qz,final_qw,facing_valid,facing_x,facing_y,facing_z,facing_qx,facing_qy,facing_qz,facing_qw,head_valid,root_x,root_y,root_z,root_qx,root_qy,root_qz,root_qw,head_x,head_y,head_z,head_qx,head_qy,head_qz,head_qw,camera_head_distance_m,custom_position_delta_m,custom_angle_delta_deg,dropped,hold_phase,view_blocked,head_attached,offset_calibrated,offset_x,offset_y,offset_z,lock_hippy_jump,hippy_candidate,hippy_active,hippy_rising_samples,hippy_up_speed,reconciling,reconcile_remaining_deg,manual_takeover,facing_eligible\n";
+        std::ostringstream out;
         out<<std::setprecision(9);
         for(const auto& s:batch) {
             const auto& o=s.state;const auto& m=s.movement;
@@ -101,6 +97,8 @@ void flush_bail_camera_trace() noexcept {
                 <<",0,0,0"
                 <<','<<character_facing_allowed(o,m)<<'\n';
         }
+        if(!append_rotating_log(path,out.str(),trace_log_limit,log_archives,header))
+            log("Could not write bail-camera-trace-v3.csv; later batches will retry.");
     } catch(...) { log("Bail camera trace flush failed."); }
 }
 }

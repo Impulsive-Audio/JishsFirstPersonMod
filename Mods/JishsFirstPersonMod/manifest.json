@@ -1,6 +1,6 @@
 {
   "name": "Jish's First Person Mod",
   "author": "Jish",
-  "version_number": "1.20.0",
-  "description": "Custom glance controls, right-stick look on foot, smoother board transitions and first-person comfort options. Supports ReSkate 2.0.0, 2.0.1 and 2.0.2. Press Insert for settings and the recommended preset. Enable or disable here before starting the game. Requires the included scripts folder."
+  "version_number": "1.21.0",
+  "description": "Custom glance controls, right-stick look on foot, smoother board transitions and first-person comfort options. Supports ReSkate 2.0.0 through 2.0.3. Press Insert for settings and the recommended preset. Enable or disable here before starting the game. Requires the included scripts folder."
 }

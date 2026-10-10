@@ -50,7 +50,7 @@ int main(int argc,char** argv) {
         check(!dingosdk::restore_owned_slot(&slot,reinterpret_cast<void*>(2),reinterpret_cast<void*>(1)) && slot==reinterpret_cast<void*>(3),"foreign callback overwritten during rollback");
         if(argc!=2) { std::cout<<"Empty/invalid image guards passed; historical fixtures tested separately\n";return 0; }
         const std::filesystem::path root=argv[1];
-        const std::filesystem::path paths[]{root/"history/ReSkate-1.1.5.dll",root/"history/ReSkate-1.1.6.dll",root/"ReSkate-1.1.7.dll",root/"release-1.1.8/ReSkate.dll",root/"ReSkate-2.0.0.dll",root/"ReSkate-2.0.1.dll",root/"ReSkate-2.0.2.dll"};
+        const std::filesystem::path paths[]{root/"history/ReSkate-1.1.5.dll",root/"history/ReSkate-1.1.6.dll",root/"ReSkate-1.1.7.dll",root/"release-1.1.8/ReSkate.dll",root/"ReSkate-2.0.0.dll",root/"ReSkate-2.0.1.dll",root/"ReSkate-2.0.2.dll",root/"ReSkate-2.0.3.dll"};
         for(unsigned i=0;i<std::size(paths);++i) {
             auto image=load(paths[i]);const auto& expected=stock_contract::contracts[i];
             const auto hash=hash_of(expected.sha256);const auto detected=resolve(image,hash,true);
@@ -80,7 +80,8 @@ int main(int argc,char** argv) {
             auto located=std::search(bad.bytes.begin(),bad.bytes.end(),std::begin(setter),std::end(setter));
             check(located!=bad.bytes.end(),"fixture initializer missing");located[3]^=0x10;
             check(!resolve(bad,hash,true),"changed native camera setter accepted");
-            bad=image;const unsigned char model[]{0x48,0x8d,0x8f,static_cast<unsigned char>(i>=4 ? 0xe8:0xe0),0x04,0,0};
+            bad=image;const auto mdl=stock_contract::profile_model_offset(&expected);
+            const unsigned char model[]{0x48,0x8d,0x8f,static_cast<unsigned char>(mdl),static_cast<unsigned char>(mdl>>8),0,0};
             for(auto it=bad.bytes.begin();it!=bad.bytes.end();) {
                 it=std::search(it,bad.bytes.end(),std::begin(model),std::end(model));
                 if(it==bad.bytes.end()) break;it[3]^=0x10;++it;
