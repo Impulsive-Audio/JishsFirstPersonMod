@@ -2,15 +2,33 @@
 #include "spring_policy.h"
 #include "stick_runtime.h"
 #include "player_state_contract.h"
+#include <string_view>
 namespace jishsfirstpersonmod {
 inline bool bail_camera_locked(const ComfortSnapshot& state,const CameraMovementSample& movement) {
     return movement.bail_recovery || (state.state_valid && (state.bailing || state.recovery ||
         state.wipeout_request || state.animation_wipeout || state.physics==player_state_contract::wipeout));
 }
+inline bool ordinary_jump_action(const CameraMovementSample& movement) {
+    // Legacy/default samples expose only Falling. Live recognized stages use
+    // the tracker, so a lifecycle reset cannot be bypassed by the raw air flag.
+    return movement.jump_episode.stage==JumpStage::unknown ? movement.jumping:movement.jump_episode.ordinary;
+}
+inline const char* camera_action(const CameraMovementSample& movement) {
+    if(movement.hippy.active) return "hippy_jump";
+    if(movement.hippy.candidate) return "hippy_candidate";
+    if(movement.mounting) return "mounting";
+    if(ordinary_jump_action(movement)) return "jumping";
+    return "none";
+}
+inline bool jump_camera_action(const CameraMovementSample& movement) {
+    return movement.mounting || ordinary_jump_action(movement) || movement.hippy.active || movement.hippy.candidate;
+}
 inline bool action_camera_locked(const Config& config,const CameraMovementSample& movement) {
-    return !config.look_only && config.stick.enabled && ((config.stick.lock_mount_jump &&
-        (movement.mounting || (movement.jumping && !movement.hippy.active && !movement.hippy.candidate))) ||
-        (config.stick.lock_hippy_jump && movement.hippy.active));
+    if(config.look_only || !config.stick.enabled) return false;
+    // Hippy detection takes precedence even when the native mounting/jumping flags overlap.
+    if(movement.hippy.active || movement.hippy.candidate)
+        return movement.hippy.active && config.stick.lock_hippy_jump;
+    return config.stick.lock_mount_jump && (movement.mounting || ordinary_jump_action(movement));
 }
 inline bool native_camera_locked(const Config& config,const ComfortSnapshot& state,const CameraMovementSample& movement) {
     return movement.view_hold || bail_camera_locked(state,movement) || action_camera_locked(config,movement);
@@ -20,6 +38,9 @@ inline bool camera_overrides_allowed(const ComfortSnapshot& state,const CameraMo
         !bail_camera_locked(state,movement) && !state.suppressed;
 }
 inline bool camera_look_allowed(const Config& config,const ComfortSnapshot& state,const CameraMovementSample& movement) {
+    if(!config.look_only && !config.third_person_bailing && bail_camera_locked(state,movement))
+        return movement.mode==1 && movement.recovery_verified && movement.recovery_controllable &&
+            state.state_valid && state.animation_valid && !state.suppressed;
     return camera_overrides_allowed(state,movement) && !(config.stick.enabled && movement.mounting) && (config.stick.look_during_parkour ||
         (!(movement.mode==1 && !movement.custom_mode) && !action_camera_locked(config,movement)));
 }
@@ -27,9 +48,18 @@ inline bool character_facing_allowed(const ComfortSnapshot& state,const CameraMo
     return camera_overrides_allowed(state,movement) && movement.mode==1 && movement.custom_mode==1 &&
         !movement.jumping && !movement.mounting && !movement.hippy.active && !movement.hippy.candidate;
 }
+inline const char* head_attachment_reason(const Config& config,const ComfortSnapshot& state,const CameraMovementSample& movement) {
+    if(config.look_only) return "compatibility";
+    if(bail_camera_locked(state,movement)) return "bail";
+    // An action's explicit switch wins over foot attachment. Spring suppression
+    // still applies independently, so disabling attachment does not enable Spring.
+    if(jump_camera_action(movement)) return action_camera_locked(config,movement) ? camera_action(movement):"none";
+    if(config.disable_spring_on_foot && movement.mode==1) return "spring_on_foot";
+    return "none";
+}
 inline bool head_position_attached(const Config& config,const ComfortSnapshot& state,const CameraMovementSample& movement) {
-    return !config.look_only && (bail_camera_locked(state,movement) || (movement.mode==1 && !movement.custom_mode) ||
-        action_camera_locked(config,movement) || (config.disable_spring_on_foot && movement.mode==1));
+    const std::string_view reason=head_attachment_reason(config,state,movement);
+    return reason!="none" && reason!="compatibility";
 }
 inline Config effective_camera_config(Config config,bool active,const ComfortSnapshot& state,const CameraMovementSample& movement) {
     if(config.look_only) return config;

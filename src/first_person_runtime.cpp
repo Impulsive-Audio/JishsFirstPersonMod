@@ -7,12 +7,14 @@
 #include "stick_runtime.h"
 #include "camera_policy.h"
 #include "head_attachment.h"
+#include "glance_controls.h"
 namespace jishsfirstpersonmod {
 void tick_mod(std::uintptr_t client) noexcept {
     using namespace dingosdk;
     using namespace dingosdk::client_source::detail;
     static ControllerComboLatch toggle;
-    static ControllerLookState look;
+    static GlanceControlsState look;
+    static std::array<std::uintptr_t,4> glance_owner{};
     static std::uint64_t revision{};
     static Config input_config;
     static std::uintptr_t context{},camera{};
@@ -32,7 +34,16 @@ void tick_mod(std::uintptr_t client) noexcept {
         if(context!=next_context) { context=next_context;camera=0;toggle={};look={};clear_comfort_state(); }
         const auto settings=menu_snapshot();
         if(settings.revision!=revision) {
-            bool changed=input_config.look_only!=settings.config.look_only || input_config.toggle!=settings.config.toggle;
+            if(!revision || input_config.stick.lock_mount_jump!=settings.config.stick.lock_mount_jump ||
+                input_config.stick.lock_hippy_jump!=settings.config.stick.lock_hippy_jump ||
+                input_config.disable_spring_on_foot!=settings.config.disable_spring_on_foot ||
+                input_config.look_only!=settings.config.look_only || input_config.stick.enabled!=settings.config.stick.enabled)
+                log("Attachment settings reached live camera tick: revision="+std::to_string(settings.revision)+
+                    " jump="+std::to_string(settings.config.stick.lock_mount_jump)+" hippy="+std::to_string(settings.config.stick.lock_hippy_jump)+
+                    " disable_foot="+std::to_string(settings.config.disable_spring_on_foot)+" stick="+std::to_string(settings.config.stick.enabled)+
+                    " look_only="+std::to_string(settings.config.look_only));
+            bool changed=input_config.look_only!=settings.config.look_only || input_config.toggle!=settings.config.toggle ||
+                input_config.toggle_glances!=settings.config.toggle_glances;
             for(unsigned i=0;i<4;++i) changed=changed || input_config.look[i].combo!=settings.config.look[i].combo ||
                 input_config.look[i].angle!=settings.config.look[i].angle;
             if(changed) { toggle={};look={};stop_stick_look();clear_stock_camera_blends(); }
@@ -62,6 +73,8 @@ void tick_mod(std::uintptr_t client) noexcept {
         const bool blocked=!ready || !menu_ready || visible || !controller.available || !focused;
         const auto input_route=route_controller_input(settings.config,blocked);
         const auto comfort=comfort_snapshot();
+        const std::array<std::uintptr_t,4> current_owner{comfort.core,comfort.entity,comfort.context,comfort.rig};
+        if(current_owner!=glance_owner) { glance_owner=current_owner;look.reset(); }
         auto movement=live_camera_movement();
         if(!settings.config.look_only) tick_hippy_jump(settings.config,comfort,movement,source_flight_now());
         if(!stock_first_person_requested()) { set_bail_view_suspended(false);movement.view_hold=false; }
@@ -78,7 +91,7 @@ void tick_mod(std::uintptr_t client) noexcept {
         const bool pressed=toggle.update(settings.config.toggle,controller,input_route.toggle_blocked);
         if(pressed) log("Controller First Person chord detected.");
         const bool script_toggle=take_toggle_request();
-        const auto angles=look.update(input_route.glance,controller,blocked || native_camera || camera_interrupted || !stock_first_person_active() || comfort_snapshot().suppressed);
+        const auto angles=look.update(input_route.glance,controller,blocked || bail || native_camera || camera_interrupted || !stock_first_person_active() || comfort_snapshot().suppressed,settings.config.toggle_glances);
         set_stock_glance(camera,saved_game_fov,angles[0],angles[1]);
         // Every activation uses stock's existing request queue. This DLL never
         // switches modes, takes a camera lease, hides a head or restores a view.
@@ -91,8 +104,8 @@ void tick_mod(std::uintptr_t client) noexcept {
             }
         }
         if(take_reload_request()) { Command retry;retry.kind=CommandKind::retry_save;submit_command(retry); }
-    } catch(const SourceGuard& error) { stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);if(last_wait!=error.message) { last_wait=error.message;log(std::string("Controller input waiting: ")+error.message); } }
-      catch(const std::exception& error) { stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);log(std::string("Controller input bridge: ")+error.what()); }
-      catch(...) { stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0); }
+    } catch(const SourceGuard& error) { look.reset();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);if(last_wait!=error.message) { last_wait=error.message;log(std::string("Controller input waiting: ")+error.message); } }
+      catch(const std::exception& error) { look.reset();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);log(std::string("Controller input bridge: ")+error.what()); }
+      catch(...) { look.reset();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0); }
 }
 }

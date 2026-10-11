@@ -2,6 +2,10 @@
 #include <optional>
 #include <cstdint>
 namespace jishsfirstpersonmod {
+inline bool native_camera_cycle_choice(bool enabled,bool observed,bool previous,bool current,bool ready,
+    bool queued,bool suppressed,bool game_owned) {
+    return enabled && observed && previous!=current && ready && !queued && !suppressed && !game_owned;
+}
 struct PlayerState {
     std::uintptr_t identity{};
     bool valid{}, board_verified{}, bail_verified{}, riding{}, bailing{};

@@ -89,6 +89,7 @@ Config read_config(const std::filesystem::path& path) {
     cfg.third_person_bailing=boolean("third_person_bailing",false);
     cfg.on_board_only=boolean("on_board_only",false);
     cfg.disable_spring_on_foot=boolean("disable_spring_on_foot",false);
+    cfg.toggle_glances=boolean("toggle_glances",false);
     cfg.stick.enabled=boolean("stick_look",false);
     cfg.stick.turn_character=boolean("stick_turn_character",false);
     cfg.stick.invert_y=boolean("stick_invert_y",false);
@@ -160,7 +161,7 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
         for(unsigned i=0;i<3;++i) out<<'\n'<<offset[i]<<'='<<cfg.spring.offset[i]<<'\n'<<rotation[i]<<'='<<cfg.spring.rotation[i];
         out<<"\nstrength_up="<<cfg.spring.up<<"\nstrength_down="<<cfg.spring.down
             <<"\nstrength_left="<<cfg.spring.left<<"\nstrength_right="<<cfg.spring.right<<'\n';
-        out<<"look_only="<<cfg.look_only<<'\n';
+        out<<"look_only="<<cfg.look_only<<"\ntoggle_glances="<<cfg.toggle_glances<<'\n';
         out<<"link_smoothing="<<cfg.link_smoothing<<"\nlook_smoothing_initialized="<<cfg.look_smoothing_initialized
             <<"\nlook_spring="<<cfg.look_spring.enabled<<"\nlook_strength_up="<<cfg.look_spring.up
             <<"\nlook_strength_down="<<cfg.look_spring.down<<"\nlook_strength_left="<<cfg.look_spring.left

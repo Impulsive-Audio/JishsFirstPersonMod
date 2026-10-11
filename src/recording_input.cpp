@@ -21,6 +21,7 @@ NativeRecordingReader native_reader() {
     else if(hash==contracts[6].sha256) rva=0x3eb480;
     else if(hash==contracts[7].sha256) rva=0x3c6c80;
     else if(hash==contracts[8].sha256 || hash==contracts[9].sha256) rva=0x3d00f0;
+    else if(uses_v206_layout(selected)) rva=0x3e8940;
     else return nullptr;
     const auto module=GetModuleHandleW(L"reskate.dll");
     if(!module) return nullptr;

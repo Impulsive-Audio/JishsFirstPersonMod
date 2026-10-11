@@ -2,6 +2,7 @@
 #include "mod.h"
 #include "comfort_policy.h"
 #include "hippy_jump.h"
+#include "jump_episode.h"
 namespace jishsfirstpersonmod {
 bool install_stick_runtime(std::uintptr_t base);
 void tick_stick_look(const Config&,const GameplayInput&,const ComfortSnapshot&,bool inhibited);
@@ -14,7 +15,12 @@ bool stick_runtime_ready();
 struct CameraMovementSample {
     int mode{}, custom_mode{};
     bool non_bail{},bail_recovery{},mounting{},jumping{},view_hold{};
+    bool recovery_verified{},recovery_controllable{},recovery_override{};
+    std::uint32_t recovery_flags{};
+    bool getting_up{};
+    bool position_valid{};dingosdk::first_person::Vec3 position{};
     HippyJumpState hippy;
+    JumpEpisodeState jump_episode;
     std::array<std::uintptr_t,4> state{};
 };
 CameraMovementSample live_camera_movement();

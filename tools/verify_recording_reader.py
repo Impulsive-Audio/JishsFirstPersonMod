@@ -5,6 +5,8 @@ from pathlib import Path
 import pefile
 
 PROFILES = {
+    'dff7b0211996b596611019f44e2c6de7ca8c18a6fc65106c0e32100e06520d0f':
+        (0x3e8940, (0x4037b8, 0x439138)),
     'ca9c103f85167ac6957e15ed45b999f59afc387d2722277114047f8e04fe6aaa':
         (0x3d00f0, (0x3eab0d, 0x41fed8)),
     '9259c3de99626d6a9d6083b337927bc948ee144dbf4e698f7733148979aeb528':
@@ -24,6 +26,9 @@ def verify(path):
     data = Path(path).read_bytes()
     rva, callers = PROFILES[hashlib.sha256(data).hexdigest()]
     pe = pefile.PE(data=data)
+    if hashlib.sha256(data).hexdigest() == 'dff7b0211996b596611019f44e2c6de7ca8c18a6fc65106c0e32100e06520d0f':
+        assert pe.get_data(0x4042c, 7) == bytes.fromhex('0fb683785f0000'), 'native binding availability offset changed'
+        assert pe.get_data(0x40446, 6) == bytes.fromhex('8b837c5f0000'), 'native binding values offset changed'
     assert pe.get_data(rva, len(PROLOGUE)) == PROLOGUE, 'native reader prologue changed'
     for caller in callers:
         call = pe.get_data(caller, 5)

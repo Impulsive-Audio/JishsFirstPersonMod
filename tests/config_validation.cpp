@@ -17,9 +17,9 @@ int main(int argc,char** argv) {
         "look_up_angle=0","look_up_angle=91",
         "look_left_angle=181","look_up_angle=nan","fov=39","fov=121","spring=2",
         "offset_x=4","pitch=181","strength_up=101","strength_down=-1","typo=1",
-        "spring=0\nspring=1","disable_spring_on_foot=2","disable_spring_on_foot=-1","lock_camera_mount_jump=2","lock_camera_hippy_jump=2"}) reject(text);
+        "spring=0\nspring=1","disable_spring_on_foot=2","disable_spring_on_foot=-1","lock_camera_mount_jump=2","lock_camera_hippy_jump=2","toggle_glances=2","toggle_glances=-1"}) reject(text);
     { std::ofstream out(path); out<<"first_person=0x30\nlook_up=0x100\nlook_up_angle=45\nspring=1\nfov=90"; }
     const auto cfg=jishsfirstpersonmod::read_config(path);
     std::filesystem::remove(path);
-    return cfg.toggle==0x30 && cfg.look[0].combo==0x100 && cfg.look[0].angle==45 && cfg.spring.enabled && cfg.fov==90 ? 0:3;
+    return cfg.toggle==0x30 && cfg.look[0].combo==0x100 && cfg.look[0].angle==45 && cfg.spring.enabled && cfg.fov==90 && !cfg.toggle_glances ? 0:3;
 }

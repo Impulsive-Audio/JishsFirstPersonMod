@@ -16,6 +16,12 @@ Matrix pose(float yaw,float x=0) {
 }
 }
 int main() {
+    check(native_camera_cycle_choice(true,true,false,true,true,false,false,false) &&
+        native_camera_cycle_choice(true,true,true,false,true,false,false,false),"native camera cycle entry/exit lost manual intent");
+    check(!native_camera_cycle_choice(true,true,true,false,true,true,false,false) &&
+        !native_camera_cycle_choice(true,true,true,false,true,false,true,false) &&
+        !native_camera_cycle_choice(true,true,true,false,true,false,false,true) &&
+        !native_camera_cycle_choice(false,true,true,false,true,false,false,false),"comfort/game-owned transition interpreted as camera cycle choice");
     const auto recorded=read_native_recording([](NativeRecordingInput* input,bool allow_menu) {
         check(allow_menu,"recording did not request stock menu input bypass");
         input->available=true;input->buttons=0x301;input->device=3;
@@ -33,7 +39,7 @@ int main() {
     check(native_keyboard_binding(0x80000046) && native_keyboard_binding(0x40000000 | 46 | (50<<6)) &&
           !native_keyboard_binding(0x40000000 | 63),"native keyboard profile binding validation failed");
     NativeFirstPersonSettings saved;
-    saved.enabled=saved.stabilize=saved.follow_flips=saved.board_only=true;
+    saved.enabled=saved.stabilize=saved.follow_flips=saved.board_only=saved.camera_cycle=true;
     saved.offset={.1f,.2f,.3f};saved.rotation={10,20,30};
     saved.up=12;saved.down=23;saved.left=34;saved.right=45;
     saved.smoothing=60;saved.head_pitch=86;saved.head_roll=5;saved.bob=25;
@@ -41,7 +47,7 @@ int main() {
     check(normal.enabled && normal.stabilize && normal.follow_flips,"normal native features disabled");
     const auto locked=effective_native_sample(saved,true);
     check(!locked.enabled && !locked.stabilize && !locked.follow_flips,"native features fight head lock");
-    check(locked.board_only && locked.offset==saved.offset && locked.rotation==saved.rotation &&
+    check(locked.board_only && locked.camera_cycle && normal.camera_cycle && locked.offset==saved.offset && locked.rotation==saved.rotation &&
           locked.up==saved.up && locked.down==saved.down && locked.left==saved.left && locked.right==saved.right &&
           locked.smoothing==60 && locked.head_pitch==86 && locked.head_roll==5 && locked.bob==25,"unrelated native settings changed");
     check(saved.enabled && saved.stabilize && saved.follow_flips,"temporary override changed saved input");

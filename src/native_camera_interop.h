@@ -9,7 +9,7 @@ struct NativeFirstPersonSettings {
     bool enabled{};
     dingosdk::first_person::Vec3 offset{},rotation{};
     float up{},down{},left{},right{};
-    bool stabilize{},follow_flips{},board_only{};
+    bool stabilize{},follow_flips{},board_only{},camera_cycle{};
     float smoothing{},head_pitch{},head_roll{},bob{};
 };
 static_assert(std::is_trivially_copyable_v<NativeFirstPersonSettings>);
@@ -17,6 +17,7 @@ static_assert(sizeof(NativeFirstPersonSettings)==64);
 static_assert(offsetof(NativeFirstPersonSettings,stabilize)==44);
 static_assert(offsetof(NativeFirstPersonSettings,follow_flips)==45);
 static_assert(offsetof(NativeFirstPersonSettings,board_only)==46);
+static_assert(offsetof(NativeFirstPersonSettings,camera_cycle)==47);
 static_assert(offsetof(NativeFirstPersonSettings,smoothing)==48);
 inline NativeFirstPersonSettings effective_native_sample(NativeFirstPersonSettings saved,bool head_locked) {
     if(head_locked) {

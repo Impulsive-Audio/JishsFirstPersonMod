@@ -51,13 +51,14 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
         watched_camera=camera;Matrix native{};
         if(dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(input),native) && dingosdk::valid_flight_transform(native)) {
             auto matrix=native;auto movement=live_camera_movement();
-            const auto state=comfort_snapshot();const auto config=menu_snapshot().config;
+            const auto state=comfort_snapshot();const auto settings=menu_snapshot();const auto& config=settings.config;
             if(config.look_only) {
                 dingosdk::first_person::Quat glance{0,0,0,1};
                 {
                     std::lock_guard lock(smoothing_mutex);
                     const std::array<std::uintptr_t,5> identity{state.core,state.client,state.entity,state.context,state.rig};
                     if(smoothing_camera!=camera || identity!=transition_owner) { reset_camera_smoothing();smoothing_camera=camera;transition_owner=identity; }
+                    bail_view.reset();
                     if(camera_look_allowed(config,state,movement)) {
                         const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                         glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(config),{look_pitch.load(),look_yaw.load()},look_frame.load(),config.link_smoothing));
@@ -66,6 +67,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                     } else { smoothing.reset();stop_stick_look(); }
                 }
                 note_camera_view(matrix,glance);
+                record_bail_camera(native,matrix,state,movement,config,{},look_pitch.load(),look_yaw.load(),{},read_animation_head(state),settings.revision);
                 original_transform(camera,&matrix);return;
             }
             const auto head=read_animation_head(state);const auto pitch=look_pitch.load(),yaw=look_yaw.load();
@@ -76,19 +78,57 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                 std::lock_guard lock(smoothing_mutex);
                 const std::array<std::uintptr_t,5> identity{state.core,state.client,state.entity,state.context,state.rig};
                 if(smoothing_camera!=camera || identity!=transition_owner) { reset_camera_smoothing();smoothing_camera=camera;transition_owner=identity; }
-                if(!movement.mode || !state.state_valid) { reset_camera_smoothing();suspended=true; }
+                bool menu_visible{};DWORD foreground_pid{};
+                const auto foreground=GetForegroundWindow();
+                const bool focused=foreground && GetWindowThreadProcessId(foreground,&foreground_pid) && foreground_pid==GetCurrentProcessId();
+                const bool interrupted=state.suppressed || !focused || (overlay_available(menu_visible) && menu_visible);
+                if(interrupted) reset_camera_smoothing();
+                if(!movement.mode || !state.state_valid || interrupted) { reset_camera_smoothing();suspended=true; }
                 else {
                     const bool bail=bail_camera_locked(state,movement);
                     const bool attached=head_position_attached(config,state,movement);
                     const bool normal=character_facing_allowed(state,movement) ||
                         (camera_overrides_allowed(state,movement) && movement.mode==2 && movement.custom_mode==2);
-                    matrix=bail_view.apply(native,head,bail,normal,frame);view=bail_view.info();
-                    movement.view_hold=view.blocked;set_bail_view_suspended(view.blocked);
+                    const bool recovery=bail && camera_look_allowed(config,state,movement) && head.valid;
+                    if(config.third_person_bailing) bail_view.reset();
+                    const bool previous_getup=bail_view.getup_episode();
+                    const auto* player=movement.position_valid ? &movement.position:nullptr;
+                    const bool control=movement.recovery_controllable || (!bail && normal);
+                    const bool renewed=bail_view.observe_wipeout_request(movement.recovery_verified && state.animation_valid,
+                        unsigned(state.animation_wipeout) | (unsigned(state.wipeout_request)<<1));
+                    matrix=bail_view.apply(native,head,bail,normal,frame,control,
+                        !config.third_person_bailing && movement.getting_up,player,renewed);view=bail_view.info();
+                    const bool detached=bail_view.detached();
+                    const bool owns_return=detached || previous_getup;
+                    movement.view_hold=view.blocked || (bail && !view.attached);set_bail_view_suspended(movement.view_hold);
                     const bool valid=camera_overrides_allowed(state,movement) && head.valid;
                     const bool eligible=valid && camera_look_allowed(config,state,movement);
-                    if(bail || !valid) {
-                        smoothing.reset();transition.reset();suspended=true;changed=view.blocked;
-                        if(!bail) { bail_view.reset();view=bail_view.info(); }
+                    if(bail) {
+                        smoothing.reset();changed=true;
+                        suspended=!recovery || !head.valid || !view.calibrated;
+                        if(bail_view.getup_episode() && control) {
+                            // Recover toward ordinary native facing, not animated head rotation.
+                            matrix=native;
+                            if(detached && head.valid && view.calibrated) matrix=bail_view.attach(matrix,head);
+                        }
+                        if(recovery && head.valid && view.calibrated) {
+                            aim=stick_camera_aim();
+                            // Recovery aim is a local offset, never absolute world-up yaw.
+                            matrix=aim_head_relative(matrix,aim);
+                            view.recovery_yaw=aim.active ? aim.heading:0;view.recovery_pitch=aim.active ? aim.pitch:0;
+                        }
+                        dingosdk::first_person::Settings handoff;
+                        // Keep the displayed bail history for the normal-camera release blend.
+                        matrix=bail_view.finish(matrix,head,player,frame,control);
+                        if(owns_return) transition.reset();
+                        else matrix=transition.apply(matrix,handoff,state.core,movement.mode,aim.active,frame,movement.state,
+                            nullptr,nullptr,view.attached,recovery,true,false);
+                        const auto final_view=bail_view.info();
+                        view.getup_camera_phase=final_view.getup_camera_phase;view.getup_blend=final_view.getup_blend;
+                        view.head_target=final_view.head_target;view.attached=final_view.attached;view.getup_locked=final_view.getup_locked;
+                    } else if(!valid) {
+                        smoothing.reset();transition.reset();suspended=true;
+                        bail_view.reset();view=bail_view.info();
                     } else {
                         if(!eligible) { smoothing.reset();suspended=true; }
                         else {
@@ -105,7 +145,9 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         handoff.up=handoff.down=handoff.left=handoff.right=(mount_handoff || movement.mode==2) ? config.stick.mount_smoothing:config.stick.dismount_smoothing;
                         // Native attachment disables positional Spring, not saved handoff strengths.
                         const auto look_settings=glance_settings(config);
-                        matrix=transition.apply(matrix,handoff,state.core,movement.mode,aim.active,frame,movement.state,
+                        matrix=bail_view.finish(matrix,head,player,frame,control);
+                        if(owns_return) transition.reset();
+                        else matrix=transition.apply(matrix,handoff,state.core,movement.mode,aim.active,frame,movement.state,
                             &config.spring,&look_settings,attached,eligible,!eligible,mount_handoff);
                         bail_view.remember(matrix,native,head,normal);view=bail_view.info();changed=true;
                     }
@@ -113,7 +155,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
             }
             if(suspended) { suspend_custom_camera();look_pitch=0;look_yaw=0; }
             note_camera_view(matrix,glance);
-            record_bail_camera(native,matrix,state,movement,config,aim,pitch,yaw,view,head);
+            record_bail_camera(native,matrix,state,movement,config,aim,pitch,yaw,view,head,settings.revision);
             original_transform(camera,changed ? &matrix:input);return;
         }
     }
@@ -166,7 +208,7 @@ bool install_stock_camera_feed(std::uintptr_t base,HMODULE stock) {
     original_transform=reinterpret_cast<Transform>(base+addresses::camera_transform_setter);
     feed_prepared.store(true,std::memory_order_release);
     set_background_flush(flush_bail_camera_trace);
-    log("Bail camera trace ready: bounded pre/bail/recovery samples write to bail-camera-trace-v3.csv on the settings worker.");
+    log("Camera trace v10 ready: smoothed get-up head position and seamless 300 ms return; no get-up character writes.");
     bool source_ready=false;
     for(unsigned tries=0;tries<6000;++tries) {
         std::uint8_t initialized{};std::uintptr_t live_base{},callback{};

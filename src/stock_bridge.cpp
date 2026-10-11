@@ -32,6 +32,7 @@ std::atomic<int> native_spring{-1};
 bool initial_stock_sync{};
 std::atomic<bool> bridge_ready{},native_active{},native_ready{};
 std::atomic<int> activation_intent{-1};
+std::atomic<bool> native_view_observed{};
 std::atomic<ULONGLONG> intent_time{};
 void* stock_state{};
 using NativeMutex=int(*)(void*);
@@ -55,8 +56,9 @@ NativeControls read_native_controls(void* model) {
         native.stabilize=flags[0]!=0;native.follow_flips=flags[1]!=0;native.board_only=flags[2]!=0;
     }
     std::uint8_t available{};
-    if(dingosdk::memory::read(address+0x5f50,available) && available==1)
-        dingosdk::memory::read(address+0x5f50+4,native.bindings);
+    const auto bindings_offset=bindings_model_offset();
+    if(dingosdk::memory::read(address+bindings_offset,available) && available==1)
+        dingosdk::memory::read(address+bindings_offset+4,native.bindings);
     return native;
 }
 bool queue_one(const Request& request,std::string& error) {
@@ -145,7 +147,18 @@ void read_hook(void* user,void* model) {
     // and updated in the stock-owned model, after its normal callback returns.
     publish_native_controls(read_native_controls(model));
     auto snapshot=menu_snapshot();
-    native_active=debug->first_person;native_ready=debug->camera_available;
+    const bool previous_active=native_active.exchange(debug->first_person);
+    const bool previously_observed=native_view_observed.exchange(true);
+    native_ready=debug->camera_available;
+    std::uint8_t cycle{};
+    if(uses_v206_layout(selected)) dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(debug)+16+47,cycle);
+    const auto comfort_before=comfort_snapshot();
+    if(native_camera_cycle_choice(cycle==1,previously_observed,previous_active,debug->first_person,
+        debug->camera_available,activation_intent.load()>=0,comfort_before.suppressed,
+        game_camera_suspended() || game_camera_managing())) {
+        comfort_user_request(debug->first_person);
+        log(debug->first_person ? "Native camera cycle entered First Person.":"Native camera cycle left First Person.");
+    }
     comfort_observe_native(debug->first_person);
     const auto intent=activation_intent.load();
     if(intent>=0 && (debug->first_person==(intent!=0) || GetTickCount64()-intent_time.load()>3000)) activation_intent=-1;

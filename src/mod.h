@@ -9,6 +9,7 @@
 
 namespace jishsfirstpersonmod {
 struct Config {
+    bool toggle_glances=false;
     NativeControls native; // Observed settings/bindings, never saved in the mod INI.
     unsigned menu_key=VK_F9;
     std::uint32_t toggle{};

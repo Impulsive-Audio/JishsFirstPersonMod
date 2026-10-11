@@ -164,7 +164,7 @@ void update_comfort(std::uintptr_t client,std::uintptr_t base) {
         if(player.bailing!=next.bailing || player.valid!=next.valid) {
             log(!next.valid ? "Comfort switching suspended: local player unavailable.":
                 next.bailing ? (config.third_person_bailing ? "Comfort: wipeout latched; third person until native movement resumes.":
-                    "Comfort: wipeout latched; first-person camera locked until native movement resumes."):
+                    "Comfort: wipeout latched; first-person camera follows head; look resumes on verified native control."):
                 "Comfort: native movement restored; bail restriction cleared.");
         }
         player=next;

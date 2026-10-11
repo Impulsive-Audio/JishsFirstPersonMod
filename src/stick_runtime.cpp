@@ -4,6 +4,9 @@
 #include "game_camera_ownership.h"
 #include "player_state_contract.h"
 #include "camera_movement.h"
+#include "jump_state_contract.h"
+#include "bail_recovery_contract.h"
+#include "getup_contract.h"
 #include "settings.h"
 #include "camera_policy.h"
 #include "head_attachment.h"
@@ -24,9 +27,14 @@ std::atomic<bool> camera_suspended{},bail_view_suspended{};
 std::mutex hippy_mutex;
 HippyJumpDetector hippy_detector;
 std::array<std::uintptr_t,4> hippy_owner{};
+std::mutex jump_mutex;
+JumpEpisodeTracker jump_tracker;
+std::atomic<bool> jump_contract{};
+std::atomic<bool> recovery_contract{};
+std::atomic<bool> getup_verified{};
 std::mutex mutex;
 StickLookState look;
-struct Request { ComfortSnapshot owner;StickAim aim;bool turn{};unsigned device{};double time{};float body_heading{};bool head_valid{}; } request;
+struct Request { ComfortSnapshot owner;StickAim aim;bool turn{};unsigned device{};double time{};float body_heading{};bool head_valid{},recovery{}; } request;
 float native_heading{},displayed_pitch{};double heading_time{};
 double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 bool live_foot(const Request& value) {
@@ -38,7 +46,10 @@ bool live_foot(const Request& value) {
     if(!foreground || !GetWindowThreadProcessId(foreground,&pid) || pid!=GetCurrentProcessId()) return false;
     const auto current=comfort_snapshot();const auto movement=live_camera_movement();
     return current.core==value.owner.core && current.entity==value.owner.entity && current.context==value.owner.context &&
-        current.rig==value.owner.rig && movement.mode==1 && camera_look_allowed(menu_snapshot().config,current,movement);
+        current.rig==value.owner.rig && movement.mode==1 &&
+        (!value.recovery || !movement.view_hold) &&
+        value.recovery==(!menu_snapshot().config.look_only && bail_camera_locked(current,movement)) &&
+        camera_look_allowed(menu_snapshot().config,current,movement);
 }
 Request snapshot() { std::lock_guard lock(mutex);return request; }
 void motion_hook(std::uintptr_t rig,std::uintptr_t context,const Matrix* supplied,std::uint8_t flags) {
@@ -58,8 +69,14 @@ CameraMovementSample live_camera_movement() {
     using namespace dingosdk;
     using namespace dingosdk::client_source::detail;
     namespace pc=player_state_contract;
+    // Serialize the observation and history together: sampler, controller and
+    // transform callbacks may all inspect the same native state in one frame.
+    std::lock_guard jump_lock(jump_mutex);
+    const auto unavailable=[&]() {
+        CameraMovementSample result;result.jump_episode=jump_tracker.update({},now());return result;
+    };
     const auto o=comfort_snapshot();
-    if(!o.state_valid || !o.core || !game_base) return {};
+    if(!o.state_valid || !o.core || !game_base) return unavailable();
     try {
         SourceReader r;
         const auto world=r.value<std::uint32_t>(o.client,0xc4);
@@ -79,7 +96,7 @@ CameraMovementSample live_camera_movement() {
                 reinterpret_cast<std::uintptr_t>(page.AllocationBase)==game_base,"Offboard child type is not owned by Skate");
         }
         const auto physics=r.value<std::uint32_t>(o.context,pc::physics_state_offset);
-        bool non_bail{},bail_recovery=physics==pc::wipeout;
+        bool non_bail{},bail_recovery=physics==pc::wipeout,positive_wipeout=physics==pc::wipeout;
         if(o.animation_valid) {
             const auto output=r.pointer(r.pointer(o.core,pc::animation_owner),pc::animation_output);
             const auto wipeout_request=r.value<std::uint8_t>(output,pc::wipeout_request_offset);
@@ -87,29 +104,53 @@ CameraMovementSample live_camera_movement() {
             const auto recovery=r.value<std::uint8_t>(output,pc::recovery_offset);
             source_require(wipeout_request<=1 && bail<=1 && recovery<=1,"Animation flags invalid");
             bail_recovery=bail_recovery || wipeout_request || bail || recovery;
+            positive_wipeout=positive_wipeout || wipeout_request || bail;
             non_bail=wipeout_request==0 && bail==0 && recovery==0 && physics!=pc::wipeout;
         }
         const bool mounting=(r.value<std::uint32_t>(o.context,0x13d4)&0x80)!=0;
-        const bool jumping=offboard && active==parent+pc::normal_foot_states[2].offset &&
-            vtable==game_base+pc::normal_foot_states[2].vtable;
+        const auto stage=jump_state_contract::stage(offboard,parent,active,vtable,game_base,jump_contract.load());
+        const auto ground=pc::normal_foot_states[0];
+        const bool ground_child=offboard && active==parent+ground.offset && vtable==game_base+ground.vtable;
+        const bool verified_control=recovery_contract.load() && o.animation_valid;
+        const auto control_flags=verified_control && offboard ? r.value<std::uint32_t>(o.context,bail_recovery_contract::control_flags_offset):0u;
+        const auto motion_override=verified_control && ground_child ? r.value<std::uint8_t>(active,bail_recovery_contract::ground_override_offset):0u;
+        source_require(motion_override<=1,"Ground motion override invalid");
+        Matrix body{};
+        const bool body_valid=memory::read(o.rig+0x4720,body) && valid_flight_transform(body);
         r.verify();
         CameraMovementSample result;
         result.mode=offboard ? 1:2;result.custom_mode=camera_movement_mode(true,offboard,parent,active,vtable,game_base,physics);
-        result.non_bail=non_bail;result.bail_recovery=bail_recovery;result.mounting=mounting;result.jumping=jumping;
+        result.position_valid=body_valid;result.position={body[12],body[13],body[14]};
+        result.non_bail=non_bail;result.bail_recovery=bail_recovery;result.mounting=mounting;
+        result.recovery_verified=verified_control;result.recovery_flags=control_flags;result.recovery_override=motion_override!=0;
+        result.recovery_controllable=verified_control && bail_recovery_contract::controllable(ground_child,control_flags,
+            motion_override!=0,mounting,positive_wipeout);
+        result.getting_up=offboard && getup_verified.load() && verified_control &&
+            getup_contract::requested(parent,active,vtable,game_base,control_flags);
+        result.jumping=stage==JumpStage::falling;
         result.view_hold=bail_view_suspended.load();result.state={physics,parent,active,vtable};
         { std::lock_guard lock(hippy_mutex);
           if(hippy_owner==std::array<std::uintptr_t,4>{o.core,o.entity,o.context,o.rig}) result.hippy=hippy_detector.state(); }
+        // Do not expose stale controller confirmation after a live landing/remount.
+        // The detector itself is still advanced only by the controller tick.
+        if(stage==JumpStage::ground || stage==JumpStage::board || stage==JumpStage::unknown || bail_camera_locked(o,result)) result.hippy={};
+        JumpEpisodeEvidence evidence;
+        evidence.owner={o.core,o.entity,o.context,o.rig};evidence.valid=non_bail || bail_recovery;
+        evidence.bail=bail_recovery || bail_camera_locked(o,result);evidence.stage=stage;
+        evidence.position_valid=body_valid;evidence.position={body[12],body[13],body[14]};evidence.hippy=result.hippy;
+        result.jump_episode=jump_tracker.update(evidence,now());
         return result;
-    } catch(...) { return {}; }
+    } catch(...) { return unavailable(); }
 }
 void set_bail_view_suspended(bool suspended) { bail_view_suspended=suspended; }
 void tick_hippy_jump(const Config& config,const ComfortSnapshot& owner,CameraMovementSample& movement,double time) {
     HippyJumpEvidence evidence;
     evidence.owner=owner.core;evidence.physics=static_cast<std::uint32_t>(movement.state[0]);
-    evidence.bail=bail_camera_locked(owner,movement);evidence.falling=movement.jumping;
+    evidence.bail=bail_camera_locked(owner,movement);evidence.falling=movement.jump_episode.stage==JumpStage::falling;
     evidence.on_board=movement.mode==2;
-    evidence.grounded=movement.mode==1 && movement.custom_mode==1 && !movement.jumping;
-    if(config.stick.enabled && stock_first_person_requested() && owner.state_valid && movement.mode && movement.non_bail) {
+    evidence.grounded=movement.jump_episode.stage==JumpStage::ground;
+    if(config.stick.enabled && stock_first_person_requested() && owner.state_valid && movement.mode && movement.non_bail &&
+        movement.jump_episode.stage!=JumpStage::unknown) {
         try {
             dingosdk::overlay::DebugModel model;
             const auto pose=dingosdk::client_source::detail::debug_skater(game_base,owner.client,model);
@@ -146,7 +187,8 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
     const auto head=read_animation_head(owner);
     Matrix body{};const bool body_valid=owner.rig && dingosdk::memory::read(owner.rig+0x4720,body) && dingosdk::valid_flight_transform(body);
     const auto effective=effective_camera_config(config,stock_first_person_requested(),owner,movement);
-    const bool eligible=ready && !inhibited && movement.mode==1 && camera_look_allowed(config,owner,movement) && head.valid && body_valid;
+    const bool eligible=ready && !inhibited && movement.mode==1 && camera_look_allowed(config,owner,movement) &&
+        (!bail_camera_locked(owner,movement) || !movement.view_hold) && head.valid && body_valid;
     std::lock_guard lock(mutex);
     if(inhibited || !config.stick.enabled || !input.available || !input.device) {
         look.reset();request={};return;
@@ -155,9 +197,13 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
     const float body_heading=matrix_heading(body);
     if(request.owner.core && std::array<std::uintptr_t,4>{request.owner.core,request.owner.entity,request.owner.context,request.owner.rig}!=std::array<std::uintptr_t,4>{owner.core,owner.entity,owner.context,owner.rig}) { look.reset(); }
     const bool turn=!config.look_only && config.stick.turn_character && character_facing_allowed(owner,movement);
+    const bool recovery=!config.look_only && bail_camera_locked(owner,movement);
+    if(request.owner.core && request.recovery!=recovery) look.reset();
     if(turn && !request.turn) look.rebase_facing(body_heading);
-    auto aim=look.update(config.stick,{input.right_x,input.right_y},true,input.device,time,native_heading,body_heading,glance_settings(effective),displayed_pitch);
-    request={owner,aim,turn,input.device,time,body_heading,head.valid};
+    auto stick=config.stick;if(recovery) stick.turn_character=false;
+    auto aim=look.update(stick,{input.right_x,input.right_y},true,input.device,time,recovery ? 0:native_heading,
+        recovery ? 0:body_heading,glance_settings(effective),recovery ? 0:displayed_pitch);
+    request={owner,aim,turn,input.device,time,body_heading,head.valid,recovery};
 }
 bool attach_stick_runtime(std::uintptr_t base) {
     using namespace dingosdk;
@@ -178,6 +224,21 @@ bool attach_stick_runtime(std::uintptr_t base) {
     log("On-foot stick look ready: native motion/facing chained; board input forwarded unchanged.");return true;
 }
 bool install_stick_runtime(std::uintptr_t base) {
+    getup_verified=getup_contract::verified([](std::uintptr_t address,void* data,std::size_t size) {
+        return dingosdk::memory::read_bytes(address,data,size);
+    },base);
+    log(getup_verified ? "Get-up camera lock verified: native ragdoll animation request, camera-only hold.":
+        "ERROR: get-up animation contract differs; get-up camera lock unavailable.");
+    recovery_contract=bail_recovery_contract::verified([](std::uintptr_t address,void* data,std::size_t size) {
+        return dingosdk::memory::read_bytes(address,data,size);
+    },base);
+    log(recovery_contract ? "Bail recovery control verified: owned Ground child, native selection flags and unoverridden input path.":
+        "ERROR: bail recovery input contract differs; bail look remains blocked.");
+    jump_contract=jump_state_contract::verified([](std::uintptr_t address,void* data,std::size_t size) {
+        return dingosdk::memory::read_bytes(address,data,size);
+    },base);
+    log(jump_contract ? "Jump episode contracts verified: Trajectory/Falling/SimulatedRagdoll; ground/board/bail terminate attachment.":
+        "ERROR: extended jump episode contract differs; Trajectory/SimulatedRagdoll recognition disabled.");
     namespace spawn=dingosdk::game::build::v20260929::client_source_spawn;
     if(resolve_stock_handler(base+spawn::skater_motion)) return attach_stick_runtime(base);
     // Stock installs the motion bridge after its native source initializes.

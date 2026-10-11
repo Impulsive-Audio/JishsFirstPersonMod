@@ -67,6 +67,10 @@ public:
 inline float matrix_heading(const dingosdk::first_person::Matrix& matrix) {
     return std::atan2(matrix[8],matrix[10])*180.f/std::numbers::pi_v<float>;
 }
+inline dingosdk::first_person::Matrix aim_head_relative(dingosdk::first_person::Matrix pose,const StickAim& aim) {
+    // StickAim heading uses mathematical yaw; LookAngles uses its inverse.
+    return aim.active ? dingosdk::first_person::target(pose,{}, {aim.pitch,-aim.heading}):pose;
+}
 inline dingosdk::first_person::Matrix aim_camera(dingosdk::first_person::Matrix pose,const StickAim& aim) {
     if(!aim.active) return pose;
     using namespace dingosdk::first_person;

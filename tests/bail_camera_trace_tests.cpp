@@ -20,7 +20,7 @@ std::vector<std::string> fields(const std::string& text) {
 }
 int main() {
     using namespace jishsfirstpersonmod;using namespace dingosdk::first_person;
-    const auto path=data_directory()/"bail-camera-trace-v3.csv";
+    const auto path=data_directory()/"bail-camera-trace-v10.csv";
     std::filesystem::remove(path);
     const Matrix pose{1,0,0,0,0,1,0,0,0,0,1,0,1,2,3,1};
     ComfortSnapshot state;state.core=1; // invalid animation identity must not be dereferenced
@@ -34,6 +34,10 @@ int main() {
     std::ifstream input(path);std::string line;std::getline(input,line);const auto header=fields(line);
     const auto column=[&](const char* name) { auto it=std::find(header.begin(),header.end(),name);check(it!=header.end(),"CSV column missing");return static_cast<std::size_t>(it-header.begin()); };
     column("reconciling");column("reconcile_remaining_deg");column("manual_takeover");column("facing_eligible");
+    column("native_child");column("episode_type");column("episode_reset_reason");
+    column("bail_view_phase");column("recovery_verified");column("recovery_controllable");column("recovery_flags");
+    column("getup_camera_phase");column("getup_blend_progress");column("head_target_x");
+    column("head_target_qw");column("recovery_look_yaw");column("recovery_look_pitch");
     unsigned count=0;std::vector<std::string> row;
     while(std::getline(input,line)) { row=fields(line);check(row.size()==header.size(),"CSV field count mismatch");++count; }
     check(count==2,"pre-bail context not captured");
@@ -42,6 +46,54 @@ int main() {
     check(row[column("head_valid")]=="0" && row[column("camera_head_distance_m")]=="-1","missing animation data looked valid");
     check(row[column("custom_position_delta_m")]=="0" && row[column("custom_angle_delta_deg")]=="0","native passthrough was logged as a custom change");
     input.close();
+    // Ordinary jumps, mounting, live settings revisions and calibration failures
+    // must be captured even when there is no bail or confirmed hippy event.
+    state.core=2;state.state_valid=state.animation_valid=true;
+    movement={};movement.mode=movement.custom_mode=1;movement.non_bail=true;
+    config.stick.enabled=true;config.disable_spring_on_foot=true;
+    HeadPose head;head.valid=true;head.root=head.head=pose;
+    BailViewInfo view;view.calibrated=view.attached=true;
+    auto final_pose=pose;
+    const auto capture=[&](std::uint64_t revision) {
+        record_bail_camera(pose,final_pose,state,movement,config,{},0,0,view,head,revision);
+        flush_bail_camera_trace();
+        std::ifstream latest(path);std::getline(latest,line);
+        count=0;
+        while(std::getline(latest,line)) { row=fields(line);check(row.size()==header.size(),"action CSV row malformed");++count; }
+    };
+    capture(1);movement.jumping=true;movement.jump_episode={true,JumpStage::trajectory,"ordinary_jump","none"};final_pose[12]+=1;capture(1);
+    check(row[column("detected_action")]=="jumping" && row[column("attachment_reason")]=="jumping", "ordinary jump was not traced");
+    check(row[column("custom_position_delta_m")]=="1","final attachment position change missing");
+    check(row[column("native_child")]=="trajectory" && row[column("episode_type")]=="ordinary_jump","native stage/episode missing");
+    config.stick.lock_mount_jump=false;view.attached=false;final_pose=pose;capture(2);
+    check(row[column("settings_revision")]=="2" && row[column("settings_changed")]=="1" &&
+        row[column("attachment_requested")]=="0" && row[column("attachment_status")]=="disabled", "live switch off or precedence missing in trace");
+    movement.jumping=false;movement.mounting=true;config.stick.lock_mount_jump=true;view.attached=true;capture(3);
+    check(row[column("detected_action")]=="mounting" && row[column("attachment_status")]=="attached","mounting was not traced");
+    movement.hippy.active=true;config.stick.lock_hippy_jump=true;view.calibrated=view.attached=false;capture(4);
+    check(row[column("detected_action")]=="hippy_jump" && row[column("attachment_status")]=="uncalibrated","hippy calibration failure missing");
+    head.valid=false;capture(4);
+    check(row[column("attachment_status")]=="head_invalid","invalid head sample missing");
+    head.valid=true;view.calibrated=true;state.suppressed=true;capture(4);
+    check(row[column("attachment_status")]=="camera_ineligible","camera eligibility failure missing");
+    state.suppressed=false;state.bailing=true;movement.hippy={};movement.mounting=false;
+    movement.recovery_verified=movement.recovery_controllable=true;movement.recovery_flags=0x6000;
+    view.phase=2;view.target_rotation=from_rotation_vector({.2f,.3f,.4f});view.recovery_yaw=-20;view.recovery_pitch=10;
+    capture(4);
+    check(row[column("bail_view_phase")]=="controllable_recovery" && row[column("recovery_controllable")]=="1" &&
+        row[column("recovery_flags")]=="24576" && row[column("recovery_look_yaw")]=="-20" &&
+        row[column("recovery_look_pitch")]=="10","recovery evidence or head-relative look missing");
+    check(std::abs(std::stof(row[column("head_target_qw")])-view.target_rotation[3])<.00001f,"head target rotation missing");
+    state.bailing=false;movement.recovery_verified=movement.recovery_controllable=false;view.phase=0;
+    state.suppressed=false;config.look_only=true;capture(5);
+    check(row[column("attachment_reason")]=="compatibility" && row[column("attachment_requested")]=="0","compatibility switch missing in trace");
+    movement={};movement.mode=movement.custom_mode=2;movement.non_bail=true;capture(5);
+    config.look_only=false;config.stick.lock_mount_jump=false;capture(6);
+    check(row[column("detected_action")]=="none" && row[column("settings_changed")]=="1" &&
+        row[column("settings_revision")]=="6","idle settings change did not open a trace window");
+    state.core=1;state.state_valid=state.animation_valid=false;movement={};movement.mode=2;
+    config.look_only=false;
+    const auto before_queue_rows=count;
     const auto size=std::filesystem::file_size(path);
     for(int i=0;i<600;++i) {
         movement.bail_recovery=false;record_bail_camera(pose,pose,state,movement,config,{},0,0);
@@ -51,7 +103,7 @@ int main() {
     flush_bail_camera_trace();
     input.open(path);std::getline(input,line);count=0;
     while(std::getline(input,line)) { row=fields(line);check(row.size()==header.size(),"buffered CSV row malformed");++count; }
-    check(count<=1026 && std::stoul(row[column("dropped")])>0,"diagnostic queue was unbounded");
+    check(count<=before_queue_rows+1024 && std::stoul(row[column("dropped")])>0,"diagnostic queue was unbounded");
     input.close();
     // Oversized existing traces rotate; recording continues in a fresh CSV.
     std::filesystem::resize_file(path,8*1024*1024+1);

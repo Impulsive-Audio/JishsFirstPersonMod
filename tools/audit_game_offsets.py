@@ -43,6 +43,21 @@ def audit(path):
         'animation_bail_prefix': 'animation_bail_site', 'recovery_prefix': 'recovery_site',
         'offboard_owner_prefix': 'offboard_owner_site',
         'offboard_constructor_prefix': 'offboard_constructor_site'})
+    prefixes(source('src/getup_contract.h'), {'request_prefix': 'request_site', 'animation_prefix': 'animation_site'})
+    jump_contract = source('src/jump_state_contract.h')
+    prefixes(source('vendor/Engine/Game/Build/20260929/native_skater.h'),
+             {'animation_update_prefix': 'animation_update'})
+    prefixes(source('src/bail_recovery_contract.h'), {
+        'selection_prefix': 'selection_site', 'ground_input_prefix': 'ground_input_site',
+        'ground_source_prefix': 'ground_source_site'})
+    prefixes(jump_contract, {
+        'trajectory_constructor_prefix': 'trajectory_constructor_site',
+        'ragdoll_constructor_prefix': 'ragdoll_constructor_site',
+        'trajectory_update_prefix': 'trajectory_update_site',
+        'ragdoll_update_prefix': 'ragdoll_update_site'})
+    for name, offset, vtable, update in re.findall(
+            r'\b(trajectory|simulated_ragdoll)\{(0x\w+),(0x\w+),(0x\w+)\}', jump_contract):
+        check(name + ' update vtable slot', pointer(int(vtable, 16) + 0x18) == int(update, 16))
     call = pc['caller_rva'] + 11
     check('pre-remap selector call destination', pe.get_data(call, 1) == b'\xe8' and
           call + 5 + struct.unpack('<i', pe.get_data(call + 1, 4))[0] == pc['choose_state_rva'])
@@ -64,6 +79,8 @@ def audit(path):
     for offset, target in zip((0, 8, 0x28, 0x98), re.findall(r'0x\w+', methods)):
         check('view manager slot ' + hex(offset), pointer(spawn['view_manager_vtable'] + offset) == int(target, 16))
     engine = constants(source('vendor/Engine/Game/Build/20260929/engine.h'))
+    check('skater animation virtual callback slot +0x140',
+          pointer(engine['skater_component_vtable']+0x140)==0xf96b80)
     # client_tick is hooked directly by Runtime/runtime_init.cpp; do not assume
     # the engine client vtable contains that address. Its code prefix is checked above.
     uses = '\n'.join(p.read_text(encoding='utf-8-sig') for p in (root/'src').glob('*.cpp'))

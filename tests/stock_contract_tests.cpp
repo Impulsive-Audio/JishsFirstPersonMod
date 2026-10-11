@@ -30,21 +30,22 @@ int main() {
     }
     for(const auto& profile:contracts) {
         selected=&profile;
-        const bool v2=std::string_view(profile.version)=="2.0.0" || std::string_view(profile.version)=="2.0.1" || std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3" || std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5";
+        const bool v2=std::string_view(profile.version)=="2.0.0" || std::string_view(profile.version)=="2.0.1" || std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3" || std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5" || std::string_view(profile.version)=="2.0.6";
         if(v2) {
-            const bool latest=std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3" || std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5";
-            require(native_sampler_rva()==((std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5") ? 0x2196c0:uses_v203_layout(&profile) ? 0x210080:latest ? 0x273020:0x26f810),"wrong native sampler profile");
-            require(console_queue_rva()==((std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5") ? 0x411b0:uses_v203_layout(&profile) ? 0x40e30:latest ? 0x3ec00:0x3ea30),"wrong console callback profile");
+            const bool latest=std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3" || std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5" || std::string_view(profile.version)=="2.0.6";
+            require(native_sampler_rva()==(uses_v206_layout(&profile) ? 0x21ec50:(std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5") ? 0x2196c0:uses_v203_layout(&profile) ? 0x210080:latest ? 0x273020:0x26f810),"wrong native sampler profile");
+            require(console_queue_rva()==(uses_v206_layout(&profile) ? 0x41d90:(std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5") ? 0x411b0:uses_v203_layout(&profile) ? 0x40e30:latest ? 0x3ec00:0x3ea30),"wrong console callback profile");
         }
         require(is_v2()==v2,"reviewed version selected wrong bridge family");
-        require(callbacks_offset()==(uses_v203_layout(&profile) ? 0x4d0:v2 ? 0x4b8:0x4b0) && model_offset()==(uses_v203_layout(&profile) ? 0x500:v2 ? 0x4e8:0x4e0),"overlay layout mismatch");
+        require(callbacks_offset()==(uses_v206_layout(&profile) ? 0x590:uses_v203_layout(&profile) ? 0x4d0:v2 ? 0x4b8:0x4b0) && model_offset()==(uses_v206_layout(&profile) ? 0x5c0:uses_v203_layout(&profile) ? 0x500:v2 ? 0x4e8:0x4e0),"overlay layout mismatch");
+        require(bindings_model_offset()==(uses_v206_layout(&profile) ? 0x5f78:0x5f50),"bindings model layout mismatch");
         for(int action=first_person;action<=reset;++action) {
             const Request original{action,true,12.5f};
             const auto wire=to_native(original);Request decoded;
-            require(wire.action==(v2 ? (action==reset ? 33:action+2):action),"incorrect native command");
+            require(wire.action==(v2 ? (action==reset ? (uses_v206_layout(&profile) ? 34:33):action+2):action),"incorrect native command");
             require(from_native(wire,decoded) && decoded.action==action && decoded.enabled && decoded.value==12.5f,"camera command roundtrip failed");
         }
-        if(v2) for(int action: {11,12,26,27,28,29,30,31,32,34}) {
+        if(v2) for(int action: {11,12,26,27,28,29,30,31,32,uses_v206_layout(&profile) ? 33:34}) {
             Request decoded; require(!from_native({action,true,1},decoded),"new native setting captured as legacy action");
         }
     }

@@ -31,6 +31,7 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
             validate_config(next);
             immediate=true;break;
         case CommandKind::stick_settings: next.stick=command.stick;break;
+        case CommandKind::toggle_glances: next.toggle_glances=command.enabled;immediate=true;break;
         case CommandKind::binding:
             if(command.action>4) throw std::runtime_error("Unknown controller action.");
             if(command.action==0) next.toggle=command.mask; else next.look[command.action-1].combo=command.mask;
@@ -281,6 +282,16 @@ void set_background_flush(BackgroundFlush flush) { background_flush=flush; }
 bool submit_command(const Command& command) {
     const auto before=menu_snapshot().config;
     if(!submit_stock_command(command)) return false;
+    const auto after=menu_snapshot();
+    if(before.stick.lock_mount_jump!=after.config.stick.lock_mount_jump ||
+        before.stick.lock_hippy_jump!=after.config.stick.lock_hippy_jump ||
+        before.disable_spring_on_foot!=after.config.disable_spring_on_foot || before.look_only!=after.config.look_only ||
+        before.stick.enabled!=after.config.stick.enabled) {
+        log("Attachment settings accepted: revision="+std::to_string(after.revision)+
+            " jump="+std::to_string(after.config.stick.lock_mount_jump)+" hippy="+std::to_string(after.config.stick.lock_hippy_jump)+
+            " disable_foot="+std::to_string(after.config.disable_spring_on_foot)+" stick="+std::to_string(after.config.stick.enabled)+
+            " look_only="+std::to_string(after.config.look_only));
+    }
     if(command.kind==CommandKind::set_enabled) {
         if(const auto sink=activation_sink.load()) {
             const auto accepted=sink(command.enabled);

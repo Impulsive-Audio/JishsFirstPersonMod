@@ -7,6 +7,56 @@ void check(bool value,const char* message) { if(!value) throw std::runtime_error
 Matrix pose(float yaw=0,float x=0) { Matrix value{1,0,0,0,0,1,0,0,0,0,1,0,x,0,0,1};return target(value,{}, {0,yaw}); }
 float angle(const Matrix& a,const Matrix& b) { return length(rotation_vector(multiply(conjugate(orientation(a)),orientation(b)))); }
 int main() {
+    // Exercise the actual attachment decision with both fallback paths active,
+    // independently of each switch, and apply it to a moving anatomical head.
+    for(bool disable_foot:{false,true}) for(bool special:{false,true})
+        for(bool jump_lock:{false,true}) for(bool hippy_lock:{false,true}) {
+        Config cfg;cfg.stick.enabled=true;cfg.disable_spring_on_foot=disable_foot;
+        cfg.stick.lock_mount_jump=jump_lock;cfg.stick.lock_hippy_jump=hippy_lock;
+        cfg.stick.look_during_parkour=true;
+        ComfortSnapshot state;state.state_valid=state.animation_valid=true;
+        CameraMovementSample action;action.mode=1;action.custom_mode=special ? 0:1;action.non_bail=true;
+        for(int kind=0;kind<3;++kind) {
+            action.mounting=kind==0;action.jumping=kind!=0;
+            action.hippy.active=kind==2;
+            const bool expected=kind==2 ? hippy_lock:jump_lock;
+            check(head_position_attached(cfg,state,action)==expected,"off-board fallback overrode a jump switch");
+            check(!effective_camera_config(cfg,true,state,action).spring.enabled || (!disable_foot && !expected),
+                "attachment switch enabled Spring while foot suppression was active");
+            check(kind==0 || camera_look_allowed(cfg,state,action),"attachment switch disrupted enabled parkour look");
+            BailView view;HeadPose head;head.valid=true;head.root=head.head=pose();
+            view.apply(pose(0,.1f),head,false,true,0);view.remember(pose(0,.1f),pose(0,.1f),head,true);
+            head.root=head.head=pose(0,2);
+            auto native=pose(30,3);auto output=view.apply(native,head,false,false,.016);
+            if(head_position_attached(cfg,state,action)) output=view.attach(output,head);
+            check(std::abs(output[12]-(expected ? 2.1f:3.f))<.00001f,"jump switch did not change final head position");
+            check(angle(output,native)<.00001f,"head attachment changed camera orientation");
+            // A live toggle off must release attachment on the next valid camera sample.
+            cfg.stick.lock_mount_jump=cfg.stick.lock_hippy_jump=false;
+            output=view.apply(native,head,false,false,.032);
+            if(head_position_attached(cfg,state,action)) output=view.attach(output,head);
+            check(output[12]==native[12],"live switch off retained head attachment");
+            cfg.stick.lock_mount_jump=jump_lock;cfg.stick.lock_hippy_jump=hippy_lock;
+        }
+        action.mounting=action.jumping=true;action.hippy.active=true;
+        check(head_position_attached(cfg,state,action)==hippy_lock,"mounting flag overrode the hippy switch");
+        action.hippy.active=false;action.hippy.candidate=true;
+        check(!head_position_attached(cfg,state,action),"unconfirmed hippy candidate used a fallback attachment");
+        action={};action.mode=1;action.custom_mode=1;action.non_bail=true;
+        check(head_position_attached(cfg,state,action)==disable_foot,"landing changed ground attachment policy");
+        action.custom_mode=0;
+        for(const auto child:{std::uintptr_t{0x65e8d40},std::uintptr_t{0x65e8ed0}}) {
+            action.state={504,0,0,child};
+            check(head_position_attached(cfg,state,action)==disable_foot,
+                "special animation/ragdoll child forced attachment without an enabled option");
+        }
+        action.mode=action.custom_mode=2;
+        check(!head_position_attached(cfg,state,action),"ordinary board airtime became head-attached");
+        action.bail_recovery=true;
+        check(head_position_attached(cfg,state,action),"jump switches disabled bail recovery attachment");
+        cfg.look_only=true;
+        check(!head_position_attached(cfg,state,action),"compatibility mode retained recovery attachment");
+    }
     Config config;config.stick.enabled=config.stick.turn_character=true;
     ComfortSnapshot owner;owner.state_valid=owner.animation_valid=true;owner.normal_foot=true;
     CameraMovementSample movement;movement.mode=movement.custom_mode=1;movement.non_bail=true;
@@ -14,7 +64,7 @@ int main() {
     movement.custom_mode=0;owner.normal_foot=false;owner.suspended=true;
     check(!camera_look_allowed(config,owner,movement),"default did not retain native climbing look");
     config.stick.look_during_parkour=true;
-    check(camera_look_allowed(config,owner,movement) && head_position_attached(config,owner,movement) &&
+    check(camera_look_allowed(config,owner,movement) && !head_position_attached(config,owner,movement) &&
         !character_facing_allowed(owner,movement),"validated climbing could not look camera-only");
     movement.custom_mode=1;movement.jumping=true;
     config.stick.look_during_parkour=false;

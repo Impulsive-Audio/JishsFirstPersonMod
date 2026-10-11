@@ -165,6 +165,8 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0, new_
     result = {}
     status = new.export('DingoSDKOverlayGetStatus')
     layout = {0x3a:(0x320,0x328),0x49:(0x321,0x329),0x50:(0x428,0x430),0x6d:(0x2b4,0x2bb),0x79:(0x328,0x330),0x85:(0x478,0x490)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
+    if new_callbacks_offset == 0x590 and callbacks_offset == 0x4d0:
+        layout = {0x50:(0x430,0x4f0),0x85:(0x490,0x550)}
     expected_status = signature(old, new, baseline['status_rva'],166, layout_replacements=layout)
     if status != expected_status:
         raise InspectionError('Status export no longer matches verified implementation')
@@ -188,7 +190,7 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0, new_
             if i.mnemonic!='call' or i.operands[0].type!=X86_OP_IMM:
                 continue
             address=i.operands[0].imm
-            body=image.code(address,0x400)
+            body=image.code(address,0x800)
             if any(j.op_str==f'qword ptr [rdi + {cb_offset:#x}], rsi' for j in body) and any(j.op_str==f'rcx, [rdi + {mdl_offset:#x}]' for j in body):
                 candidates.append(address)
         return unique(candidates,'overlay constructor with callback/model layout')
@@ -250,6 +252,20 @@ def main():
         if old.export('DingoSDKOverlayGetStatus') != baseline['status_rva']:
             raise InspectionError('Baseline export differs from compiled profile')
         a,b = source_blocks(args.baseline_source),source_blocks(args.source)
+        if args.version == "2.0.6" and old_version == "2.0.5":
+            additions = {
+                'Engine/Game/Skater/first_person_spring.h:Settings': ['boolcamera_cycle=false;'],
+                'Extension/UI/Overlay/overlay.h:DebugAction': ['set_first_person_camera_cycle,'],
+                'Extension/UI/Overlay/overlay.h:Model': ['BoardBreakModelboard_break;'],
+                'Extension/UI/Overlay/overlay_internal.h:State': [
+                    'staticconstexprstd::size_tmore_swapchains=3;',
+                    'std::array<Hook,more_swapchains>present_more,present1_more,resize_more,resize1_more;'],
+            }
+            for key, edits in additions.items():
+                for edit in edits:
+                    if b[key].count(edit) != 1:
+                        raise InspectionError('Reviewed 2.0.6 addition missing: '+edit)
+                    b[key] = b[key].replace(edit, '', 1)
         # Reviewed 2.0.3 additions: RoadRash follows the bridge's model prefix;
         # State gains input flags and two resource pointers before callbacks.
         # Require precisely these source edits; arbitrary layout changes still fail.
@@ -274,9 +290,10 @@ def main():
         changed = [key for key in a if a[key] != b[key]]
         if changed:
             raise InspectionError('Source layout/API changed; investigate: '+', '.join(changed))
-        result = inspect(old,new,baseline,0x4d0 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4b8 if old_version.startswith("2.") else 0x4b0,
-                         0x500 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4e8 if old_version.startswith("2.") else 0x4e0,
-                         0x4d0 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None,0x500 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None)
+        result = inspect(old,new,baseline,0x590 if old_version == "2.0.6" else 0x4d0 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4b8 if old_version.startswith("2.") else 0x4b0,
+                         0x5c0 if old_version == "2.0.6" else 0x500 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4e8 if old_version.startswith("2.") else 0x4e0,
+                         0x590 if args.version == "2.0.6" else 0x4d0 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None,
+                         0x5c0 if args.version == "2.0.6" else 0x500 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None)
         print(f'{old_version} -> {args.version}\nSHA-256: {new.digest}')
         for name in FIELDS:
             print(f'{name:24} {baseline[name]:#010x} -> {result[name]:#010x}  OK')
