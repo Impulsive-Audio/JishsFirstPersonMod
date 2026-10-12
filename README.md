@@ -18,6 +18,7 @@ Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-gam
 - Optional third person while bailing and first person on board only. In full mode with third-person bailing off, first-person bails follow the headâ€™s full rotation and position; right-stick camera look resumes when native movement control is verified.
 - Coordination with native stabilization, Follow flips and spectator camera ownership.
 - Saved settings, binding recording and a recommended preset.
+- Short menu explanations with (?) hover help, including disabled options.
 
 ## Compatibility mode
 

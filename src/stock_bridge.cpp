@@ -130,7 +130,7 @@ bool queue_hook(void* user,const Request& wire,char* result,std::size_t size) {
             auto effective=wire;effective.enabled=false;
             const bool accepted=original_queue(user,effective,result,size);
             if(accepted) cycle_requests.accepted(false);
-            if(accepted && result && size) strncpy_s(result,size,"First Person In Camera Cycle is disabled while Third person while bailing is enabled.",_TRUNCATE);
+            if(accepted && result && size) strncpy_s(result,size,"First Person In Camera Cycle stays off while Third person while bailing is on.",_TRUNCATE);
             return accepted;
         }
         const bool accepted=original_queue(user,wire,result,size);
@@ -179,7 +179,7 @@ bool console_hook(void* user,const char* command,char* result,std::size_t size) 
         const bool accepted=request_user_first_person(!master);
         if(result && size) {
             if(accepted) result[0]=0;
-            else strncpy_s(result,size,"Native First Person request rejected.",_TRUNCATE);
+            else strncpy_s(result,size,"Could not change view. Check ReSkate's menu for details.",_TRUNCATE);
         }
         return accepted;
     }
@@ -213,7 +213,7 @@ void read_hook(void* user,void* model) {
     if(intent>=0 && (debug->first_person==(intent!=0) || GetTickCount64()-intent_time.load()>3000)) activation_intent=-1;
     auto message=native_string(reinterpret_cast<std::uintptr_t>(debug)+(debug->camera_available ? debug_status_offset():camera_issue_offset()));
     if(game_camera_suspended()) message=game_camera_status();
-    if(message.empty()) message=debug->camera_available ? "Ready. ReSkate owns the first-person camera.":"Waiting for ReSkate's native camera.";
+    if(message.empty()) message=debug->camera_available ? "Camera ready.":"Waiting for ReSkate's camera.";
     publish_runtime(debug->first_person,debug->camera_available,message);
     if(snapshot.config.look_only) {
         const auto comfort=comfort_snapshot();

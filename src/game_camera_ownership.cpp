@@ -29,8 +29,8 @@ bool query_spectator(bool& result) noexcept {
 bool game_camera_suspended() { return suspended.load(); }
 bool game_camera_managing() { return managing.load(); }
 const char* game_camera_status() {
-    return suspended.load() ? "First Person armed - game spectator camera owns the view.":
-        !spectator_query.load() ? "Game camera observer unavailable; see the mod log.":"";
+    return suspended.load() ? "First person is paused while spectating.":
+        !spectator_query.load() ? "Spectator camera detection is unavailable. See the mod log.":"";
 }
 void acknowledge_game_camera(bool master,bool active) {
     std::lock_guard lock(ownership_mutex);policy.acknowledge(master,active);managing=policy.managing;

@@ -24,7 +24,7 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
             next.look_only=command.enabled;enabled_.reset();model_.requested_enabled.reset();immediate=true;break;
         case CommandKind::spring_on_foot: next.disable_spring_on_foot=command.enabled;immediate=true;break;
         case CommandKind::menu_key:
-            if(native_key_overlap(command.action,next.native)) throw std::runtime_error("That panel key is used by a native ReSkate control.");
+            if(native_key_overlap(command.action,next.native)) throw std::runtime_error("That panel key is already used by ReSkate.");
             next.menu_key=command.action;immediate=true;break;
         case CommandKind::recommended_preset:
             next=command.preset;next.cycle_restore_pending=model_.config.cycle_restore_pending;next.cycle_restore_enabled=model_.config.cycle_restore_enabled;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.look_only=model_.config.look_only;
@@ -63,17 +63,17 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         if(command.kind==CommandKind::binding) {
             if(!dingosdk::valid_controller_combo(command.mask)) throw std::runtime_error("Unsupported controller buttons.");
             if(command.mask) {
-                if(native_binding_overlap(command.mask,next.native)) throw std::runtime_error("That combo overlaps a native ReSkate control.");
-                if(!next.native.active) for(auto reserved:next.reserved) if(reserved==command.mask) throw std::runtime_error("That combo is used by a stock Noclip or boost control.");
-                if(command.action!=0 && next.toggle==command.mask) throw std::runtime_error("That combo is already assigned to First Person.");
-                for(unsigned i=0;i<4;++i) if(command.action!=i+1 && next.look[i].combo==command.mask) throw std::runtime_error("That combo is already assigned to a look control.");
+                if(native_binding_overlap(command.mask,next.native)) throw std::runtime_error("Those buttons are already used by ReSkate.");
+                if(!next.native.active) for(auto reserved:next.reserved) if(reserved==command.mask) throw std::runtime_error("Those buttons are already used for Noclip or a boost.");
+                if(command.action!=0 && next.toggle==command.mask) throw std::runtime_error("Those buttons are already used for First Person.");
+                for(unsigned i=0;i<4;++i) if(command.action!=i+1 && next.look[i].combo==command.mask) throw std::runtime_error("Those buttons are already used for a glance.");
             }
         }
         model_.config=next; ++model_.revision; model_.unsaved=true;
         update_binding_conflicts();
         due_=now+(immediate ? 0:750);
         model_.feedback=command.kind==CommandKind::recommended_preset ?
-            (model_.binding_conflict ? "Recommended preset applied. Marked hotkeys overlap native controls and are paused; re-record those bindings. Saving settings…":"Recommended preset applied. Saving settings…"):
+            (model_.binding_conflict ? "Preset applied. Buttons already used by another control are paused. Choose new buttons. Saving settings…":"Recommended preset applied. Saving settings…"):
             "Saving settings…"; return true;
     } catch(const std::exception& e) { model_.feedback=e.what(); return false; }
 }
@@ -81,7 +81,7 @@ MenuSnapshot SettingsStore::snapshot() const { std::lock_guard lock(mutex_); ret
 void SettingsStore::set_feedback(const std::string& text) { std::lock_guard lock(mutex_); model_.feedback=text; }
 void SettingsStore::mark_enabled_queued(bool accepted) {
     std::lock_guard lock(mutex_);enabled_.reset();
-    if(!accepted) { model_.requested_enabled.reset();model_.feedback="Native First Person request rejected; see the stock menu status."; }
+    if(!accepted) { model_.requested_enabled.reset();model_.feedback="Could not change view. Check ReSkate's menu for details."; }
 }
 void SettingsStore::acknowledge_master(bool enabled) {
     std::lock_guard lock(mutex_);
@@ -90,7 +90,7 @@ void SettingsStore::acknowledge_master(bool enabled) {
 void SettingsStore::update_binding_conflicts() {
     model_.conflicts=find_binding_conflicts(model_.config);
     model_.binding_conflict=model_.conflicts.any();
-    if(model_.binding_conflict) model_.feedback="Only conflicting bindings are paused. Clear or re-record the marked binding; right-stick look remains available.";
+    if(model_.binding_conflict) model_.feedback="Buttons already used by another control are paused. Clear or record new buttons. Right-stick look still works.";
 }
 void SettingsStore::refresh_native_controls(const NativeControls& native) {
     std::lock_guard lock(mutex_);if(model_.config.native==native) return;
@@ -119,10 +119,11 @@ void SettingsStore::flush_due(std::uint64_t now) {
     try {
         write_config(path_,next);
         std::lock_guard lock(mutex_);
-        if(revision==model_.revision) { model_.unsaved=false; model_.feedback=model_.binding_conflict ? "Settings saved. Marked hotkeys overlap native controls and are paused; re-record those bindings.":"Settings saved."; }
+        if(revision==model_.revision) { model_.unsaved=false; model_.feedback=model_.binding_conflict ? "Settings saved. Buttons already used by another control are paused. Choose new buttons.":"Settings saved."; }
     } catch(const std::exception& e) {
         std::lock_guard lock(mutex_);
-        model_.feedback=std::string("Applied, but not saved: ")+e.what();
+        log(std::string("Settings save failed: ")+e.what());
+        model_.feedback="Applied, but not saved. Check folder permissions and retry. See the mod log for details.";
         due_=~std::uint64_t{}; // Retry explicitly; never hammer an unwritable disk.
     }
 }
@@ -260,7 +261,7 @@ bool initialize_settings() {
     profile_path=std::filesystem::path(local)/L"ReSkate/profiles/offline/reskate.sqlite3";
     const auto initial=load_initial_settings(target,module_directory(),profile_path);
     live_store=new SettingsStore(target,initial.config);
-    live_store->publish_runtime(false,false,"Waiting for the native camera.");
+    live_store->publish_runtime(false,false,"Waiting for ReSkate's camera.");
     log(initial.message);
     if(initial.save) {
         Command request; request.kind=CommandKind::retry_save; live_store->submit(request,GetTickCount64());
@@ -304,7 +305,10 @@ bool submit_command(const Command& command) {
         if(const auto sink=camera_sink.load()) {
             std::string error;
             if(!sink(before,menu_snapshot().config,error) && live_store)
-                live_store->set_feedback("Applied in mod; stock sync failed: "+error);
+            {
+                log("Stock settings sync failed: "+error);
+                live_store->set_feedback("Mod settings applied. ReSkate could not update its camera settings. See the mod log.");
+            }
         }
     }
     return true;
@@ -316,7 +320,8 @@ bool load_recommended_preset() {
         command.preset=read_config(module_directory()/L"presets/recommended.ini");
         return submit_command(command);
     } catch(const std::exception& error) {
-        live_store->set_feedback(std::string("Recommended preset could not load: ")+error.what());return false;
+        log(std::string("Recommended preset could not load: ")+error.what());
+        live_store->set_feedback("Could not load the recommended preset. See the mod log.");return false;
     }
 }
 std::optional<bool> take_enabled_command() { return live_store ? live_store->take_enabled():std::optional<bool>{}; }
