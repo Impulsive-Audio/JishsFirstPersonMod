@@ -27,7 +27,7 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
             if(native_key_overlap(command.action,next.native)) throw std::runtime_error("That panel key is used by a native ReSkate control.");
             next.menu_key=command.action;immediate=true;break;
         case CommandKind::recommended_preset:
-            next=command.preset;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.look_only=model_.config.look_only;
+            next=command.preset;next.cycle_restore_pending=model_.config.cycle_restore_pending;next.cycle_restore_enabled=model_.config.cycle_restore_enabled;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.look_only=model_.config.look_only;
             validate_config(next);
             immediate=true;break;
         case CommandKind::stick_settings: next.stick=command.stick;break;
@@ -49,6 +49,8 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         case CommandKind::look_settings:
             next.look_spring=command.spring; next.look_spring.offset={}; next.look_spring.rotation={};
             next.look_smoothing_initialized=true; break;
+        case CommandKind::cycle_restore:
+            next.cycle_restore_pending=command.action!=0;next.cycle_restore_enabled=command.enabled;immediate=true;break;
         case CommandKind::comfort_options:
             next.third_person_bailing=command.third_person_bailing; next.on_board_only=command.on_board_only;
             immediate=true; break;

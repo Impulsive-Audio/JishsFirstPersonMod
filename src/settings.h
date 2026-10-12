@@ -5,7 +5,7 @@
 #include <optional>
 
 namespace jishsfirstpersonmod {
-enum class CommandKind { look_only, set_enabled, binding, angle, camera_settings, retry_save, link_smoothing, look_settings, comfort_options, stick_settings, recommended_preset, menu_key, spring_on_foot, toggle_glances };
+enum class CommandKind { look_only, set_enabled, binding, angle, camera_settings, retry_save, link_smoothing, look_settings, comfort_options, stick_settings, recommended_preset, menu_key, spring_on_foot, toggle_glances, cycle_restore };
 struct Command {
     CommandKind kind{};
     unsigned action{}; // 0 toggle, 1..4 directional glances

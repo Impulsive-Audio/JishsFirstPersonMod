@@ -5,6 +5,8 @@ from pathlib import Path
 import pefile
 
 PROFILES = {
+    '8ae11491fca59317e561211e6abffb0e0dc26890a8845c8e1b0217c2c1a0a427':
+        (0x3f87e0, (0x410f08, 0x446898)),
     'dff7b0211996b596611019f44e2c6de7ca8c18a6fc65106c0e32100e06520d0f':
         (0x3e8940, (0x4037b8, 0x439138)),
     'ca9c103f85167ac6957e15ed45b999f59afc387d2722277114047f8e04fe6aaa':
@@ -29,6 +31,9 @@ def verify(path):
     if hashlib.sha256(data).hexdigest() == 'dff7b0211996b596611019f44e2c6de7ca8c18a6fc65106c0e32100e06520d0f':
         assert pe.get_data(0x4042c, 7) == bytes.fromhex('0fb683785f0000'), 'native binding availability offset changed'
         assert pe.get_data(0x40446, 6) == bytes.fromhex('8b837c5f0000'), 'native binding values offset changed'
+    if hashlib.sha256(data).hexdigest() == '8ae11491fca59317e561211e6abffb0e0dc26890a8845c8e1b0217c2c1a0a427':
+        assert pe.get_data(0x408ac, 7) == bytes.fromhex('0fb683785f0000'), 'native binding availability offset changed'
+        assert pe.get_data(0x408c6, 6) == bytes.fromhex('8b837c5f0000'), 'native binding values offset changed'
     assert pe.get_data(rva, len(PROLOGUE)) == PROLOGUE, 'native reader prologue changed'
     for caller in callers:
         call = pe.get_data(caller, 5)

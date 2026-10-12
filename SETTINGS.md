@@ -70,3 +70,7 @@ Enable **Compatibility mode (look controls only)** in the mod panel, or set `loo
 The single Toggle glance controls checkbox sits beside the glance bindings and defaults off. Off retains hold-to-glance behavior. On, press a glance combo to look and hold, press the same combo again to return, or press another direction to replace the previous selection. Releasing a direction rearms its combo while a modifier may remain held. Simultaneous new direction presses are ignored. Existing angles and smoothing still apply.
 
 Menus, focus loss, controller disconnection/change, leaving first person, blocked camera states, world/player changes and binding/angle/checkbox edits clear the selection. Neutral input is required when controls resume. The checkbox saves as toggle_glances; the selected direction is never saved. This works in full and compatibility modes.
+
+### Third-person bails and native camera cycling
+
+On ReSkate 2.0.6 and 2.0.7, enabling **Third person while bailing** automatically disables **First Person In Camera Cycle**. The mod menu shows this next to the bail option. The native preference is retained across restarts and preset changes, then restored when third-person bails is disabled. Editing the native camera-cycle preference while the override is active updates the preference to restore; the effective setting stays off. This also applies in Compatibility mode. Older ReSkate versions are unchanged.

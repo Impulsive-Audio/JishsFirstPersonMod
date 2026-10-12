@@ -33,7 +33,9 @@ inline constexpr NativeContract contracts[]{
     {"2.0.5","ca9c103f85167ac6957e15ed45b999f59afc387d2722277114047f8e04fe6aaa",
      0x3cbaa0,0x905458,0x6cd1c4,0x6cd1f0,0x217f30,0x8c22a0,0x8c2538,0x8c2548},
     {"2.0.6","dff7b0211996b596611019f44e2c6de7ca8c18a6fc65106c0e32100e06520d0f",
-     0x3e42f0,0x933fc0,0x6ea434,0x6ea460,0x21d4c0,0x8ee2a0,0x8ee540,0x8ee550}
+     0x3e42f0,0x933fc0,0x6ea434,0x6ea460,0x21d4c0,0x8ee2a0,0x8ee540,0x8ee550},
+    {"2.0.7","8ae11491fca59317e561211e6abffb0e0dc26890a8845c8e1b0217c2c1a0a427",
+     0x3f4190,0x94cf80,0x6fbc74,0x6fbca0,0x22a390,0x9063f0,0x906690,0x9066a0}
 };
 inline const NativeContract* selected=nullptr;
 inline const NativeContract& contract() { if(!selected) throw std::logic_error("ReSkate contract not validated");return *selected; }
@@ -50,17 +52,17 @@ inline const NativeContract* find_contract(const std::array<unsigned char,32>& h
 }
 inline constexpr std::size_t model_debug_offset=128;
 // Layout is a property of a reviewed profile, not of its movable export RVA.
-inline bool uses_v206_layout(const NativeContract* profile) { return profile && std::string_view(profile->version)=="2.0.6"; }
+inline bool uses_v206_layout(const NativeContract* profile) { return profile && (std::string_view(profile->version)=="2.0.6" || std::string_view(profile->version)=="2.0.7"); }
 inline bool uses_v2_layout(const NativeContract* profile) {
     if(!profile) return false;
     const std::string_view version(profile->version);
-    return version=="2.0.0" || version=="2.0.1" || version=="2.0.2" || version=="2.0.3" || version=="2.0.4" || version=="2.0.5" || version=="2.0.6";
+    return version=="2.0.0" || version=="2.0.1" || version=="2.0.2" || version=="2.0.3" || version=="2.0.4" || version=="2.0.5" || version=="2.0.6" || version=="2.0.7";
 }
 inline bool uses_v203_layout(const NativeContract* profile) { return profile && (std::string_view(profile->version)=="2.0.3" || std::string_view(profile->version)=="2.0.4" || std::string_view(profile->version)=="2.0.5"); }
 inline std::size_t profile_callbacks_offset(const NativeContract* profile) { return uses_v206_layout(profile) ? 0x590:uses_v203_layout(profile) ? 0x4d0:uses_v2_layout(profile) ? 0x4b8:0x4b0; }
 inline std::size_t profile_model_offset(const NativeContract* profile) { return uses_v206_layout(profile) ? 0x5c0:uses_v203_layout(profile) ? 0x500:uses_v2_layout(profile) ? 0x4e8:0x4e0; }
-inline std::uintptr_t native_sampler_rva() { return uses_v206_layout(selected) ? 0x21ec50:(std::string_view(contract().version)=="2.0.4" || std::string_view(contract().version)=="2.0.5") ? 0x2196c0:uses_v203_layout(selected) ? 0x210080:std::string_view(contract().version)=="2.0.2" ? 0x273020:0x26f810; }
-inline std::uintptr_t console_queue_rva() { return uses_v206_layout(selected) ? 0x41d90:(std::string_view(contract().version)=="2.0.4" || std::string_view(contract().version)=="2.0.5") ? 0x411b0:uses_v203_layout(selected) ? 0x40e30:std::string_view(contract().version)=="2.0.2" ? 0x3ec00:0x3ea30; }
+inline std::uintptr_t native_sampler_rva() { return std::string_view(contract().version)=="2.0.7" ? 0x22bb20:uses_v206_layout(selected) ? 0x21ec50:(std::string_view(contract().version)=="2.0.4" || std::string_view(contract().version)=="2.0.5") ? 0x2196c0:uses_v203_layout(selected) ? 0x210080:std::string_view(contract().version)=="2.0.2" ? 0x273020:0x26f810; }
+inline std::uintptr_t console_queue_rva() { return std::string_view(contract().version)=="2.0.7" ? 0x42210:uses_v206_layout(selected) ? 0x41d90:(std::string_view(contract().version)=="2.0.4" || std::string_view(contract().version)=="2.0.5") ? 0x411b0:uses_v203_layout(selected) ? 0x40e30:std::string_view(contract().version)=="2.0.2" ? 0x3ec00:0x3ea30; }
 inline std::size_t bindings_model_offset() { return uses_v206_layout(selected) ? 0x5f78:0x5f50; }
 inline bool is_v2() { return uses_v2_layout(selected); }
 inline std::size_t callbacks_offset() { return profile_callbacks_offset(selected); }

@@ -2,6 +2,7 @@
 #include "stock_contract.h"
 #include "bridge_resolver.h"
 #include "comfort_policy.h"
+#include "camera_cycle_override.h"
 #include "game_camera_ownership.h"
 #include "settings.h"
 #include "stick_runtime.h"
@@ -55,6 +56,12 @@ NativeControls read_native_controls(void* model) {
        flags[0]<=1 && flags[1]<=1 && flags[2]<=1) {
         native.stabilize=flags[0]!=0;native.follow_flips=flags[1]!=0;native.board_only=flags[2]!=0;
     }
+    if(uses_v206_layout(selected)) {
+        std::uint8_t cycle{};
+        if(dingosdk::memory::read(address+model_debug_offset+16+47,cycle) && cycle<=1) {
+            native.camera_cycle_available=true;native.camera_cycle=cycle!=0;
+        }
+    }
     std::uint8_t available{};
     const auto bindings_offset=bindings_model_offset();
     if(dingosdk::memory::read(address+bindings_offset,available) && available==1)
@@ -89,7 +96,48 @@ bool send_camera(const Config& before,const Config& after,std::string& error) {
     for(unsigned i=0;i<4;++i) if(a[i]!=b[i]) send(up+static_cast<int>(i),b[i]);
     return accepted;
 }
+CameraCycleRequests cycle_requests;
+bool remember_cycle_preference(bool pending,bool enabled) {
+    Command command;command.kind=CommandKind::cycle_restore;command.action=pending ? 1:0;command.enabled=enabled;
+    return submit_command(command);
+}
+void update_cycle_override(bool observed) {
+    if(!uses_v206_layout(selected)) return;
+    auto config=menu_snapshot().config;
+    if(config.third_person_bailing && !config.cycle_restore_pending) {
+        if(!remember_cycle_preference(true,observed)) return;
+        config=menu_snapshot().config;
+    }
+    if(!config.cycle_restore_pending) return;
+    const bool target=config.third_person_bailing ? false:config.cycle_restore_enabled;
+    if(cycle_requests.settled(observed,target)) {
+        if(!config.third_person_bailing) remember_cycle_preference(false,config.cycle_restore_enabled);
+        return;
+    }
+    if(!cycle_requests.attempt(target,GetTickCount64())) return;
+    std::string error;
+    if(queue_one({33,target,0},error)) {
+        cycle_requests.accepted(target);
+        log(target ? "Comfort restored First Person In Camera Cycle preference.":"Comfort disabled First Person In Camera Cycle while third-person bails is enabled.");
+    }
+    else log("Camera-cycle comfort override request failed: "+error);
+}
 bool queue_hook(void* user,const Request& wire,char* result,std::size_t size) {
+    if(compatibility::enabled() && uses_v206_layout(selected) && wire.action==33) {
+        const auto config=menu_snapshot().config;
+        if(config.third_person_bailing) {
+            if(!remember_cycle_preference(true,wire.enabled)) return false;
+            auto effective=wire;effective.enabled=false;
+            const bool accepted=original_queue(user,effective,result,size);
+            if(accepted) cycle_requests.accepted(false);
+            if(accepted && result && size) strncpy_s(result,size,"First Person In Camera Cycle is disabled while Third person while bailing is enabled.",_TRUNCATE);
+            return accepted;
+        }
+        const bool accepted=original_queue(user,wire,result,size);
+        if(accepted) cycle_requests.accepted(wire.enabled);
+        if(accepted && config.cycle_restore_pending) remember_cycle_preference(false,wire.enabled);
+        return accepted;
+    }
     Request request;
     if(!compatibility::enabled() || !from_native(wire,request)) return original_queue(user,wire,result,size);
     if(request.action==first_person) {
@@ -151,14 +199,15 @@ void read_hook(void* user,void* model) {
     const bool previously_observed=native_view_observed.exchange(true);
     native_ready=debug->camera_available;
     std::uint8_t cycle{};
-    if(uses_v206_layout(selected)) dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(debug)+16+47,cycle);
+    const bool cycle_valid=uses_v206_layout(selected) && dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(debug)+16+47,cycle) && cycle<=1;
     const auto comfort_before=comfort_snapshot();
-    if(native_camera_cycle_choice(cycle==1,previously_observed,previous_active,debug->first_person,
+    if(native_camera_cycle_choice(cycle==1 && !snapshot.config.third_person_bailing,previously_observed,previous_active,debug->first_person,
         debug->camera_available,activation_intent.load()>=0,comfort_before.suppressed,
         game_camera_suspended() || game_camera_managing())) {
         comfort_user_request(debug->first_person);
         log(debug->first_person ? "Native camera cycle entered First Person.":"Native camera cycle left First Person.");
     }
+    if(cycle_valid) update_cycle_override(cycle!=0);
     comfort_observe_native(debug->first_person);
     const auto intent=activation_intent.load();
     if(intent>=0 && (debug->first_person==(intent!=0) || GetTickCount64()-intent_time.load()>3000)) activation_intent=-1;

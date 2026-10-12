@@ -1,4 +1,4 @@
-param([string]$ModVersion = "1.24", [string]$ReSkateVersion = "2.0.6")
+param([string]$ModVersion = "1.25", [string]$ReSkateVersion = "2.0.7")
 $ErrorActionPreference = 'Stop'
 $releaseName = "JishsFirstPersonMod-$ModVersion-reskate-$ReSkateVersion"
 $releasePath = Join-Path $PSScriptRoot ($releaseName + '.zip')
@@ -18,7 +18,7 @@ try {
     try {
         foreach ($file in (Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File)) {
             $relative = [IO.Path]::GetRelativePath($PSScriptRoot, $file.FullName).Replace('\','/')
-            if ($relative -match '^(build|release|\.hook-tools|\.git)/|(^|/)__pycache__/|\.zip$|\.pyc$') { continue }
+            if ($relative -match '^(build|release|\.hook-tools|\.git)/|(^|/)__pycache__/|^build-output\.log$|\.zip$|\.pyc$') { continue }
             [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $relative, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
         }
     } finally { $archive.Dispose(); $stream.Dispose() }

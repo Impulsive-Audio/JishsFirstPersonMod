@@ -87,6 +87,8 @@ Config read_config(const std::filesystem::path& path) {
     cfg.look_spring.up=number("look_strength_up",50); cfg.look_spring.down=number("look_strength_down",50);
     cfg.look_spring.left=number("look_strength_left",50); cfg.look_spring.right=number("look_strength_right",50);
     cfg.third_person_bailing=boolean("third_person_bailing",false);
+    cfg.cycle_restore_pending=boolean("cycle_restore_pending",false);
+    cfg.cycle_restore_enabled=boolean("cycle_restore_enabled",false);
     cfg.on_board_only=boolean("on_board_only",false);
     cfg.disable_spring_on_foot=boolean("disable_spring_on_foot",false);
     cfg.toggle_glances=boolean("toggle_glances",false);
@@ -166,6 +168,7 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
             <<"\nlook_spring="<<cfg.look_spring.enabled<<"\nlook_strength_up="<<cfg.look_spring.up
             <<"\nlook_strength_down="<<cfg.look_spring.down<<"\nlook_strength_left="<<cfg.look_spring.left
             <<"\nlook_strength_right="<<cfg.look_spring.right<<"\nthird_person_bailing="<<cfg.third_person_bailing
+            <<"\ncycle_restore_pending="<<cfg.cycle_restore_pending<<"\ncycle_restore_enabled="<<cfg.cycle_restore_enabled
             <<"\non_board_only="<<cfg.on_board_only
             <<"\ndisable_spring_on_foot="<<cfg.disable_spring_on_foot<<'\n';
         out<<"stick_look="<<cfg.stick.enabled<<"\nstick_turn_character="<<cfg.stick.turn_character

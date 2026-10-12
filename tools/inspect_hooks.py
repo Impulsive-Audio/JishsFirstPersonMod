@@ -290,10 +290,10 @@ def main():
         changed = [key for key in a if a[key] != b[key]]
         if changed:
             raise InspectionError('Source layout/API changed; investigate: '+', '.join(changed))
-        result = inspect(old,new,baseline,0x590 if old_version == "2.0.6" else 0x4d0 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4b8 if old_version.startswith("2.") else 0x4b0,
-                         0x5c0 if old_version == "2.0.6" else 0x500 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4e8 if old_version.startswith("2.") else 0x4e0,
-                         0x590 if args.version == "2.0.6" else 0x4d0 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None,
-                         0x5c0 if args.version == "2.0.6" else 0x500 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None)
+        result = inspect(old,new,baseline,0x590 if old_version in ("2.0.6", "2.0.7") else 0x4d0 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4b8 if old_version.startswith("2.") else 0x4b0,
+                         0x5c0 if old_version in ("2.0.6", "2.0.7") else 0x500 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4e8 if old_version.startswith("2.") else 0x4e0,
+                         0x590 if args.version in ("2.0.6", "2.0.7") else 0x4d0 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None,
+                         0x5c0 if args.version in ("2.0.6", "2.0.7") else 0x500 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None)
         print(f'{old_version} -> {args.version}\nSHA-256: {new.digest}')
         for name in FIELDS:
             print(f'{name:24} {baseline[name]:#010x} -> {result[name]:#010x}  OK')

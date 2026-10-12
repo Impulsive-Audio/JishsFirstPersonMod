@@ -50,7 +50,7 @@ int main(int argc,char** argv) {
         check(!dingosdk::restore_owned_slot(&slot,reinterpret_cast<void*>(2),reinterpret_cast<void*>(1)) && slot==reinterpret_cast<void*>(3),"foreign callback overwritten during rollback");
         if(argc!=2) { std::cout<<"Empty/invalid image guards passed; historical fixtures tested separately\n";return 0; }
         const std::filesystem::path root=argv[1];
-        const std::filesystem::path paths[]{root/"history/ReSkate-1.1.5.dll",root/"history/ReSkate-1.1.6.dll",root/"ReSkate-1.1.7.dll",root/"release-1.1.8/ReSkate.dll",root/"ReSkate-2.0.0.dll",root/"ReSkate-2.0.1.dll",root/"ReSkate-2.0.2.dll",root/"ReSkate-2.0.3.dll",root/"ReSkate-2.0.4.dll",root/"ReSkate-2.0.5.dll",root/"ReSkate-2.0.6.dll"};
+        const std::filesystem::path paths[]{root/"history/ReSkate-1.1.5.dll",root/"history/ReSkate-1.1.6.dll",root/"ReSkate-1.1.7.dll",root/"release-1.1.8/ReSkate.dll",root/"ReSkate-2.0.0.dll",root/"ReSkate-2.0.1.dll",root/"ReSkate-2.0.2.dll",root/"ReSkate-2.0.3.dll",root/"ReSkate-2.0.4.dll",root/"ReSkate-2.0.5.dll",root/"ReSkate-2.0.6.dll",root/"ReSkate-2.0.7.dll"};
         for(unsigned i=0;i<std::size(paths);++i) {
             auto image=load(paths[i]);const auto& expected=stock_contract::contracts[i];
             const auto hash=hash_of(expected.sha256);const auto detected=resolve(image,hash,true);

@@ -8,6 +8,7 @@ from pathlib import Path
 import pefile
 
 PROFILES = {
+    '8ae11491fca59317e561211e6abffb0e0dc26890a8845c8e1b0217c2c1a0a427': '2.0.7',
     'dff7b0211996b596611019f44e2c6de7ca8c18a6fc65106c0e32100e06520d0f': '2.0.6',
     'ca9c103f85167ac6957e15ed45b999f59afc387d2722277114047f8e04fe6aaa': '2.0.5',
     '9259c3de99626d6a9d6083b337927bc948ee144dbf4e698f7733148979aeb528': '2.0.4',
@@ -38,6 +39,8 @@ def verify(path):
             rva = 0x2196c0 if name == "native first-person sampler" else 0x411b0
         if PROFILES[digest] == "2.0.6":
             rva = 0x21ec50 if name == "native first-person sampler" else 0x41d90
+        if PROFILES[digest] == "2.0.7":
+            rva = 0x22bb20 if name == "native first-person sampler" else 0x42210
         expected = bytes.fromhex(hex_bytes)
         section = pe.get_section_by_rva(rva)
         if section is None or not section.Characteristics & 0x20000000:
@@ -46,8 +49,8 @@ def verify(path):
             raise ValueError(f'{name} prologue differs')
     # Both released DLLs call the same free-function sampler from the render
     # path and FrameSpring::sample. Check exact E8 relative call destinations.
-    sampler = 0x21ec50 if PROFILES[digest] == "2.0.6" else 0x2196c0 if PROFILES[digest] in ("2.0.4", "2.0.5") else 0x210080 if PROFILES[digest] == "2.0.3" else 0x273020 if PROFILES[digest] == "2.0.2" else 0x26f810
-    calls = (0x21d262, 0x21dd4b) if PROFILES[digest] == "2.0.6" else (0x217cd2, 0x2187bb) if PROFILES[digest] in ("2.0.4", "2.0.5") else (0x20e692, 0x20f17b) if PROFILES[digest] == "2.0.3" else (0x271632, 0x27211b) if PROFILES[digest] == "2.0.2" else (0x26de22, 0x26e90b)
+    sampler = 0x22bb20 if PROFILES[digest] == "2.0.7" else 0x21ec50 if PROFILES[digest] == "2.0.6" else 0x2196c0 if PROFILES[digest] in ("2.0.4", "2.0.5") else 0x210080 if PROFILES[digest] == "2.0.3" else 0x273020 if PROFILES[digest] == "2.0.2" else 0x26f810
+    calls = (0x22a132, 0x22ac1b) if PROFILES[digest] == "2.0.7" else (0x21d262, 0x21dd4b) if PROFILES[digest] == "2.0.6" else (0x217cd2, 0x2187bb) if PROFILES[digest] in ("2.0.4", "2.0.5") else (0x20e692, 0x20f17b) if PROFILES[digest] == "2.0.3" else (0x271632, 0x27211b) if PROFILES[digest] == "2.0.2" else (0x26de22, 0x26e90b)
     for call_rva in calls:
         call = pe.get_data(call_rva, 5)
         if len(call) != 5 or call[0] != 0xe8:

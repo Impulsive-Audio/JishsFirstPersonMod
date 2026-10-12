@@ -59,6 +59,26 @@ int main() {
     command.kind=CommandKind::look_only;command.enabled=false;
     check(store.submit(command,8) && !store.snapshot().config.look_only && store.snapshot().config.third_person_bailing,
         "leaving compatibility lost saved settings");
+    // Preserve the native preference when ReSkate has saved the effective off
+    // value, including a game restart and a recommended preset change.
+    command.kind=CommandKind::cycle_restore;command.action=1;command.enabled=true;
+    check(store.submit(command,9),"native camera-cycle preference capture failed");
+    store.flush_due(9);
+    auto retained=read_config(path);
+    check(retained.cycle_restore_pending && retained.cycle_restore_enabled,"camera-cycle preference lost on restart");
+    SettingsStore restarted(path,retained);
+    command.kind=CommandKind::recommended_preset;command.preset=Config{};
+    check(restarted.submit(command,10),"preset failed during camera-cycle override");
+    retained=restarted.snapshot().config;
+    check(retained.cycle_restore_pending && retained.cycle_restore_enabled,"preset erased camera-cycle restoration");
+    command.kind=CommandKind::cycle_restore;command.action=1;command.enabled=false;
+    check(restarted.submit(command,11),"native preference edit rejected during override");
+    restarted.flush_due(11);retained=read_config(path);
+    check(retained.cycle_restore_pending && !retained.cycle_restore_enabled,"latest native preference not retained");
+    command.action=0;
+    check(restarted.submit(command,12),"camera-cycle restoration acknowledgement failed");
+    restarted.flush_due(12);
+    check(!read_config(path).cycle_restore_pending,"completed restoration survived as pending");
     ComfortPolicy policy;PlayerState riding{1,true,true,true,true,false,100};
     check(!policy.desired(riding,true,true),"uninitialized policy guessed master mode");
     policy.observe_native(true);

@@ -20,6 +20,7 @@ struct Config {
     dingosdk::first_person::Settings look_spring;
     bool look_only=false;
     bool third_person_bailing=false, on_board_only=false;
+    bool cycle_restore_pending=false,cycle_restore_enabled=false; // Native preference retained during comfort override.
     bool disable_spring_on_foot=false;
     StickSettings stick;
     std::array<std::uint32_t,3> reserved{};

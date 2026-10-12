@@ -146,6 +146,10 @@ void draw_panel_frame(const PanelFrame& frame) {
         bool enabled=model.requested_enabled.value_or(comfort.initialized ? comfort.master:model.active);
         if(ImGui::Checkbox("Enable First Person",&enabled)) { Command command; command.kind=CommandKind::set_enabled; command.enabled=enabled; submit_command(command); }
         if(native_key_overlap(config.menu_key,config.native)) ImGui::TextWrapped("Panel hotkey overlaps a ReSkate binding. Open this panel with Insert and choose another panel key.");
+        if(config.native.camera_cycle_available && config.third_person_bailing)
+            ImGui::TextWrapped("First Person In Camera Cycle is automatically disabled while Third person while bailing is enabled. Your previous camera-cycle preference is restored when you turn this off.");
+        else if(config.native.camera_cycle_available && config.cycle_restore_pending)
+            ImGui::TextWrapped("Restoring your First Person In Camera Cycle preference...");
         if(config.native.active) ImGui::TextWrapped("ReSkate hotkeys also control First Person. A conflicting mod chord is paused to avoid a double toggle; other mod bindings remain available.");
         if(model.requested_enabled) ImGui::TextWrapped("View change queued until the native camera is ready.");
         if(!model.status.empty()) ImGui::TextWrapped("%s",model.status.c_str());

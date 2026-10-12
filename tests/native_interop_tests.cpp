@@ -3,6 +3,7 @@
 #include "bail_view.h"
 #include "stick_look.h"
 #include "native_controls.h"
+#include "camera_cycle_override.h"
 #include <iostream>
 #include <stdexcept>
 using namespace jishsfirstpersonmod;
@@ -22,6 +23,16 @@ int main() {
         !native_camera_cycle_choice(true,true,true,false,true,false,true,false) &&
         !native_camera_cycle_choice(true,true,true,false,true,false,false,true) &&
         !native_camera_cycle_choice(false,true,true,false,true,false,false,false),"comfort/game-owned transition interpreted as camera cycle choice");
+    CameraCycleRequests requests;
+    check(!requests.settled(true,false) && requests.attempt(false,0),"enabled native camera cycle was not disabled");
+    requests.accepted(false);
+    check(!requests.settled(true,true),"queued disable was mistaken for completed restoration");
+    check(requests.attempt(true,1),"rapid comfort toggle did not queue restoration immediately");
+    requests.accepted(true);
+    check(!requests.settled(false,true),"restoration completed before native acknowledgement");
+    check(!requests.attempt(true,500) && requests.attempt(true,1001),"delayed/rejected request retry flooded or stopped");
+    check(requests.settled(true,true),"native restoration was not acknowledged");
+    check(requests.settled(false,false),"already disabled preference unnecessarily changed");
     const auto recorded=read_native_recording([](NativeRecordingInput* input,bool allow_menu) {
         check(allow_menu,"recording did not request stock menu input bypass");
         input->available=true;input->buttons=0x301;input->device=3;
