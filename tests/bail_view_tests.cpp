@@ -190,8 +190,11 @@ int main(int argc,char** argv) {
         check(view.info().getup_camera_phase==1 && !view.info().attached,"detached camera released early");
         const Vec3 previous{locked[12],locked[13],locked[14]},actual{output[12],output[13],output[14]};
         const auto wanted=view.info().head_target;
-        const float fraction=1-std::exp(-.016f/.1f);auto expected_position=previous;
+        const float fraction=1-std::exp(-.016f/.05f);auto expected_position=previous;
         for(unsigned axis=0;axis<3;++axis) expected_position[axis]+=(wanted[axis]-previous[axis])*fraction;
+        if(length(subtract(actual,expected_position))>=.00002f)
+            std::cerr<<"Get-up frame "<<i<<": actual "<<actual[0]<<","<<actual[1]<<","<<actual[2]
+                <<" expected "<<expected_position[0]<<","<<expected_position[1]<<","<<expected_position[2]<<'\n';
         check(length(subtract(actual,expected_position))<.00002f,"get-up did not smoothly follow current head position");
         check(length(subtract(actual,wanted))<length(subtract(previous,wanted)),"head follower did not converge");
         if(i==30) check(std::abs(wrap_heading(matrix_heading(output)-held_heading))<.15f &&

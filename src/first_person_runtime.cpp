@@ -47,7 +47,7 @@ void tick_mod(std::uintptr_t client) noexcept {
                 input_config.toggle_glances!=settings.config.toggle_glances;
             for(unsigned i=0;i<4;++i) changed=changed || input_config.look[i].combo!=settings.config.look[i].combo ||
                 input_config.look[i].angle!=settings.config.look[i].angle;
-            if(changed) { toggle={};look={};clear_glance_filter();stop_stick_look();clear_stock_camera_blends(); }
+            if(changed) { toggle={};look={};stop_stick_look();clear_stock_camera_blends(); }
             input_config=settings.config; revision=settings.revision;
         }
         update_game_camera_ownership(client,base);
@@ -75,6 +75,12 @@ void tick_mod(std::uintptr_t client) noexcept {
         const auto input_route=route_controller_input(settings.config,blocked);
         const auto comfort=comfort_snapshot();
         const std::array<std::uintptr_t,4> current_owner{comfort.core,comfort.entity,comfort.context,comfort.rig};
+        // Publish toggle suppression before any head, camera or hair-related
+        // work. Reconcile actual binding/world changes here without opening an
+        // input gap just because glance settings or camera ownership changed.
+        const bool toggle_filter_blocked=!world || !stock_bridge_ready() || !menu_ready || visible || !controller.available || !focused;
+        const auto toggle_filter_route=route_controller_input(settings.config,toggle_filter_blocked);
+        publish_toggle_filter(settings.config.toggle,!toggle_filter_route.toggle_blocked,controller.device,context);
         if(current_owner!=glance_owner) { glance_owner=current_owner;look.reset(); }
         auto movement=live_camera_movement();
         if(!settings.config.look_only) tick_hippy_jump(settings.config,comfort,movement,source_flight_now());
@@ -93,7 +99,10 @@ void tick_mod(std::uintptr_t client) noexcept {
         if(pressed) log("Controller First Person chord detected.");
         const bool script_toggle=take_toggle_request();
         const bool glance_blocked=blocked || bail || native_camera || camera_interrupted || !stock_first_person_active() || comfort_snapshot().suppressed;
-        publish_glance_filter(input_route.glance,!glance_blocked,current_owner,controller.device);
+        // Camera readiness can briefly drop while the queued toggle executes.
+        // Its emote suppression belongs to live gameplay, not camera readiness.
+        publish_glance_filter(input_route.glance,!glance_blocked,current_owner,controller.device,
+            settings.config.toggle,!toggle_filter_route.toggle_blocked,context);
         const bool emote=glance_emote_active();
         if(emote) look.centre_for_emote(15);
         const auto angles=look.update(input_route.glance,controller,glance_blocked,settings.config.toggle_glances);

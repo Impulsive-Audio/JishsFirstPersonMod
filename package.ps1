@@ -1,4 +1,4 @@
-param([string]$ModVersion = "1.26", [string]$ReSkateVersion = "2.0.7")
+param([string]$ModVersion = "1.27", [string]$ReSkateVersion = "2.0.7")
 $ErrorActionPreference = 'Stop'
 $releaseName = "JishsFirstPersonMod-$ModVersion-reskate-$ReSkateVersion"
 $releasePath = Join-Path $PSScriptRoot ($releaseName + '.zip')
@@ -10,6 +10,9 @@ try {
         !(Test-Path release/scripts/Custom/presets/recommended.ini)) { throw 'Run build.ps1 before packaging.' }
     $legacyDll = Join-Path $PSScriptRoot 'release/JishsFirstPersonMod.dll'
     if (Test-Path -LiteralPath $legacyDll) { Remove-Item -LiteralPath $legacyDll }
+    $licensePaths = @('vendor/LICENSE','vendor/External/detours/LICENSE.txt','vendor/External/rapidjson/LICENSE.txt','vendor/External/imgui/LICENSE.txt')
+    $licenseText = ($licensePaths | ForEach-Object { "--- $_ ---`n" + [IO.File]::ReadAllText((Join-Path $PSScriptRoot $_)) }) -join "`n`n"
+    [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'release/LICENSE.txt'),$licenseText,[Text.UTF8Encoding]::new($false))
     Compress-Archive -Path release/Mods,release/scripts,release/dinput8.dll,release/LICENSE.txt -DestinationPath $releasePath -Force
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $sourcePath = Join-Path $PSScriptRoot ($releaseName + '-source.zip')

@@ -90,5 +90,77 @@ int main(){
  publish();qa_now+=10;classify(1,0,0x101);qa_now+=10;classify(1,0,0x100);
  publish_glance_filter(bindings,true,{1,2,3,4},2);check(!classify(1,0,0x101).emote,"controller-set change paired taps");
  check(hid_calls>0,"original shared HID handler bypassed");
+ // Camera toggles block emotes in third person too, with no double-tap bypass.
+ clear_glance_filter();qa_active=false;
+ auto publish_toggle=[&](){publish_glance_filter(bindings,qa_active,{1,2,3,4},1,0x101,true);};
+ auto toggle_poll=[&](unsigned buttons,unsigned slot=0){sample.Gamepad.wButtons=buttons;qa_now+=10;publish_toggle();XINPUT_STATE out{};filtered_state<0>(slot,&out);return out.Gamepad.wButtons;};
+ check(toggle_poll(0x1101)==0x1100,"Third-person toggle leaked emote or other buttons");
+ qa_active=true;check(toggle_poll(0x1101)==0x1100,"Entering first person lost held toggle suppression");
+ qa_active=false;check(toggle_poll(0x1001)==0x1000,"Releasing LB leaked held D-pad during exit");
+ toggle_poll(0);check(toggle_poll(0x101)==0x100&&!glance_emote_active(),"Toggle second tap bypassed emote block");
+ check(toggle_poll(0x102)==0x102,"Unbound D-pad direction blocked");
+ raw_controller_read=true;check(toggle_poll(0x101)==0x101,"Toggle sampler was filtered");raw_controller_read=false;
+ qa_menu=true;check(toggle_poll(0x101)==0x101,"Menu capture was overridden");qa_menu=false;
+ publish_glance_filter(bindings,false,{1,2,3,4},1,0x101,false);
+ check(!classify(1,0,0x101).consume,"Paused toggle consumed input");
+ for(auto kind:{dingosdk::PlayStationPad::dualshock4,dingosdk::PlayStationPad::dualsense})for(bool bluetooth:{false,true}){
+  clear_glance_filter();std::vector<std::uint8_t> report(bluetooth?78:64,0);
+  const unsigned start=bluetooth?(kind==dingosdk::PlayStationPad::dualsense?2:3):1;
+  const unsigned button=start+(kind==dingosdk::PlayStationPad::dualsense?7:4);
+  report[0]=bluetooth?(kind==dingosdk::PlayStationPad::dualsense?0x31:0x11):1;
+  for(unsigned i=0;i<4;++i)report[start+i]=128;
+  report[button+1]=1;StockHidRead read{reinterpret_cast<void*>(40),report.data(),static_cast<unsigned>(report.size()),kind};
+  auto submit_toggle=[&](unsigned hat,unsigned sequence){report[button]=0x20|hat;report[start+6]=static_cast<std::uint8_t>(sequence<<2);sony_report_crc(report);qa_now+=10;publish_toggle();filtered_stock_hid(read,static_cast<DWORD>(report.size()));};
+  submit_toggle(0,1);check((report[button]&15)==8 && report[button+1]==1 && (report[button]&0xf0)==0x20,"Sony third-person toggle leaked or altered other buttons");
+  const auto duplicate=report;filtered_stock_hid(read,static_cast<DWORD>(report.size()));check(report==duplicate,"Duplicate Sony toggle report changed");
+  qa_now+=1200;report[button]=0x20;report[button+1]=0;sony_report_crc(report);
+  filtered_stock_hid(read,static_cast<DWORD>(report.size()));
+  check((report[button]&15)==8,"Long Sony polling gap leaked held direction after L1 release");
+  if(bluetooth){const auto edited=report;sony_report_crc(report);check(report==edited,"Long-gap Sony checksum invalid");}
+  report[button+1]=1;
+  submit_toggle(8,2);submit_toggle(0,3);check((report[button]&15)==8&&!glance_emote_active(),"Sony toggle double tap bypassed suppression");
+  if(bluetooth){const auto edited=report;sony_report_crc(report);check(report==edited,"Sony toggle checksum invalid");}
+ }
+ qa_active=true;clear_glance_filter();
+ // Transient camera readiness/ownership changes must never route a toggle
+ // second tap into the glance policy's emote bypass.
+ qa_active=false;qa_now+=10;
+ publish_glance_filter(bindings,false,{1,2,3,4},1,0x101,true,99);
+ check(classify(1,0,0x101).consume==1,"Initial queued toggle was not consumed");
+ qa_now+=10;classify(1,0,0x100);
+ qa_active=true;qa_spectator=true;qa_now+=10;
+ publish_glance_filter(bindings,true,{0,0,0,0},1,0x101,true,99);
+ sample.Gamepad.wButtons=0x101;XINPUT_STATE transitioning{};
+ filtered_state<0>(0,&transitioning);
+ check(transitioning.Gamepad.wButtons==0x100&&!glance_emote_active(),"Transition toggle became a double-tap emote");
+ qa_now+=10;publish_glance_filter(bindings,false,{1,2,3,4},1,0x101,true,99);
+ check(classify(1,0,1).consume==1,"Transient owner change lost consumed hold after LB release");
+ qa_now+=150;check(classify(1,0,0x101).consume==1&&!glance_emote_active(),"Short camera rebuild stall leaked a toggle emote");
+ qa_now+=1200;sample.Gamepad.wButtons=0x101;filtered_state<0>(0,&transitioning);
+ check(transitioning.Gamepad.wButtons==0x100&&!glance_emote_active(),"Long camera/hair update leaked a toggle emote");
+ qa_now+=1200;sample.Gamepad.wButtons=1;filtered_state<0>(0,&transitioning);
+ check(transitioning.Gamepad.wButtons==0&&!glance_emote_active(),"Long polling gap forgot held D-pad after LB release");
+ sample.Gamepad.wButtons=0;filtered_state<0>(0,&transitioning);
+ qa_now+=1200;sample.Gamepad.wButtons=0x101;filtered_state<0>(0,&transitioning);
+ check(transitioning.Gamepad.wButtons==0x100&&!glance_emote_active(),"Second toggle after long producer gap bypassed suppression");
+ auto edited_bindings=bindings;edited_bindings[1].combo=0;
+ publish_glance_filter(edited_bindings,false,{0,0,0,0},1,0x101,true,99);
+ check(classify(1,0,1).consume==1,"Glance edit erased toggle release latch");
+ qa_focus=false;sample.Gamepad.wButtons=0x101;filtered_state<0>(0,&transitioning);
+ check(transitioning.Gamepad.wButtons==0x101,"Focus loss kept consuming toggle");qa_focus=true;
+ publish_glance_filter(bindings,false,{1,2,3,4},1,0x101,true,99);
+ check(!classify(1,0,1).consume,"Focus loss retained a stale held direction");
+ qa_spectator=false;qa_now+=10;classify(1,0,0);
+ publish_glance_filter(bindings,true,{1,2,3,4},1,0x101,true,100);
+ check(!classify(1,0,1).consume,"New world inherited toggle consumption");
+ ToggleEmoteBlock extra;
+ check(extra.update(0x1101,0x101)==0 && extra.update(0x1101,0x1101)==1 && extra.update(0x1101,1)==1 && extra.update(0x1101,0)==0,"Additional toggle buttons or release latch failed");
+ clear_glance_filter();
+ qa_active=true;qa_now+=10;publish_glance_filter(bindings,true,{1,2,3,4},1,0x108,true,101);
+ check(classify(1,0,0x101).consume==1,"Glance first tap failed beside toggle filter");
+ qa_now+=10;classify(1,0,0x100);
+ publish_toggle_filter(0x108,true,1,101);qa_now+=10;
+ check(classify(1,0,0x101).emote,"Early toggle publication erased glance double-tap state");
+ clear_glance_filter();
  std::cout<<"Actual XInput/shared HID adapters, private reads, interruptions and duplicated reports passed\n";
 }

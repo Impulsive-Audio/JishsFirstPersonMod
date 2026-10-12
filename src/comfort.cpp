@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "stock_bridge.h"
 #include "owned_hooks.h"
+#include "stick_runtime.h"
 #include <mutex>
 #include <atomic>
 namespace jishsfirstpersonmod {
@@ -12,6 +13,8 @@ namespace {
 std::mutex mutex;
 ComfortPolicy policy;
 BailLatch bail_latch;
+RecoveryCameraLatch recovery_camera;
+bool recovery_suppressed(const Config& config) { return config.third_person_recovery && !config.third_person_bailing && !config.look_only && recovery_camera.active; }
 PlayerState player;
 using ChooseState=std::uint32_t(*)(std::uintptr_t,std::uint32_t);
 ChooseState original_choose{};
@@ -118,29 +121,29 @@ PlayerState read_player(std::uintptr_t client,std::uintptr_t base) {
 ComfortSnapshot comfort_snapshot() {
     std::lock_guard lock(mutex);
     const auto config=menu_snapshot().config;
-    const auto desired=policy.desired(player,config.third_person_bailing,(config.on_board_only || config.native.board_only));
+    const auto desired=policy.desired(player,config.third_person_bailing,(config.on_board_only || config.native.board_only),recovery_suppressed(config));
     return {policy.master,policy.initialized,player_state_contract::board_verified,animation_contract.load() && offboard_contract.load(),
         player.valid,policy.master && desired && !*desired,player.physics,
         player.animation_valid,player.wipeout_request,player.animation_wipeout,player.recovery,
         player.selector_valid,player.selector_current,player.selector_next,
-        player.bailing,player.riding,policy.master && (config.third_person_bailing || (config.on_board_only || config.native.board_only)) && !desired,
+        player.bailing,player.riding,policy.master && (config.third_person_camera_switching() || (config.on_board_only || config.native.board_only)) && !desired,
         player.normal_foot,player.identity,player.client,player.entity,player.context,player.rig};
 }
 void comfort_user_request(bool enabled) {
     const auto config=menu_snapshot().config;
     std::lock_guard lock(mutex);policy.request(enabled);
-    const auto desired=policy.desired(player,config.third_person_bailing,(config.on_board_only || config.native.board_only));
+    const auto desired=policy.desired(player,config.third_person_bailing,(config.on_board_only || config.native.board_only),recovery_suppressed(config));
     suppression_owned=enabled && desired && !*desired;
 }
 bool comfort_requested_view(bool master) {
     const auto config=menu_snapshot().config;
     std::lock_guard lock(mutex);
     auto requested=policy;requested.request(master);
-    return !game_camera_suspended() && requested.desired(player,config.third_person_bailing,(config.on_board_only || config.native.board_only)).value_or(stock_first_person_requested());
+    return !game_camera_suspended() && requested.desired(player,config.third_person_bailing,(config.on_board_only || config.native.board_only),recovery_suppressed(config)).value_or(stock_first_person_requested());
 }
 void comfort_observe_native(bool active) { std::lock_guard lock(mutex); policy.observe_native(active); }
 void clear_comfort_state() {
-    { std::lock_guard lock(mutex); player={};bail_latch={}; }
+    { std::lock_guard lock(mutex); player={};bail_latch={};recovery_camera={}; }
     { std::lock_guard lock(selector_mutex); watched_selector=0;watched_until=sample_time=0; }
 }
 void update_comfort(std::uintptr_t client,std::uintptr_t base) {
@@ -150,7 +153,7 @@ void update_comfort(std::uintptr_t client,std::uintptr_t base) {
         std::lock_guard lock(selector_mutex);watched_selector=0;watched_until=sample_time=0;
     }
     std::optional<bool> desired;
-    bool master{};
+    bool master{},sample_recovery{};
     const auto config=menu_snapshot().config;
     {
         std::lock_guard lock(mutex);
@@ -170,6 +173,21 @@ void update_comfort(std::uintptr_t client,std::uintptr_t base) {
         player=next;
         desired=policy.desired(player,config.third_person_bailing,(config.on_board_only || config.native.board_only));
         master=policy.master;
+        sample_recovery=config.third_person_recovery || recovery_camera.active;
+    }
+    // Publish this tick's player before the existing movement reader takes its
+    // snapshot. Never call it while holding the comfort mutex.
+    if(sample_recovery) {
+        const auto movement=live_camera_movement();
+        std::lock_guard lock(mutex);
+        const bool previous=recovery_camera.active;
+        recovery_camera.update(config.third_person_recovery && !config.third_person_bailing && !config.look_only,
+            next.identity,next.valid && movement.mode && movement.recovery_verified,next.bailing,
+            movement.getting_up,movement.recovery_controllable,
+            !next.bailing && (next.riding || next.normal_foot),next.wipeout_event);
+        if(previous!=recovery_camera.active) log(recovery_camera.active ?
+            "Comfort: getting up; third person until normal control returns.":"Comfort: getting-up camera released.");
+        desired=policy.desired(player,config.third_person_bailing,(config.on_board_only || config.native.board_only),recovery_suppressed(config));
     }
     const bool ownership=game_camera_suspended();
     const bool ownership_managed=game_camera_managing();
@@ -180,7 +198,7 @@ void update_comfort(std::uintptr_t client,std::uintptr_t base) {
     static std::optional<bool> retry_target;
     if(!master) suppression_owned=false;
     const auto now=GetTickCount64();
-    if((config.third_person_bailing || (config.on_board_only || config.native.board_only) || suppression_owned || ownership_managed) && (next.valid || ownership) && desired && (ownership ? stock_bridge_ready():stock_camera_available()) &&
+    if((config.third_person_camera_switching() || (config.on_board_only || config.native.board_only) || suppression_owned || ownership_managed) && (next.valid || ownership) && desired && (ownership ? stock_bridge_ready():stock_camera_available()) &&
        *desired!=stock_first_person_requested() && (retry_target!=desired || now>=next_retry)) {
         retry_target=desired;
         next_retry=now+1000;

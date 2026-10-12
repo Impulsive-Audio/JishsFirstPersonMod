@@ -22,6 +22,7 @@ GetState originals[10]{};
 std::mutex glance_mutex;
 struct GlanceSource {
     GlanceEmotePolicy policy;
+    ToggleEmoteBlock toggle;
     GlanceEmotePolicy::Result result;
     ULONGLONG seen{};
     const void* buffer{};
@@ -33,23 +34,45 @@ dingosdk::FirstPersonLookControls glance_bindings{};
 std::array<std::uintptr_t,4> glance_owner{};
 unsigned glance_device{};
 bool glance_eligible{},emote_event{};
+std::atomic<bool> toggle_eligible{};
+std::uint32_t toggle_binding{};
+std::uintptr_t toggle_context{};
 ULONGLONG glance_published{};
 std::atomic<bool> emote_ready{};
 bool live_glances() {
-    if(!emote_ready || raw_controller_read || !stock_first_person_active() || !stock_first_person_requested() || game_camera_suspended()) return false;
+    if(!emote_ready || raw_controller_read) return false;
     DWORD pid{};const auto window=GetForegroundWindow();bool visible{};
     const auto comfort=comfort_snapshot();
     return window && GetWindowThreadProcessId(window,&pid) && pid==GetCurrentProcessId() &&
-        overlay_available(visible) && !visible && !comfort.suppressed && !comfort.bailing;
+        overlay_available(visible) && !visible && (toggle_eligible.load() ||
+        (!game_camera_suspended() && stock_first_person_active() && stock_first_person_requested() && !comfort.suppressed && !comfort.bailing));
 }
 GlanceEmotePolicy::Result classify(unsigned path,std::uintptr_t source,std::uint32_t buttons) {
     const auto now=GetTickCount64();
     const auto owner=comfort_snapshot();
-    if(!glance_eligible || now-glance_published>100 || glance_owner!=std::array<std::uintptr_t,4>{owner.core,owner.entity,owner.context,owner.rig}) { glance_sources.clear();emote_event=false;return {}; }
+    const auto age=now-glance_published;
+    // Toggle ownership lasts until an explicit context/input invalidation.
+    // Camera/hair work can stall the producer for more than half a second;
+    // a wall-clock timeout must never turn that same press into an emote.
+    const bool toggle_live=toggle_eligible;
+    const bool glance_live=glance_eligible && age<=100;
+    // Ordinary glance eligibility still expires independently.
+    if(!glance_live && !toggle_live) { glance_sources.clear();emote_event=false;return {}; }
+    const bool same_owner=glance_owner==std::array<std::uintptr_t,4>{owner.core,owner.entity,owner.context,owner.rig};
+    if(!same_owner && !toggle_live) { glance_sources.clear();emote_event=false;return {}; }
     if(glance_sources.size()>64) glance_sources.clear();
     auto& state=glance_sources[{path,source}];
-    if(state.seen && now-state.seen>500) state={};
-    state.seen=now;state.result=state.policy.update(glance_bindings,buttons,now);
+    if(state.seen && now-state.seen>500) {
+        state.policy.reset();state.result={};state.buffer=nullptr;state.edited.clear();
+        // Keep a consumed D-pad held until its actual release, even if LB
+        // releases first or the game has not polled this controller recently.
+        if(!toggle_live) state.toggle={};
+    }
+    state.seen=now;
+    const auto consumed=state.toggle.update(toggle_live ? toggle_binding:0,buttons);
+    if(consumed) { state.policy.reset();emote_event=false;state.result={consumed,0,false};return state.result; }
+    if(!same_owner || !glance_live || game_camera_suspended() || !stock_first_person_active() || !stock_first_person_requested() || owner.suppressed || owner.bailing) { state.policy.reset();state.result={};return {}; }
+    state.result=state.policy.update(glance_bindings,buttons,now);
     if(state.result.emote) emote_event=true;
     return state.result;
 }
@@ -159,12 +182,25 @@ void private_controller_handle(void* handle,bool add) {
     std::lock_guard lock(glance_mutex);
     if(add) private_handles.insert(handle);else private_handles.erase(handle);
 }
-void clear_glance_filter() { std::lock_guard lock(glance_mutex);glance_eligible=false;glance_sources.clear();emote_event=false; }
+void clear_glance_filter() { std::lock_guard lock(glance_mutex);glance_eligible=false;toggle_eligible=false;glance_sources.clear();emote_event=false; }
+void publish_toggle_filter(std::uint32_t toggle,bool allowed,unsigned device,std::uintptr_t context) {
+    std::lock_guard lock(glance_mutex);
+    if(toggle!=toggle_binding || allowed!=toggle_eligible.load() || device!=glance_device || context!=toggle_context) {
+        glance_sources.clear();emote_event=false;
+    }
+    toggle_binding=toggle;toggle_eligible=allowed;glance_device=device;toggle_context=context;
+}
 void publish_glance_filter(const dingosdk::FirstPersonLookControls& bindings,bool eligible,
-    const std::array<std::uintptr_t,4>& owner,unsigned device) {
-    std::lock_guard lock(glance_mutex);bool changed=eligible!=glance_eligible || owner!=glance_owner || device!=glance_device;
-    for(unsigned i=0;i<4;++i) changed=changed || bindings[i].combo!=glance_bindings[i].combo;
-    if(changed || !eligible) { glance_sources.clear();emote_event=false; }
+    const std::array<std::uintptr_t,4>& owner,unsigned device,std::uint32_t toggle,bool toggle_allowed,std::uintptr_t context) {
+    std::lock_guard lock(glance_mutex);const bool changed=device!=glance_device || toggle!=toggle_binding || toggle_allowed!=toggle_eligible.load() || context!=toggle_context;
+    bool glance_changed{};
+    for(unsigned i=0;i<4;++i) glance_changed=glance_changed || bindings[i].combo!=glance_bindings[i].combo;
+    if(changed || (!eligible && !toggle_allowed)) { glance_sources.clear();emote_event=false; }
+    else if(glance_changed || eligible!=glance_eligible || owner!=glance_owner) {
+        for(auto& [key,state]:glance_sources) { state.policy.reset();state.result={}; }
+        emote_event=false;
+    }
+    toggle_binding=toggle;toggle_eligible=toggle_allowed;toggle_context=context;
     glance_bindings=bindings;glance_owner=owner;glance_device=device;glance_eligible=eligible;glance_published=GetTickCount64();
 }
 bool glance_emote_active() {

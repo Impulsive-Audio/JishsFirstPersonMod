@@ -40,12 +40,24 @@ struct ComfortPolicy {
     bool initialized{}, master{};
     void observe_native(bool active) { if(!initialized) { initialized=true; master=active; } }
     void request(bool enabled) { initialized=true; master=enabled; }
-    std::optional<bool> desired(const PlayerState& state,bool bail,bool board) const {
+    std::optional<bool> desired(const PlayerState& state,bool bail,bool board,bool recovery=false) const {
         if(!initialized) return {};
         if(!master) return false;
+        if(recovery) return false;
         if(!bail && !board) return true;
         if(!state.valid || (bail && !state.bail_verified) || (board && !state.board_verified)) return {};
         return !(bail && state.bailing) && !(board && !state.riding);
+    }
+};
+struct RecoveryCameraLatch {
+    std::uintptr_t identity{};bool active{};
+    bool update(bool enabled,std::uintptr_t owner,bool valid,bool bail,bool getting_up,bool controlled,bool normal,bool renewed) {
+        if(!enabled || !valid) { *this={};return false; }
+        if(identity!=owner) { *this={};identity=owner; }
+        if(renewed) { active=false;return false; }
+        if(controlled || normal) active=false;
+        else if(bail && getting_up) active=true;
+        return active;
     }
 };
 struct ComfortSnapshot {

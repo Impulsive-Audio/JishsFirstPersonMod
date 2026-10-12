@@ -16,6 +16,24 @@ int main() {
     auto path=data_directory()/"settings.ini";
     SettingsStore store(path,initial);
     Command command; command.kind=CommandKind::link_smoothing;command.enabled=false;
+    check(!initial.third_person_recovery,"Recovery option unexpectedly enabled by default");
+    RecoveryCameraLatch recovery;
+    check(!recovery.update(true,1,true,true,false,false,false,false),"Third person started during the fall");
+    check(recovery.update(true,1,true,true,true,false,false,false),"Getting up did not select third person");
+    check(recovery.update(true,1,true,true,false,false,false,false),"Cleared getting-up flag released camera early");
+    check(!recovery.update(true,1,true,true,false,true,false,false),"Normal control did not restore first person");
+    recovery.update(true,1,true,true,true,false,false,false);
+    check(!recovery.update(true,1,true,true,true,false,false,true),"Repeated fall retained third-person recovery");
+    recovery.update(true,1,true,true,true,false,false,false);
+    check(!recovery.update(true,2,true,true,false,false,false,false),"New character inherited recovery suppression");
+    recovery.update(true,2,true,true,true,false,false,false);
+    check(!recovery.update(false,2,true,true,true,false,false,false),"Disabled option retained suppression");
+    recovery.update(true,2,true,true,true,false,false,false);
+    check(!recovery.update(true,2,false,true,true,false,false,false),"Invalid state retained suppression");
+    command.kind=CommandKind::third_person_recovery;command.enabled=true;
+    check(store.submit(command,0),"Recovery setting command failed");store.flush_due(0);
+    check(read_config(path).third_person_recovery,"Recovery setting did not persist");
+    command.kind=CommandKind::link_smoothing;command.enabled=false;
     check(store.submit(command,0),"unlink failed");
     auto config=store.snapshot().config;
     check(!config.link_smoothing && config.look_smoothing_initialized && config.look_spring.up==76 &&
@@ -89,11 +107,13 @@ int main() {
     auto foot=riding;foot.riding=false;foot.physics=504;
     check(policy.desired(foot,false,true)==false && policy.desired(foot,true,false)==true,"walking policy incorrect");
     policy.observe_native(false);
+    check(policy.desired(riding,false,false,true)==false && policy.master,"Recovery suppression erased first-person preference");
     check(policy.master && policy.desired(riding,true,true)==true,"temporary native suppression erased master intent");
     check(!policy.desired({},true,true),"invalid lifecycle state guessed a view");
     auto uncertain=foot;uncertain.bail_verified=false;
     check(!policy.desired(uncertain,true,false),"ambiguous offboard state inferred bail recovery");
     policy.request(false);check(policy.desired(riding,true,true)==false,"manual off restored first person");
+    check(policy.desired(riding,false,false,true)==false && !policy.master,"Recovery overrode manual first-person off");
     policy.request(true);check(policy.desired(riding,true,true)==true,"re-arming failed");
     check(player_state_contract::board_verified && player_state_contract::bail_verified,"documented comfort contracts disabled");
     for(auto state:{100u,101u,103u,200u,201u,400u,499u}) check(player_state_contract::riding(state)==true,"known board family rejected");

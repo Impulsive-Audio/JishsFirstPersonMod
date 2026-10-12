@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(JishsFirstPersonMod VERSION 1.26.0 LANGUAGES C CXX ASM_MASM)
+project(JishsFirstPersonMod VERSION 1.27.0 LANGUAGES C CXX ASM_MASM)
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "JishsFirstPersonMod requires Windows x64")
 endif()
@@ -43,7 +43,7 @@ target_include_directories(mod_menu_ui PUBLIC src vendor)
 target_link_libraries(mod_menu_ui PUBLIC mod_settings mod_imgui mod_menu_input)
 configure_file(assets/fonts.rc.in "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc" @ONLY)
 add_library(JishsFirstPersonMod SHARED
-    src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
+    src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/bail_collision.cpp src/first_person_hair.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
     src/proven_debug.cpp src/proven_input.cpp src/stick_runtime.cpp src/stick_input_filter.cpp vendor/Extension/UI/Overlay/playstation_input.cpp
     vendor/Engine/Game/Build/image_identity.cpp src/menu_renderer.cpp src/recording_input.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc")
@@ -53,6 +53,14 @@ target_link_libraries(JishsFirstPersonMod PRIVATE mod_menu_ui mod_hooks mod_comp
 set_target_properties(JishsFirstPersonMod PROPERTIES PREFIX "" OUTPUT_NAME "JishsFirstPersonMod")
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(first_person_hair_tests tests/first_person_hair_tests.cpp)
+    target_include_directories(first_person_hair_tests PRIVATE src vendor)
+    target_link_libraries(first_person_hair_tests PRIVATE mod_settings)
+    add_test(NAME first_person_bald_hair_restore_and_persistence COMMAND first_person_hair_tests)
+    add_executable(bail_collision_tests tests/bail_collision_tests.cpp)
+    target_include_directories(bail_collision_tests PRIVATE src vendor)
+    target_link_libraries(bail_collision_tests PRIVATE mod_settings)
+    add_test(NAME bail_collision_sweeps_recovery_and_persistence COMMAND bail_collision_tests)
     add_executable(glance_emote_tests tests/glance_emote_tests.cpp)
     target_include_directories(glance_emote_tests PRIVATE src vendor)
     add_test(NAME glance_emote_taps_holds_and_contract COMMAND glance_emote_tests)

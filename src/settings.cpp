@@ -20,6 +20,7 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         auto next=model_.config;
         bool immediate{};
         switch(command.kind) {
+        case CommandKind::third_person_recovery: next.third_person_recovery=command.enabled;immediate=true;break;
         case CommandKind::look_only:
             next.look_only=command.enabled;enabled_.reset();model_.requested_enabled.reset();immediate=true;break;
         case CommandKind::spring_on_foot: next.disable_spring_on_foot=command.enabled;immediate=true;break;
@@ -32,6 +33,8 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
             immediate=true;break;
         case CommandKind::stick_settings: next.stick=command.stick;break;
         case CommandKind::toggle_glances: next.toggle_glances=command.enabled;immediate=true;break;
+        case CommandKind::bail_collision: next.bail_camera_collision=command.enabled;immediate=true;break;
+        case CommandKind::bald_hair: next.bald_first_person=command.enabled;immediate=true;break;
         case CommandKind::binding:
             if(command.action>4) throw std::runtime_error("Unknown controller action.");
             if(command.action==0) next.toggle=command.mask; else next.look[command.action-1].combo=command.mask;

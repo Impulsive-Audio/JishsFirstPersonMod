@@ -9,6 +9,7 @@
 #include "camera_policy.h"
 #include "bail_camera_trace.h"
 #include "bail_view.h"
+#include "bail_collision.h"
 #include "owned_hooks.h"
 #include "Engine/Core/Platform/memory.h"
 #include "Engine/Game/Build/20260929/client_source_spawn.h"
@@ -32,6 +33,10 @@ std::mutex smoothing_mutex;
 LookSmoothing smoothing;
 CameraTransition transition;
 BailView bail_view;
+BailCollision collision;
+CollisionPoint collision_seed{},collision_player{};
+bool collision_seed_ready{},collision_player_ready{};
+std::uintptr_t collision_world{};
 std::uintptr_t smoothing_camera{};
 std::array<std::uintptr_t,5> transition_owner{};
 bool from_stock(void* caller) {
@@ -39,6 +44,7 @@ bool from_stock(void* caller) {
         reinterpret_cast<LPCWSTR>(caller),&owner) && owner==stock_module;
 }
 void reset_camera_smoothing() {
+    collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
     smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;
 }
 void transform_hook(std::uintptr_t camera,const Matrix* input) {
@@ -59,6 +65,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                     const std::array<std::uintptr_t,5> identity{state.core,state.client,state.entity,state.context,state.rig};
                     if(smoothing_camera!=camera || identity!=transition_owner) { reset_camera_smoothing();smoothing_camera=camera;transition_owner=identity; }
                     bail_view.reset();
+                    collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
                     if(camera_look_allowed(config,state,movement)) {
                         const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                         glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(config),{look_pitch.load(),look_yaw.load()},look_frame.load(),config.link_smoothing));
@@ -94,6 +101,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                     const bool previous_getup=bail_view.getup_episode();
                     const auto* player=movement.position_valid ? &movement.position:nullptr;
                     const bool control=movement.recovery_controllable || (!bail && normal);
+                    CollisionPoint normal_position{native[12],native[13],native[14]};
                     const bool renewed=bail_view.observe_wipeout_request(movement.recovery_verified && state.animation_valid,
                         unsigned(state.animation_wipeout) | (unsigned(state.wipeout_request)<<1));
                     matrix=bail_view.apply(native,head,bail,normal,frame,control,
@@ -119,7 +127,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         }
                         dingosdk::first_person::Settings handoff;
                         // Keep the displayed bail history for the normal-camera release blend.
-                        matrix=bail_view.finish(matrix,head,player,frame,control);
+                        matrix=bail_view.finish(matrix,head,player,frame,control,&normal_position);
                         if(owns_return) transition.reset();
                         else matrix=transition.apply(matrix,handoff,state.core,movement.mode,aim.active,frame,movement.state,
                             nullptr,nullptr,view.attached,recovery,true,false);
@@ -128,6 +136,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         view.head_target=final_view.head_target;view.attached=final_view.attached;view.getup_locked=final_view.getup_locked;
                     } else if(!valid) {
                         smoothing.reset();transition.reset();suspended=true;
+                        collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
                         bail_view.reset();view=bail_view.info();
                     } else {
                         if(!eligible) { smoothing.reset();suspended=true; }
@@ -145,11 +154,35 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         handoff.up=handoff.down=handoff.left=handoff.right=(mount_handoff || movement.mode==2) ? config.stick.mount_smoothing:config.stick.dismount_smoothing;
                         // Native attachment disables positional Spring, not saved handoff strengths.
                         const auto look_settings=glance_settings(config);
-                        matrix=bail_view.finish(matrix,head,player,frame,control);
+                        normal_position={matrix[12],matrix[13],matrix[14]};
+                        matrix=bail_view.finish(matrix,head,player,frame,control,&normal_position);
                         if(owns_return) transition.reset();
                         else matrix=transition.apply(matrix,handoff,state.core,movement.mode,aim.active,frame,movement.state,
                             &config.spring,&look_settings,attached,eligible,!eligible,mount_handoff);
-                        bail_view.remember(matrix,native,head,normal);view=bail_view.info();changed=true;
+                        view=bail_view.info();changed=true;
+                    }
+                    if(changed) {
+                        const CollisionPoint desired{matrix[12],matrix[13],matrix[14]};
+                        if(player && collision_player_ready && dingosdk::first_person::length(dingosdk::first_person::subtract(*player,collision_player))>5) {
+                            collision.reset();collision_seed_ready=false;
+                        }
+                        if(player) { collision_player=*player;collision_player_ready=true; }
+                        const bool protect=config.bail_camera_collision && !config.third_person_bailing && bail_view.collision_owned(bail);
+                        const auto world=protect ? bail_collision_world():0;
+                        if(protect && world) {
+                            if(collision_world!=world) { collision.reset();if(collision_world) collision_seed_ready=false;collision_world=world; }
+                            const CollisionPoint seed=collision_seed_ready ? collision_seed:CollisionPoint{native[12],native[13],native[14]};
+                            // During normal control this is the final composed
+                            // normal position (including head attachment), not
+                            // the stock camera position saved before composition.
+                            const CollisionPoint normal_target=normal_position;
+                            const auto corrected=collision.resolve(desired,seed,frame,[&](auto from,auto to,float radius) { return native_bail_sweep(world,from,to,radius); },
+                                control && bail_view.detached(),&normal_target,bail_view.position_return_remaining(frame));
+                            for(unsigned i=0;i<3;++i) matrix[12+i]=corrected[i];
+                            bail_view.accept_displayed_position(corrected);
+                        } else { collision.reset();collision_world=0; }
+                        collision_seed={matrix[12],matrix[13],matrix[14]};collision_seed_ready=true;
+                        if(!bail && valid) bail_view.remember(matrix,native,head,normal);
                     }
                 }
             }

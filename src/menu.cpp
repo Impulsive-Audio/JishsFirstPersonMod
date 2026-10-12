@@ -1,4 +1,6 @@
 #include "menu.h"
+#include "bail_collision.h"
+#include "first_person_hair.h"
 #include "comfort_policy.h"
 #include "player_state_contract.h"
 #include "stick_runtime.h"
@@ -181,13 +183,41 @@ void draw_panel_frame(const PanelFrame& frame) {
         help_marker("First person returns when you regain control. Button glances pause until the bail ends. With this off in full mode, the camera follows your head during bails. ReSkate stabilization and Follow flips pause while the mod follows your head; your saved settings are kept.");
         ImGui::EndDisabled();
         ImGui::TextWrapped("Switches to third person during bails.");
-        if(config.native.camera_cycle_available && config.third_person_bailing) {
+        if(!config.third_person_bailing) {
+            ImGui::BeginDisabled(config.look_only || !comfort.bail_available);
+            if(ImGui::Checkbox("Third person while getting up",&config.third_person_recovery)) {
+                Command command;command.kind=CommandKind::third_person_recovery;command.enabled=config.third_person_recovery;submit_command(command);
+            }
+            help_marker("Keeps the fall in first person, then lets ReSkate handle the camera while you get up. First person returns when you regain control.");
+            ImGui::EndDisabled();
+            ImGui::TextWrapped("Switches to third person while getting up. First person returns when you regain control.");
+            if(config.look_only) ImGui::TextWrapped("Turn off Compatibility mode to use this option.");
+        }
+        if(config.native.camera_cycle_available && config.third_person_camera_switching()) {
             ImGui::TextWrapped("First Person In Camera Cycle stays off while this is enabled. Your previous setting returns when you turn it off.");
             help_marker("Your camera-cycle preference is kept across restarts. Changes made in ReSkate while this is on become the setting restored later. The First Person checkbox and hotkey still work.");
         } else if(config.native.camera_cycle_available && config.cycle_restore_pending)
             ImGui::TextWrapped("Restoring your First Person In Camera Cycle setting...");
         if(!config.look_only && !config.third_person_bailing) ImGui::TextWrapped("The camera follows your head during bails. Stick look returns when you regain control.");
+        ImGui::BeginDisabled(config.look_only || config.third_person_bailing || !bail_collision_available());
+        if(ImGui::Checkbox("Camera collision during bails",&config.bail_camera_collision)) {
+            Command command;command.kind=CommandKind::bail_collision;command.enabled=config.bail_camera_collision;submit_command(command);
+        }
+        help_marker("Also applies while getting up if you stay in first person. The camera may move slightly away from your head near surfaces.");
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("Keeps the camera clear of floors and objects during first-person bails.");
+        if(config.look_only) ImGui::TextWrapped("Turn off Compatibility mode to use bail camera collision.");
+        else if(config.third_person_bailing) ImGui::TextWrapped("Turn off Third person while bailing to use bail camera collision.");
+        else if(!bail_collision_available()) ImGui::TextWrapped("Bail camera collision is unavailable. See the mod log.");
         if(!comfort.bail_available) ImGui::TextWrapped("Automatic bail switching is unavailable. See the mod log.");
+        ImGui::BeginDisabled(!first_person_hair_available());
+        if(ImGui::Checkbox("Bald in first person",&config.bald_first_person)) {
+            Command command;command.kind=CommandKind::bald_hair;command.enabled=config.bald_first_person;submit_command(command);
+        }
+        help_marker("Temporarily uses the smooth bald hairstyle on your screen. Other players see your original hair. Your hair returns in third person and when this is turned off. Hair colour and saved outfits are kept.");
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("Keeps long hair out of view. Other players see your original hair.");
+        if(!first_person_hair_available()) ImGui::TextWrapped("Temporary bald hairstyle is unavailable. See the mod log.");
         ImGui::BeginDisabled(!comfort.board_available);
         if(ImGui::Checkbox("First person on board only",&config.on_board_only)) comfort_change();
         help_marker("Uses third person while walking. First person returns when you get on the board.");
@@ -195,7 +225,8 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(!comfort.board_available) ImGui::TextWrapped("Board-only switching is unavailable. See the mod log.");
         if(config.native.board_only) ImGui::TextWrapped("ReSkate's Third person on foot is also enabled. Turn it off to use first person while walking.");
         if(comfort.suppressed) ImGui::TextWrapped("%s",config.third_person_bailing && comfort.bailing ?
-            "First person will return after the bail.":"First person will return when you get on the board.");
+            "First person will return after the bail.":config.third_person_recovery && comfort.bailing ?
+            "First person will return when you regain control.":"First person will return when you get on the board.");
         if(comfort.suspended) ImGui::TextWrapped("Automatic camera switching is paused. Waiting for your skater.");
         ImGui::Spacing(); section("ON-FOOT STICK LOOK");
         const auto stick_change=[&]() { Command command;command.kind=CommandKind::stick_settings;
@@ -286,6 +317,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(ImGui::Checkbox("Toggle glance controls",&config.toggle_glances)) {
             Command command;command.kind=CommandKind::toggle_glances;command.enabled=config.toggle_glances;submit_command(command);
         }
+        if((config.toggle&0x100) && (config.toggle&15)) ImGui::TextWrapped("LB/L1 + D-pad First Person buttons do not trigger emotes.");
         help_marker("Opening menus, leaving first person or interrupted controls clears a held glance. With toggle off, hold the buttons to glance; opposite directions cancel.");
         if(glance_emote_filter_ready()) ImGui::TextWrapped("Hold LB/L1 and tap a bound D-pad direction to glance. Double tap to emote; hold the second tap for a held emote.");
         else ImGui::TextWrapped("Glance emote blocking is unavailable. See the mod log.");

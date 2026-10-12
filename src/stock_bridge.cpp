@@ -104,33 +104,33 @@ bool remember_cycle_preference(bool pending,bool enabled) {
 void update_cycle_override(bool observed) {
     if(!uses_v206_layout(selected)) return;
     auto config=menu_snapshot().config;
-    if(config.third_person_bailing && !config.cycle_restore_pending) {
+    if(config.third_person_camera_switching() && !config.cycle_restore_pending) {
         if(!remember_cycle_preference(true,observed)) return;
         config=menu_snapshot().config;
     }
     if(!config.cycle_restore_pending) return;
-    const bool target=config.third_person_bailing ? false:config.cycle_restore_enabled;
+    const bool target=config.third_person_camera_switching() ? false:config.cycle_restore_enabled;
     if(cycle_requests.settled(observed,target)) {
-        if(!config.third_person_bailing) remember_cycle_preference(false,config.cycle_restore_enabled);
+        if(!config.third_person_camera_switching()) remember_cycle_preference(false,config.cycle_restore_enabled);
         return;
     }
     if(!cycle_requests.attempt(target,GetTickCount64())) return;
     std::string error;
     if(queue_one({33,target,0},error)) {
         cycle_requests.accepted(target);
-        log(target ? "Comfort restored First Person In Camera Cycle preference.":"Comfort disabled First Person In Camera Cycle while third-person bails is enabled.");
+        log(target ? "Comfort restored First Person In Camera Cycle preference.":"Comfort disabled First Person In Camera Cycle while automatic third-person bail/recovery switching is enabled.");
     }
     else log("Camera-cycle comfort override request failed: "+error);
 }
 bool queue_hook(void* user,const Request& wire,char* result,std::size_t size) {
     if(compatibility::enabled() && uses_v206_layout(selected) && wire.action==33) {
         const auto config=menu_snapshot().config;
-        if(config.third_person_bailing) {
+        if(config.third_person_camera_switching()) {
             if(!remember_cycle_preference(true,wire.enabled)) return false;
             auto effective=wire;effective.enabled=false;
             const bool accepted=original_queue(user,effective,result,size);
             if(accepted) cycle_requests.accepted(false);
-            if(accepted && result && size) strncpy_s(result,size,"First Person In Camera Cycle stays off while Third person while bailing is on.",_TRUNCATE);
+            if(accepted && result && size) strncpy_s(result,size,"First Person In Camera Cycle stays off while automatic third-person switching is on.",_TRUNCATE);
             return accepted;
         }
         const bool accepted=original_queue(user,wire,result,size);
@@ -201,7 +201,7 @@ void read_hook(void* user,void* model) {
     std::uint8_t cycle{};
     const bool cycle_valid=uses_v206_layout(selected) && dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(debug)+16+47,cycle) && cycle<=1;
     const auto comfort_before=comfort_snapshot();
-    if(native_camera_cycle_choice(cycle==1 && !snapshot.config.third_person_bailing,previously_observed,previous_active,debug->first_person,
+    if(native_camera_cycle_choice(cycle==1 && !snapshot.config.third_person_camera_switching(),previously_observed,previous_active,debug->first_person,
         debug->camera_available,activation_intent.load()>=0,comfort_before.suppressed,
         game_camera_suspended() || game_camera_managing())) {
         comfort_user_request(debug->first_person);
@@ -217,7 +217,7 @@ void read_hook(void* user,void* model) {
     publish_runtime(debug->first_person,debug->camera_available,message);
     if(snapshot.config.look_only) {
         const auto comfort=comfort_snapshot();
-        if(snapshot.config.on_board_only || snapshot.config.native.board_only || snapshot.config.third_person_bailing || game_camera_managing()) {
+        if(snapshot.config.on_board_only || snapshot.config.native.board_only || snapshot.config.third_person_camera_switching() || game_camera_managing()) {
             if(comfort.initialized) debug->first_person=comfort.master;
             if((comfort.suppressed || game_camera_suspended()) && !native_active.load()) acknowledge_master(comfort.master);
         }
@@ -260,7 +260,7 @@ void read_hook(void* user,void* model) {
     // Only the UI checkbox reflects master intent during comfort suppression.
     // The native camera state captured above and its ownership stay untouched.
     const auto comfort=comfort_snapshot();
-    if(snapshot.config.on_board_only || snapshot.config.native.board_only || snapshot.config.third_person_bailing || game_camera_managing()) {
+    if(snapshot.config.on_board_only || snapshot.config.native.board_only || snapshot.config.third_person_camera_switching() || game_camera_managing()) {
         if(comfort.initialized) debug->first_person=comfort.master;
         if((comfort.suppressed || game_camera_suspended()) && !native_active.load()) acknowledge_master(comfort.master);
     }

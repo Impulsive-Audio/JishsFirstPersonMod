@@ -4,6 +4,17 @@
 #include <bit>
 #include <span>
 namespace jishsfirstpersonmod {
+// Toggle presses are always consumed, without a double-tap emote bypass.
+class ToggleEmoteBlock {
+    std::uint32_t held_{};
+public:
+    std::uint32_t update(std::uint32_t combo,std::uint32_t buttons) {
+        held_&=buttons&15;
+        if((combo&0x100) && (combo&15) && dingosdk::valid_controller_combo(combo) && (buttons&combo)==combo)
+            held_|=combo&15;
+        return held_;
+    }
+};
 // One instance per physical input source. Times are monotonic milliseconds.
 class GlanceEmotePolicy {
     std::uint32_t previous_{}, consumed_{}, forwarded_{};

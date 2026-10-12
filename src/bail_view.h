@@ -20,7 +20,7 @@ class BailView {
     Quat displayed_{0,0,0,1},getup_heading_{0,0,0,1};Vec3 getup_tilt_{};
     bool displayed_ready_{},getting_up_{};double getup_started_{};float last_yaw_{};
     Vec3 displayed_position_{},getup_position_{},last_player_{};double position_time_{};
-    Quat blend_rotation_{0,0,0,1};bool blending_{},reattached_{},player_ready_{};double blend_started_{};
+    Quat blend_rotation_{0,0,0,1};bool blending_{},reattached_{},player_ready_{},position_returned_{};double blend_started_{};
     bool ready_{},calibrated_{};unsigned wipeout_request_{};
     double time_{};
     int phase_{};BailViewInfo info_{};
@@ -64,9 +64,9 @@ public:
         const bool discontinuity=ready_ && (now<time_ || now-time_>.25 || length(subtract(position(native),position(last_native_)))>5);
         if(discontinuity || (player && player_ready_ && length(subtract(*player,last_player_))>5)) reset();
         if(player) { last_player_=*player;player_ready_=true; }
-        if(renewed) { getting_up_=blending_=reattached_=false; }
+        if(renewed) { getting_up_=blending_=reattached_=position_returned_=false; }
         ready_=true;time_=now;last_native_=native;
-        if(!bail && !getting_up_) reattached_=false;
+        if(!bail && !getting_up_) { reattached_=false;position_returned_=false; }
         if(getting_up_ && (!head.valid || !calibrated_ || !player)) { reset();return native; }
         if(bail && getup_requested && !getting_up_ && !reattached_ && player && head.valid && calibrated_) {
             getting_up_=true;getup_started_=now;
@@ -104,26 +104,38 @@ public:
     // Called after look composition, before any ordinary handoff. This owns the
     // whole smoothed head-follow return, including frames after the bail latch clears.
     bool detached() const { return getting_up_; }
+    // Rotation continues blending after position has returned. It must not
+    // retain or reacquire the floor sphere during that remaining rotation.
+    bool collision_owned(bool bail) const { return !position_returned_ && (bail || getting_up_); }
+    double position_return_remaining(double now) const { return blending_ ? std::max(0.,.1-(now-blend_started_)):.1; }
     bool getup_episode() const { return getting_up_ || reattached_; }
-    CameraMatrix finish(CameraMatrix target,const HeadPose& head,const Vec3* player,double now,bool control) {
+    void accept_displayed_position(const Vec3& position) {
+        displayed_position_=position;
+        // Collision corrects the displayed camera, not the independent desired
+        // get-up trajectory. Otherwise each correction pins the next target.
+    }
+    CameraMatrix finish(CameraMatrix target,const HeadPose& head,const Vec3* player,double now,bool control,const Vec3* normal_position=nullptr) {
         using namespace dingosdk::first_person;
         info_.head_target=head.valid && calibrated_ ? add(position(head.head),rotate(orientation(head.head),offset_)):position(target);
         if(getting_up_) {
             if(!player || !head.valid || !calibrated_) { reset();return target; }
             if(control && !blending_) {
-                blending_=true;blend_started_=now;position_time_=now;getup_position_=displayed_position_;blend_rotation_=displayed_;
+                blending_=true;position_returned_=false;blend_started_=now;position_time_=now;getup_position_=displayed_position_;blend_rotation_=displayed_;
             }
-            if(blending_ && !control) { getting_up_=blending_=false;return target; }
+            if(blending_ && !control) { getting_up_=blending_=position_returned_=false;return target; }
             const float dt=static_cast<float>(std::max(0.,now-position_time_));position_time_=now;
             // Follow the live calibrated head through stand-up. Once native
             // control returns, converge to the ordinary camera position so
             // releasing this override cannot jump between different targets.
-            const auto position_target=control ? position(last_native_):info_.head_target;
+            const auto position_target=control ? (normal_position ? *normal_position:position(target)):info_.head_target;
             const float t=blending_ ? std::clamp(float((now-blend_started_)/.3),0.f,1.f):0.f;
             const float weight=t*t*(3-2*t);
-            const float tau=.1f*(1-weight);
-            const float alpha=dt<=0 ? 0:tau<=.0001f ? 1:1-std::exp(-dt/tau);
+            const float position_t=blending_ ? std::clamp(float((now-blend_started_)/.1),0.f,1.f):0.f;
+            const float position_weight=position_t*position_t*(3-2*position_t);
+            const float tau=.05f*(1-position_weight);
+            const float alpha=position_t>=1 ? 1:dt<=0 ? 0:tau<=.0001f ? 1:1-std::exp(-dt/tau);
             for(unsigned i=0;i<3;++i) getup_position_[i]+=(position_target[i]-getup_position_[i])*alpha;
+            if(blending_ && position_t>=1) position_returned_=true;
             if(blending_) {
                 auto angle=rotation_vector(multiply(conjugate(blend_rotation_),orientation(target)));
                 for(auto& v:angle) v*=weight;

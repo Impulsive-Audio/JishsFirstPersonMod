@@ -7,6 +7,8 @@
 #include "owned_hooks.h"
 #include "bridge_resolver.h"
 #include "native_camera_interop.h"
+#include "bail_collision.h"
+#include "first_person_hair.h"
 #include "Engine/Game/Build/20260929/runtime.h"
 namespace {
 using Tick=void(*)(std::uintptr_t,std::uintptr_t);
@@ -35,9 +37,13 @@ std::uintptr_t stock_handler(std::uintptr_t address) {
 }
 void tick_hook(std::uintptr_t client,std::uintptr_t update) {
     const auto error=GetLastError();
+    jishsfirstpersonmod::observe_collision_engine_thread();
     if(active.load(std::memory_order_acquire) && jishsfirstpersonmod::compatibility::enabled()) jishsfirstpersonmod::tick_mod(client);
     SetLastError(error);
     original_tick(client,update);
+    const auto outgoing_error=GetLastError();
+    jishsfirstpersonmod::tick_first_person_hair();
+    SetLastError(outgoing_error);
 }
 }
 namespace jishsfirstpersonmod {
@@ -60,6 +66,8 @@ bool install_hooks(std::uintptr_t base) {
     }
     if(result!=HookOk) { log("ERROR: controller tick hook failed: "+hook_failure_description(result));return false; }
     active.store(true,std::memory_order_release);
+    initialize_bail_collision(base);
+    initialize_first_person_hair(base);
     log("Controller input tick installed; thread retries="+std::to_string(owned_hook_retries)+". Native ReSkate camera and pose lifecycle remain in control.");
     install_comfort_observer(base);
     install_game_camera_observer(base);

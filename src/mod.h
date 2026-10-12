@@ -20,6 +20,10 @@ struct Config {
     dingosdk::first_person::Settings look_spring;
     bool look_only=false;
     bool third_person_bailing=false, on_board_only=false;
+    bool third_person_recovery=false;
+    bool third_person_camera_switching() const { return third_person_bailing || (!look_only && third_person_recovery); }
+    bool bail_camera_collision=true;
+    bool bald_first_person=true;
     bool cycle_restore_pending=false,cycle_restore_enabled=false; // Native preference retained during comfort override.
     bool disable_spring_on_foot=false;
     StickSettings stick;
