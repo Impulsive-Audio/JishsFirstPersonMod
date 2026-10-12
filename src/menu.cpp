@@ -2,6 +2,7 @@
 #include "comfort_policy.h"
 #include "player_state_contract.h"
 #include "stick_runtime.h"
+#include "stick_input_filter.h"
 #include "game_camera_ownership.h"
 #include "Extension/UI/skate_theme.h"
 #include "Extension/UI/Overlay/skate_style.h"
@@ -286,6 +287,8 @@ void draw_panel_frame(const PanelFrame& frame) {
             Command command;command.kind=CommandKind::toggle_glances;command.enabled=config.toggle_glances;submit_command(command);
         }
         help_marker("Opening menus, leaving first person or interrupted controls clears a held glance. With toggle off, hold the buttons to glance; opposite directions cancel.");
+        if(glance_emote_filter_ready()) ImGui::TextWrapped("Hold LB/L1 and tap a bound D-pad direction to glance. Double tap to emote; hold the second tap for a held emote.");
+        else ImGui::TextWrapped("Glance emote blocking is unavailable. See the mod log.");
         if(recorder.recording) ImGui::TextWrapped("%s",recorder.capture.ready ? "Hold the buttons together, then release them to save.":"Release all controller buttons first.");
         else if(!controller.available) ImGui::TextWrapped("Connect a controller and keep the game focused to record.");
         else if(config.toggle_glances) ImGui::TextWrapped("Press once to hold a glance. Press again to return. Another direction changes the glance.");

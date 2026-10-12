@@ -1,10 +1,12 @@
-# Jish's First Person Mod 1.25
+# Jish's First Person Mod 1.26
 
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
+Adds glance emote blocking using existing ReSkate/mod handlers. Hold LB/L1 and tap a bound D-pad direction to glance; double tap within 250 ms to emote, and hold the second tap for a held emote. See [1.26 release notes](UPDATE_1_26.md).
+
 ## Install
 
-Download `JishsFirstPersonMod-1.25-reskate-2.0.7.zip` for ReSkate 2.0.7. Published packages are available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
+Download `JishsFirstPersonMod-1.26-reskate-2.0.7.zip` for ReSkate 2.0.7. Published packages are available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
 
 Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
 
@@ -45,7 +47,7 @@ Settings and logs are under `%LOCALAPPDATA%/JishsFirstPersonMod`. The current ca
 
 Windows x64, Visual Studio C++ tools and CMake are required. Run `./build.ps1`, then `./package.ps1`. The release install ZIP contains only Mods, scripts, dinput8.dll and LICENSE.txt.
 
-All 27 Windows tests pass, and all 12 supported DLL fixtures pass bridge and rejection checks. ReSkate 2.0.7 is supported through an exact DLL hash and reviewed source/binary contracts. Jish confirmed this 1.25 update working in-game on ReSkate 2.0.7. First-person bail improvements inherited from 1.24 remain **work in progress**. Technical verification and development history are preserved in [1.24 development notes](DEVELOPMENT_1_24.md).
+All 29 Windows tests pass, and all 12 supported DLL fixtures pass bridge and rejection checks. ReSkate 2.0.7 is supported through an exact DLL hash and reviewed source/binary contracts. Jish confirmed this 1.25 update working in-game on ReSkate 2.0.7. First-person bail improvements inherited from 1.24 remain **work in progress**. Technical verification and development history are preserved in [1.24 development notes](DEVELOPMENT_1_24.md).
 
 See [1.25 release notes](UPDATE_1_25.md), [1.24 release notes](UPDATE_1_24.md), [2.0.5 update notes](UPDATE_1_23.md), [2.0.5 offset audit](OFFSET_AUDIT_2_0_5.md), [2.0.4 notes](UPDATE_1_22.md), [previous release notes](UPDATE_1_21.md), and [historical notes](HISTORY.md).
 

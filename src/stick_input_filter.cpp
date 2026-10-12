@@ -2,6 +2,13 @@
 #include "stick_input_filter.h"
 #include "stock_bridge.h"
 #include "owned_hooks.h"
+#include "Engine/Core/Platform/memory.h"
+#include "glance_emote_policy.h"
+#include "stock_hid_contract.h"
+#include "stock_contract.h"
+#include "settings.h"
+#include "game_camera_ownership.h"
+#include <atomic>
 #include <Xinput.h>
 #include <vector>
 #include <set>
@@ -12,10 +19,84 @@ extern thread_local bool raw_controller_read;
 namespace {
 using GetState=DWORD(WINAPI*)(DWORD,XINPUT_STATE*);
 GetState originals[10]{};
+std::mutex glance_mutex;
+struct GlanceSource {
+    GlanceEmotePolicy policy;
+    GlanceEmotePolicy::Result result;
+    ULONGLONG seen{};
+    const void* buffer{};
+    std::vector<std::uint8_t> edited;
+};
+std::map<std::pair<unsigned,std::uintptr_t>,GlanceSource> glance_sources;
+std::set<void*> private_handles;
+dingosdk::FirstPersonLookControls glance_bindings{};
+std::array<std::uintptr_t,4> glance_owner{};
+unsigned glance_device{};
+bool glance_eligible{},emote_event{};
+ULONGLONG glance_published{};
+std::atomic<bool> emote_ready{};
+bool live_glances() {
+    if(!emote_ready || raw_controller_read || !stock_first_person_active() || !stock_first_person_requested() || game_camera_suspended()) return false;
+    DWORD pid{};const auto window=GetForegroundWindow();bool visible{};
+    const auto comfort=comfort_snapshot();
+    return window && GetWindowThreadProcessId(window,&pid) && pid==GetCurrentProcessId() &&
+        overlay_available(visible) && !visible && !comfort.suppressed && !comfort.bailing;
+}
+GlanceEmotePolicy::Result classify(unsigned path,std::uintptr_t source,std::uint32_t buttons) {
+    const auto now=GetTickCount64();
+    const auto owner=comfort_snapshot();
+    if(!glance_eligible || now-glance_published>100 || glance_owner!=std::array<std::uintptr_t,4>{owner.core,owner.entity,owner.context,owner.rig}) { glance_sources.clear();emote_event=false;return {}; }
+    if(glance_sources.size()>64) glance_sources.clear();
+    auto& state=glance_sources[{path,source}];
+    if(state.seen && now-state.seen>500) state={};
+    state.seen=now;state.result=state.policy.update(glance_bindings,buttons,now);
+    if(state.result.emote) emote_event=true;
+    return state.result;
+}
+using StockHid=void(*)(const StockHidRead&,DWORD);
+StockHid original_hid{};
+void filter_sony_report(unsigned path,std::uintptr_t source,dingosdk::PlayStationPad kind,std::span<std::uint8_t> report) {
+    if(!live_glances()) { clear_glance_filter();return; }
+    const auto parsed=dingosdk::parse_playstation_report(kind,report.size()>64,report.data(),report.size());
+    if(!parsed) return;
+    std::uint32_t buttons=parsed->buttons;
+    if(parsed->left_trigger>30) buttons|=0x10000;
+    if(parsed->right_trigger>30) buttons|=0x20000;
+    std::lock_guard lock(glance_mutex);
+    auto& state=glance_sources[{path,source}];
+    // Stock may send one completed read through the shared handler twice.
+    // Never interpret our already edited copy as a physical release.
+    if(state.buffer==report.data() && state.edited.size()==report.size() &&
+        std::equal(state.edited.begin(),state.edited.end(),report.begin())) return;
+    const auto result=classify(path,source,buttons);
+    if(result.consume) {
+        filter_sony_dpad(kind,report,result.consume);
+        auto& updated=glance_sources[{path,source}];
+        updated.buffer=report.data();updated.edited.assign(report.begin(),report.end());
+    } else { auto found=glance_sources.find({path,source});if(found!=glance_sources.end()) { found->second.buffer=nullptr;found->second.edited.clear(); } }
+}
+void filtered_stock_hid(const StockHidRead& read,DWORD size) {
+    const auto error=GetLastError();
+    original_hid(read,size); // Keep ReSkate's menu capture and completion handling.
+    bool private_read{};{ std::lock_guard lock(glance_mutex);private_read=private_handles.contains(read.file); }
+    if(!private_read && read.buffer && size<=read.capacity && size>=10 && size<=512)
+        filter_sony_report(2,reinterpret_cast<std::uintptr_t>(read.file),read.kind,{static_cast<std::uint8_t*>(read.buffer),size});
+    SetLastError(error);
+}
 template<unsigned Index> DWORD WINAPI filtered_state(DWORD slot,XINPUT_STATE* output) {
     const auto result=originals[Index](slot,output);const auto error=GetLastError();
     if(result==ERROR_SUCCESS && output && !raw_controller_read && stick_captures_input(slot))
         output->Gamepad.sThumbRX=output->Gamepad.sThumbRY=0;
+    if(result==ERROR_SUCCESS && output && !raw_controller_read) {
+        if(live_glances()) {
+            std::uint32_t buttons=output->Gamepad.wButtons;
+            if(output->Gamepad.bLeftTrigger>30) buttons|=0x10000;
+            if(output->Gamepad.bRightTrigger>30) buttons|=0x20000;
+            std::lock_guard lock(glance_mutex);
+            const auto decision=classify(1,slot,buttons);
+            output->Gamepad.wButtons&=static_cast<WORD>(~decision.consume);
+        } else clear_glance_filter();
+    } else if(result!=ERROR_SUCCESS) { std::lock_guard lock(glance_mutex);glance_sources.erase({1,slot}); }
     SetLastError(error);return result;
 }
 using RawData=UINT(WINAPI*)(HRAWINPUT,UINT,LPVOID,PUINT,UINT);
@@ -25,7 +106,7 @@ std::mutex devices_mutex;
 std::map<HANDLE,dingosdk::PlayStationPad> devices;
 void filter_record(RAWINPUT* record,UINT bytes) {
     constexpr auto header=offsetof(RAWINPUT,data.hid.bRawData);
-    if(!record || bytes<header || record->header.dwType!=RIM_TYPEHID || !stick_captures_input()) return;
+    if(!record || bytes<header || record->header.dwType!=RIM_TYPEHID || raw_controller_read) return;
     dingosdk::PlayStationPad kind{};
     {
         std::lock_guard lock(devices_mutex);
@@ -41,7 +122,17 @@ void filter_record(RAWINPUT* record,UINT bytes) {
     if(kind==dingosdk::PlayStationPad::none) return;
     auto& hid=record->data.hid;
     if(!hid.dwSizeHid || hid.dwCount>(bytes-header)/hid.dwSizeHid) return;
-    for(UINT i=0;i<hid.dwCount;++i) neutral_sony_stick(kind,{hid.bRawData+i*hid.dwSizeHid,hid.dwSizeHid});
+    for(UINT i=0;i<hid.dwCount;++i) {
+        const std::span<std::uint8_t> report{hid.bRawData+i*hid.dwSizeHid,hid.dwSizeHid};
+        filter_sony_report(3,reinterpret_cast<std::uintptr_t>(record->header.hDevice),kind,report);
+        if(stick_captures_input()) {
+            neutral_sony_stick(kind,report);
+            std::lock_guard lock(glance_mutex);
+            const auto found=glance_sources.find({3,reinterpret_cast<std::uintptr_t>(record->header.hDevice)});
+            if(found!=glance_sources.end() && found->second.buffer==report.data())
+                found->second.edited.assign(report.begin(),report.end());
+        }
+    }
 }
 UINT WINAPI filtered_data(HRAWINPUT raw,UINT command,LPVOID data,PUINT size,UINT header) {
     const auto result=original_data(raw,command,data,size,header);const auto error=GetLastError();
@@ -64,6 +155,25 @@ UINT WINAPI filtered_buffer(PRAWINPUT data,PUINT size,UINT header) {
     SetLastError(error);return result;
 }
 }
+void private_controller_handle(void* handle,bool add) {
+    std::lock_guard lock(glance_mutex);
+    if(add) private_handles.insert(handle);else private_handles.erase(handle);
+}
+void clear_glance_filter() { std::lock_guard lock(glance_mutex);glance_eligible=false;glance_sources.clear();emote_event=false; }
+void publish_glance_filter(const dingosdk::FirstPersonLookControls& bindings,bool eligible,
+    const std::array<std::uintptr_t,4>& owner,unsigned device) {
+    std::lock_guard lock(glance_mutex);bool changed=eligible!=glance_eligible || owner!=glance_owner || device!=glance_device;
+    for(unsigned i=0;i<4;++i) changed=changed || bindings[i].combo!=glance_bindings[i].combo;
+    if(changed || !eligible) { glance_sources.clear();emote_event=false; }
+    glance_bindings=bindings;glance_owner=owner;glance_device=device;glance_eligible=eligible;glance_published=GetTickCount64();
+}
+bool glance_emote_active() {
+    std::lock_guard lock(glance_mutex);const auto now=GetTickCount64();
+    bool active=emote_event;emote_event=false;
+    for(const auto& [key,state]:glance_sources) if(now-state.seen<=100 && state.result.forward) active=true;
+    return active;
+}
+bool glance_emote_filter_ready() { return emote_ready.load(); }
 bool install_stick_input_filter() {
     using namespace dingosdk;
     const void* detours[]{reinterpret_cast<void*>(&filtered_state<0>),reinterpret_cast<void*>(&filtered_state<1>),
@@ -99,7 +209,17 @@ bool install_stick_input_filter() {
     if(!add("GetRawInputData",reinterpret_cast<void*>(&filtered_data),&data) ||
        !add("GetRawInputBuffer",reinterpret_cast<void*>(&filtered_buffer),&buffer)) return false;
     original_data=reinterpret_cast<RawData>(data);original_buffer=reinterpret_cast<RawBuffer>(buffer);
+    const auto stock=GetModuleHandleW(L"reskate.dll");const auto base=reinterpret_cast<std::uintptr_t>(stock);
+    const bool hid_verified=stock && stock_contract::selected && std::string_view(stock_contract::selected->version)=="2.0.7" &&
+        verified_stock_hid([](std::uintptr_t address,void* data,std::size_t size) { return memory::read_bytes(address,data,size); },base);
+    if(hid_verified) {
+        void* original{};auto* target=reinterpret_cast<void*>(base+stock_hid_rva);
+        if(owned_hook_prepare(target,reinterpret_cast<void*>(&filtered_stock_hid),&original)!=HookOk) return false;
+        original_hid=reinterpret_cast<StockHid>(original);pending.push_back(target);
+    } else log("Glance emote blocking unavailable: shared ReSkate 2.0.7 HID handler did not verify. Existing stick filters remain available.");
     for(auto* target:pending) if(hook_queue_enable(target)!=HookOk) return false;
-    return apply_owned_hooks()==HookOk;
+    const bool installed=apply_owned_hooks()==HookOk;emote_ready=installed && hid_verified;
+    if(emote_ready) log("Glance emote blocking ready: existing XInput/Raw Input filters and verified shared ReSkate HID report handler.");
+    return installed;
 }
 }

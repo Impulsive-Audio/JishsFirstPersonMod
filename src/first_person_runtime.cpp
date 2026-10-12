@@ -8,6 +8,7 @@
 #include "camera_policy.h"
 #include "head_attachment.h"
 #include "glance_controls.h"
+#include "stick_input_filter.h"
 namespace jishsfirstpersonmod {
 void tick_mod(std::uintptr_t client) noexcept {
     using namespace dingosdk;
@@ -46,7 +47,7 @@ void tick_mod(std::uintptr_t client) noexcept {
                 input_config.toggle_glances!=settings.config.toggle_glances;
             for(unsigned i=0;i<4;++i) changed=changed || input_config.look[i].combo!=settings.config.look[i].combo ||
                 input_config.look[i].angle!=settings.config.look[i].angle;
-            if(changed) { toggle={};look={};stop_stick_look();clear_stock_camera_blends(); }
+            if(changed) { toggle={};look={};clear_glance_filter();stop_stick_look();clear_stock_camera_blends(); }
             input_config=settings.config; revision=settings.revision;
         }
         update_game_camera_ownership(client,base);
@@ -91,7 +92,11 @@ void tick_mod(std::uintptr_t client) noexcept {
         const bool pressed=toggle.update(settings.config.toggle,controller,input_route.toggle_blocked);
         if(pressed) log("Controller First Person chord detected.");
         const bool script_toggle=take_toggle_request();
-        const auto angles=look.update(input_route.glance,controller,blocked || bail || native_camera || camera_interrupted || !stock_first_person_active() || comfort_snapshot().suppressed,settings.config.toggle_glances);
+        const bool glance_blocked=blocked || bail || native_camera || camera_interrupted || !stock_first_person_active() || comfort_snapshot().suppressed;
+        publish_glance_filter(input_route.glance,!glance_blocked,current_owner,controller.device);
+        const bool emote=glance_emote_active();
+        if(emote) look.centre_for_emote(15);
+        const auto angles=look.update(input_route.glance,controller,glance_blocked,settings.config.toggle_glances);
         set_stock_glance(camera,saved_game_fov,angles[0],angles[1]);
         // Every activation uses stock's existing request queue. This DLL never
         // switches modes, takes a camera lease, hides a head or restores a view.
@@ -104,8 +109,8 @@ void tick_mod(std::uintptr_t client) noexcept {
             }
         }
         if(take_reload_request()) { Command retry;retry.kind=CommandKind::retry_save;submit_command(retry); }
-    } catch(const SourceGuard& error) { look.reset();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);if(last_wait!=error.message) { last_wait=error.message;log(std::string("Controller input waiting: ")+error.message); } }
-      catch(const std::exception& error) { look.reset();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);log(std::string("Controller input bridge: ")+error.what()); }
-      catch(...) { look.reset();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0); }
+    } catch(const SourceGuard& error) { look.reset();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);if(last_wait!=error.message) { last_wait=error.message;log(std::string("Controller input waiting: ")+error.message); } }
+      catch(const std::exception& error) { look.reset();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);log(std::string("Controller input bridge: ")+error.what()); }
+      catch(...) { look.reset();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0); }
 }
 }

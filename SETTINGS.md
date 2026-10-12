@@ -74,3 +74,7 @@ Menus, focus loss, controller disconnection/change, leaving first person, blocke
 ### Third-person bails and native camera cycling
 
 On ReSkate 2.0.6 and 2.0.7, enabling **Third person while bailing** automatically disables **First Person In Camera Cycle**. The mod menu shows this next to the bail option. The native preference is retained across restarts and preset changes, then restored when third-person bails is disabled. Editing the native camera-cycle preference while the override is active updates the preference to restore; the effective setting stays off. This also applies in Compatibility mode. Older ReSkate versions are unchanged.
+
+### Glances and emotes (1.26, ReSkate 2.0.7)
+
+Hold LB/L1 and tap a bound D-pad direction to glance. Double tap the same direction within 250 ms to emote; hold the second tap for a held emote. The camera returns to centre for the emote. Release the D-pad to start another glance; LB/L1 may stay held. This applies to both hold and toggle glances while first-person glance controls are active. Other bindings and normal third-person emotes are unchanged.

@@ -9,13 +9,23 @@ class GlanceControlsState {
     unsigned device_{};
     bool initialized_{},toggle_{},armed_{};
     int selected_=-1;
+    std::uint32_t emote_release_{};
 public:
     void reset() { *this={}; }
+    void centre_for_emote(std::uint32_t directions) {
+        selected_=-1;held_={};previous_={};emote_release_=directions&15;
+    }
     std::array<float,2> update(const dingosdk::FirstPersonLookControls& controls,
         dingosdk::ControllerInput input,bool inhibited,bool toggle) noexcept {
         bool changed=!initialized_ || toggle!=toggle_ || input.device!=device_;
         for(unsigned i=0;i<4;++i) changed=changed || controls[i].combo!=controls_[i].combo || controls[i].angle!=controls_[i].angle;
         if(changed) { reset();initialized_=true;controls_=controls;device_=input.device;toggle_=toggle; }
+        if(emote_release_) {
+            if(inhibited || !input.available) { reset();return {}; }
+            if(input.buttons&emote_release_) return {};
+            emote_release_=0;armed_=true;previous_={};
+            auto neutral=input;neutral.buttons=0;held_.update(controls,neutral,false);
+        }
         if(!toggle) return held_.update(controls,input,inhibited);
         if(inhibited || !input.available) { selected_=-1;armed_=false;previous_={};return {}; }
         std::uint32_t bound{};for(const auto& binding:controls) bound|=binding.combo;

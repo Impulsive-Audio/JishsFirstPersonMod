@@ -1,4 +1,5 @@
 #include "playstation_input.h"
+#include "stick_input_filter.h"
 #include "Engine/Core/Log/logging.h"
 #include <Windows.h>
 #include <cfgmgr32.h>
@@ -28,6 +29,7 @@ struct Pad {
             // The buffer must outlive any read the kernel still owns.
             if (pending) { CancelIoEx(file, &overlapped); DWORD ignored; GetOverlappedResult(file, &overlapped, &ignored, TRUE); }
             CloseHandle(file);
+            jishsfirstpersonmod::private_controller_handle(file,false);
         }
         if (event) CloseHandle(event);
     }
@@ -87,6 +89,7 @@ std::unique_ptr<Pad> open_pad(const std::wstring& path) {
     pad->event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (!pad->event) return {};
     pad->overlapped.hEvent = pad->event;
+    jishsfirstpersonmod::private_controller_handle(pad->file,true);
     logging::printf(logging::Level::info, logging::Channel::input,
         "PlayStation controller opened: product=%04x %s report=%u",
         attributes.ProductID, pad->bluetooth ? "bluetooth" : "usb", caps.InputReportByteLength);
