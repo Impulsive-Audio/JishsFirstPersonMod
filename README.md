@@ -1,4 +1,4 @@
-# Jish's First Person Mod 1.29
+# Jish's First Person Mod 1.29.1
 
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
@@ -10,7 +10,7 @@ Native DualSense and DualSense Edge controllers now use the same gesture-blockin
 
 ## Install
 
-Download `JishsFirstPersonMod-1.29-reskate-2.0.7.zip` for ReSkate 2.0.7. Published packages are available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
+Download `JishsFirstPersonMod-1.29.1-reskate-2.0.7.zip` for ReSkate 2.0.7. Published packages are available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
 
 Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
 
@@ -64,3 +64,5 @@ See [1.28 release notes](docs/updates/UPDATE_1_28.md), [1.26 release notes](docs
 See [LICENSE.txt](vendor/LICENSE) and dependency license files under vendor/External. The install package contains the project's LICENSE.txt.
 
 With **Third person while bailing** or **Third person while getting up** enabled on ReSkate 2.0.7, **First Person In Camera Cycle** is automatically disabled. The menu explains this override. Your previous preference is retained across game restarts and restored when both automatic third-person options are off. The mod's First Person checkbox and hotkey remain available.
+
+Version 1.29.1 fixes menus crashing with native Sony USB controllers by correcting HID/render lock ordering and batched report capture. See [patch notes](docs/updates/PATCH_1_29_SONY_HID.md).

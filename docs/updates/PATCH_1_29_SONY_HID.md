@@ -1,6 +1,6 @@
 # 1.29 Sony HID menu patch
 
-Fixes opening menus with a native PlayStation controller connected over USB and Steam Input disabled. This is a source patch to 1.29; the version remains 1.29 and no 1.30 features are included.
+Fixes opening menus with a native PlayStation controller connected over USB and Steam Input disabled. This is a source patch to 1.29, packaged as release 1.29.1. No 1.30 features are included.
 
 The HID adapters now query overlay eligibility before acquiring their input mutex. Completion bookkeeping releases that mutex before filtering. This avoids the opposing HID/render lock order introduced in 1.28 when menu rendering polls an independent Sony input stream.
 
