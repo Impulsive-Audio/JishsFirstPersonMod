@@ -10,12 +10,13 @@ void* qa_hid_buffer{};OVERLAPPED* qa_hid_request{};
 LPOVERLAPPED_COMPLETION_ROUTINE qa_hid_callback{};
 bool qa_hid_pending{},qa_hid_incomplete{},qa_hid_abort{},qa_hid_shared{},qa_hid_batch{};
 unsigned qa_hid_callbacks{},qa_hid_sequence{};DWORD qa_hid_callback_error{},qa_hid_callback_hat{};
+DWORD qa_hid_report_length=64;USHORT qa_hid_product=0x0df2;
 BOOLEAN __stdcall fake_native_attributes(HANDLE file,HIDD_ATTRIBUTES* attributes) {
     SetLastError(999);if(file!=qa_hid_file) return FALSE;
-    attributes->VendorID=0x054c;attributes->ProductID=0x0df2;return TRUE;
+    attributes->VendorID=0x054c;attributes->ProductID=qa_hid_product;return TRUE;
 }
 BOOLEAN __stdcall fake_native_preparsed(HANDLE,PHIDP_PREPARSED_DATA* data) {*data=reinterpret_cast<PHIDP_PREPARSED_DATA>(1);return TRUE;}
-NTSTATUS __stdcall fake_native_caps(PHIDP_PREPARSED_DATA,HIDP_CAPS* caps) {caps->UsagePage=1;caps->Usage=5;caps->InputReportByteLength=64;return HIDP_STATUS_SUCCESS;}
+NTSTATUS __stdcall fake_native_caps(PHIDP_PREPARSED_DATA,HIDP_CAPS* caps) {caps->UsagePage=1;caps->Usage=5;caps->InputReportByteLength=static_cast<USHORT>(qa_hid_report_length);return HIDP_STATUS_SUCCESS;}
 BOOLEAN __stdcall fake_native_free(PHIDP_PREPARSED_DATA) {return TRUE;}
 BOOL WINAPI fake_native_read(HANDLE file,void* buffer,DWORD,DWORD* bytes,OVERLAPPED* request) {
     qa_hid_buffer=buffer;qa_hid_request=request;
@@ -51,6 +52,34 @@ BOOLEAN __stdcall fake_native_report(HANDLE,void* buffer,ULONG) {std::memcpy(buf
 void CALLBACK fake_native_callback(DWORD error,DWORD,OVERLAPPED*) {
     ++qa_hid_callbacks;qa_hid_callback_error=error;qa_hid_callback_hat=static_cast<unsigned char*>(qa_hid_buffer)[8]&15;
 }
+unsigned qa_menu_hid_calls{};std::vector<DWORD> qa_menu_hid_lengths;
+unsigned qa_overlay_unlocked_checks{};
+void check_overlay_hid_lock_order() {
+    // Stock menu rendering owns its render mutex and polls an independent
+    // completion. It must be able to acquire our HID mutex while another
+    // game read is asking for stock overlay status.
+    const auto available=std::async(std::launch::async,[]{
+        std::unique_lock lock(native_hid_mutex,std::try_to_lock);
+        return lock.owns_lock();
+    }).get();
+    if(!available) {std::cerr<<"Overlay status queried while HID mutex was held\n";std::abort();}
+    ++qa_overlay_unlocked_checks;
+}
+void fake_stock_menu_hid(const StockHidRead& read,DWORD size) {
+    ++qa_menu_hid_calls;qa_menu_hid_lengths.push_back(size);
+    // Match 2.0.7 neutral_hid's size-based transport decision and byte writes.
+    if(!qa_menu || !read.buffer || size>read.capacity) return;
+    auto* report=static_cast<unsigned char*>(read.buffer);
+    const bool bluetooth=dingosdk::playstation_bluetooth(size);
+    if(!dingosdk::parse_playstation_report(read.kind,bluetooth,report,size)) return;
+    const bool full=read.kind==dingosdk::PlayStationPad::dualsense &&
+        (report[0]==0x31 || (report[0]==1 && !bluetooth));
+    auto* data=report+(report[0]==0x31?2:report[0]==0x11?3:1);
+    std::fill_n(data,4,128);
+    if(full) {data[4]=data[5]=0;data[7]=8;data[8]=data[9]=0;}
+    else {data[4]=8;data[5]=0;data[6]&=0xfc;data[7]=data[8]=0;}
+    sony_report_crc({report,size});
+}
 void test_native_hid_adapters() {
     native_attributes=fake_native_attributes;native_original_read=fake_native_read;
     native_preparsed=fake_native_preparsed;native_caps=fake_native_caps;native_free_preparsed=fake_native_free;
@@ -72,6 +101,47 @@ void test_native_hid_adapters() {
         qa_now+=10;publish();
     };
     std::array<unsigned char,8192> buffer{};DWORD bytes{};OVERLAPPED request{};
+    const auto saved_hid=original_hid;original_hid=fake_stock_menu_hid;
+    for(auto kind:{dingosdk::PlayStationPad::dualshock4,dingosdk::PlayStationPad::dualsense})
+    for(bool bluetooth:{false,true}) for(unsigned reports:{1u,2u,4u,5u}) {
+        reset();qa_menu=true;qa_hid_report_length=bluetooth?78:64;
+        qa_hid_product=kind==dingosdk::PlayStationPad::dualsense?0x0df2:0x09cc;
+        const DWORD length=qa_hid_report_length,total=length*reports;
+        const unsigned start=bluetooth?(kind==dingosdk::PlayStationPad::dualsense?2:3):1;
+        const unsigned button=start+(kind==dingosdk::PlayStationPad::dualsense?7:4);
+        std::vector<unsigned char> input(total+32,0x5a),expected=input;
+        for(unsigned i=0;i<reports;++i) {
+            auto* report=input.data()+i*length;
+            report[0]=bluetooth?(kind==dingosdk::PlayStationPad::dualsense?0x31:0x11):1;
+            std::fill_n(report+start,4,210);report[button]=0x20;report[button+1]=3;
+            sony_report_crc({report,length});
+        }
+        expected=input;
+        // Independently neutralize each known physical report, including CRC.
+        for(unsigned i=0;i<reports;++i) {
+            auto* report=expected.data()+i*length;
+            std::fill_n(report+start,4,128);
+            if(kind==dingosdk::PlayStationPad::dualsense) {
+                report[start+4]=report[start+5]=0;report[button]=8;report[button+1]=report[button+2]=0;
+            } else {
+                report[start+4]=8;report[start+5]=0;report[start+6]&=0xfc;report[start+7]=report[start+8]=0;
+            }
+            sony_report_crc({report,length});
+        }
+        if(kind==dingosdk::PlayStationPad::dualsense && !bluetooth && reports>1) {
+            auto broken=input;
+            fake_stock_menu_hid({qa_hid_file,broken.data(),static_cast<DWORD>(broken.size()),kind},total);
+            check(broken!=expected,"Fixture did not reproduce 1.29's USB batch menu-capture corruption");
+        }
+        qa_menu_hid_calls=0;qa_menu_hid_lengths.clear();SetLastError(123);
+        filtered_stock_hid({qa_hid_file,input.data(),static_cast<DWORD>(input.size()),kind},total);
+        check(input==expected,"Menu capture corrupted batched Sony report layout, sequence, CRC or trailing guard");
+        check(qa_menu_hid_calls==reports && std::all_of(qa_menu_hid_lengths.begin(),qa_menu_hid_lengths.end(),
+            [&](DWORD n){return n==length;}),"Stock menu capture received total batch size instead of descriptor report length");
+        check(GetLastError()==123,"Stock Sony menu capture changed caller error state");
+    }
+    original_hid=saved_hid;qa_hid_report_length=64;qa_hid_product=0x0df2;reset();
+    qa_overlay_unlocked_checks=0;qa_overlay_probe=check_overlay_hid_lock_order;
     auto sync=[&](unsigned hat,unsigned shoulders=1) {
         physical(hat,shoulders);check(native_read_file(qa_hid_file,buffer.data(),8192,&bytes,nullptr) && bytes==64 && GetLastError()==777,"Native sync read status/error changed");
         auto expected=qa_hid_physical;expected[8]=buffer[8];check(std::equal(expected.begin(),expected.end(),buffer.begin()),"Native HID filter changed unrelated controls");
@@ -141,6 +211,8 @@ void test_native_hid_adapters() {
     qa_focus=false;check(sync(0)==0,"Unfocused native HID was edited");qa_focus=true;
     check(sync(0)==8 && !glance_emote_active(),"Focus restore retained native HID double tap");
     native_close(qa_hid_file);check(!native_hid_devices.contains(qa_hid_file),"Closed native HID handle retained identity");
+    check(qa_overlay_unlocked_checks>0,"HID/overlay lock-order regression was not exercised");
+    qa_overlay_probe=nullptr;
     reset();native_attributes=&HidD_GetAttributes;native_preparsed=&HidD_GetPreparsedData;
     native_caps=&HidP_GetCaps;native_free_preparsed=&HidD_FreePreparsedData;
     std::vector<void*> pending;check(prepare_native_hid(pending) && pending.size()==8,"Native Windows API adapters were not prepared");

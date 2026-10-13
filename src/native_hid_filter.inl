@@ -98,7 +98,7 @@ void native_filter_read(const StockHidRead& read,DWORD bytes,NativeDiagnostics& 
         auto* report=static_cast<unsigned char*>(read.buffer)+offset;
         const auto physical=dingosdk::parse_playstation_report(read.kind,stride>64,report,stride);
         if(!physical) continue;
-        observed=true;filter_sony_report(2,reinterpret_cast<std::uintptr_t>(read.file),read.kind,{report,stride});
+        observed=true;filter_sony_report(2,reinterpret_cast<std::uintptr_t>(read.file),read.kind,{report,stride},true);
         const auto edited=dingosdk::parse_playstation_report(read.kind,stride>64,report,stride);
         if(edited && (physical->buttons&15)!=(edited->buttons&15) && !device.consumption_reported) {
             device.consumption_reported=true;
@@ -116,20 +116,56 @@ void native_filter_read(const StockHidRead& read,DWORD bytes,NativeDiagnostics& 
     }
 }
 void filter_native_sony_read(const StockHidRead& read,DWORD size) {
+    if(diagnostic_file_io || raw_controller_read || native_hid_internal ||
+       read.kind==dingosdk::PlayStationPad::none || !read.buffer || size<10 || size>read.capacity) return;
+    // OverlayGetStatus takes stock's render mutex. Rendering polls independent
+    // Sony completions through our API hooks, which take native_hid_mutex.
+    // Query eligibility BEFORE taking that mutex, never from a locked report.
+    if(!live_glances()) {clear_glance_filter();return;}
     NativeDiagnostics diagnostics;NativeHidInternal internal;std::lock_guard lock(native_hid_mutex);native_filter_read(read,size,diagnostics);
+}
+void capture_stock_sony_read(const StockHidRead& read,DWORD size) {
+    // Stock neutral_hid infers Bluetooth from its size argument. A USB read
+    // may contain several 64-byte reports: passing the total length writes
+    // DS4/simple-Bluetooth button offsets into the first DualSense USB report.
+    // Query/cache the actual descriptor length before stock edits the buffer.
+    // Never hold our input lock while calling back into ReSkate.
+    DWORD stride{};
+    if(!diagnostic_file_io && !raw_controller_read && !native_hid_internal &&
+       read.kind!=dingosdk::PlayStationPad::none && read.buffer && size>=10 && size<=read.capacity) {
+        const auto identified=native_read_info(read.file,read.buffer,read.capacity,
+            reinterpret_cast<const void*>(&filtered_stock_hid));
+        if(identified.kind==read.kind) {
+            std::lock_guard lock(native_hid_mutex);
+            const auto found=native_hid_devices.find(read.file);
+            if(found!=native_hid_devices.end()) stride=found->second.report_length;
+        }
+    }
+    if(!stride || size%stride || stride>size) { original_hid(read,size);return; }
+    if(size>stride) {
+        static std::atomic<bool> reported{};
+        if(!reported.exchange(true)) log("Sony HID menu capture: batched read split at descriptor report boundaries; USB/Bluetooth layout preserved.");
+    }
+    for(DWORD offset=0;offset<size;offset+=stride) {
+        StockHidRead report=read;
+        report.buffer=static_cast<unsigned char*>(read.buffer)+offset;
+        report.capacity=stride;
+        original_hid(report,stride);
+    }
 }
 void native_finish(OVERLAPPED* request,DWORD bytes,bool success,bool finished) {
     if(!request || diagnostic_file_io || native_hid_internal) return;
-    NativeDiagnostics diagnostics;
-    NativeHidInternal internal;
-    std::lock_guard lock(native_hid_mutex);
-    const auto found=native_hid_requests.find(request);if(found==native_hid_requests.end()) return;
-    const auto read=found->second.read;const bool filtered=found->second.filtered;
-    if(finished) {
-        if(found->second.callback) found->second.filtered=true; // APC still owes the caller its callback.
-        else native_hid_requests.erase(found);
+    StockHidRead read;bool filtered{};
+    {
+        std::lock_guard lock(native_hid_mutex);
+        const auto found=native_hid_requests.find(request);if(found==native_hid_requests.end()) return;
+        read=found->second.read;filtered=found->second.filtered;
+        if(finished) {
+            if(found->second.callback) found->second.filtered=true; // APC still owes the caller its callback.
+            else native_hid_requests.erase(found);
+        }
     }
-    if(success && !filtered) native_filter_read(read,bytes,diagnostics);
+    if(success && !filtered) filter_native_sony_read(read,bytes);
 }
 BOOL WINAPI native_read_file(HANDLE file,void* buffer,DWORD capacity,DWORD* bytes,OVERLAPPED* request) {
     const auto incoming=GetLastError();const auto read=native_read_info(file,buffer,capacity,_ReturnAddress());
@@ -142,23 +178,21 @@ BOOL WINAPI native_read_file(HANDLE file,void* buffer,DWORD capacity,DWORD* byte
         if(result) {
             const auto size=bytes?*bytes:request?static_cast<DWORD>(request->InternalHigh):0;
             if(request) native_finish(request,size,true,true);
-            else {NativeDiagnostics diagnostics;NativeHidInternal internal;std::lock_guard lock(native_hid_mutex);native_filter_read(read,size,diagnostics);}
+            else filter_native_sony_read(read,size);
         } else if(request && error!=ERROR_IO_PENDING) native_finish(request,0,false,true);
     }
     SetLastError(error);return result;
 }
 void CALLBACK native_read_callback(DWORD error,DWORD bytes,OVERLAPPED* request) {
-    const auto incoming=GetLastError();LPOVERLAPPED_COMPLETION_ROUTINE callback{};
+    const auto incoming=GetLastError();LPOVERLAPPED_COMPLETION_ROUTINE callback{};StockHidRead read;bool filtered=true;
     {
-        NativeDiagnostics diagnostics;
-        NativeHidInternal internal;
         std::lock_guard lock(native_hid_mutex);const auto found=native_hid_requests.find(request);
         if(found!=native_hid_requests.end()) {
-            const auto read=found->second.read;const bool filtered=found->second.filtered;
+            read=found->second.read;filtered=found->second.filtered;
             callback=found->second.callback;native_hid_requests.erase(found);
-            if(error==ERROR_SUCCESS && !filtered) native_filter_read(read,bytes,diagnostics);
         }
     }
+    if(error==ERROR_SUCCESS && !filtered) filter_native_sony_read(read,bytes);
     SetLastError(incoming);if(callback) callback(error,bytes,request);
 }
 BOOL WINAPI native_read_file_ex(HANDLE file,void* buffer,DWORD capacity,OVERLAPPED* request,LPOVERLAPPED_COMPLETION_ROUTINE callback) {
@@ -214,9 +248,10 @@ BOOLEAN __stdcall native_input_report(HANDLE file,void* buffer,ULONG capacity) {
     const auto incoming=GetLastError();const auto read=native_read_info(file,buffer,capacity,_ReturnAddress());SetLastError(incoming);
     const auto result=native_original_report(file,buffer,capacity);const auto error=GetLastError();
     if(result && read.kind!=dingosdk::PlayStationPad::none) {
-        NativeDiagnostics diagnostics;NativeHidInternal internal;std::lock_guard lock(native_hid_mutex);
-        const auto length=native_hid_devices[file].report_length;
-        if(length && length<=capacity) native_filter_read(read,length,diagnostics);
+        DWORD length{};
+        {std::lock_guard lock(native_hid_mutex);const auto found=native_hid_devices.find(file);
+            if(found!=native_hid_devices.end()) length=found->second.report_length;}
+        if(length && length<=capacity) filter_native_sony_read(read,length);
     }
     SetLastError(error);return result;
 }
@@ -238,7 +273,7 @@ bool prepare_native_hid(std::vector<void*>& pending) {
         add(kernel,"GetQueuedCompletionStatusEx",reinterpret_cast<void*>(&native_completion_ex),native_original_completion_ex) &&
         add(kernel,"CloseHandle",reinterpret_cast<void*>(&native_close),native_original_close) &&
         add(hid,"HidD_GetInputReport",reinterpret_cast<void*>(&native_input_report),native_original_report);
-    log(ready ? "Native HID completion adapters prepared: game Sony ReadFile/ReadFileEx, overlapped results, completion ports and input reports; binding/translation readers excluded."
+    log(ready ? "Native HID completion adapters prepared: game Sony ReadFile/ReadFileEx, overlapped results, completion ports and input reports; per-report stock menu capture enabled; overlay status queried outside HID locks (test 2); binding/translation readers excluded."
         : "ERROR: native HID completion adapter preparation failed.");
     return ready;
 }

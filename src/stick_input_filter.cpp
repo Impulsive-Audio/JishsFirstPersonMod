@@ -87,8 +87,8 @@ GlanceEmotePolicy::Result classify(unsigned path,std::uintptr_t source,std::uint
 #include "direct_input_filter.inl"
 using StockHid=void(*)(const StockHidRead&,DWORD);
 StockHid original_hid{};
-void filter_sony_report(unsigned path,std::uintptr_t source,dingosdk::PlayStationPad kind,std::span<std::uint8_t> report) {
-    if(!live_glances()) { clear_glance_filter();return; }
+void filter_sony_report(unsigned path,std::uintptr_t source,dingosdk::PlayStationPad kind,std::span<std::uint8_t> report,bool eligibility_checked=false) {
+    if(!eligibility_checked && !live_glances()) { clear_glance_filter();return; }
     const auto parsed=dingosdk::parse_playstation_report(kind,report.size()>64,report.data(),report.size());
     if(!parsed) return;
     std::uint32_t buttons=parsed->buttons;
@@ -108,9 +108,10 @@ void filter_sony_report(unsigned path,std::uintptr_t source,dingosdk::PlayStatio
     } else { auto found=glance_sources.find({path,source});if(found!=glance_sources.end()) { found->second.buffer=nullptr;found->second.edited.clear(); } }
 }
 void filter_native_sony_read(const StockHidRead& read,DWORD size);
+void capture_stock_sony_read(const StockHidRead& read,DWORD size);
 void filtered_stock_hid(const StockHidRead& read,DWORD size) {
     const auto error=GetLastError();
-    original_hid(read,size); // Keep ReSkate's menu capture and completion handling.
+    capture_stock_sony_read(read,size); // Keep menu capture, using the device's report boundaries.
     if(diagnostic_file_io) {SetLastError(error);return;}
     bool private_read{};{ std::lock_guard lock(glance_mutex);private_read=private_handles.contains(read.file); }
     if(!diagnostic_file_io && !private_read && read.buffer && size<=read.capacity && size>=10 && size<=512)

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <future>
 ULONGLONG qa_now=10;bool qa_focus=true,qa_menu=false,qa_active=true,qa_spectator=false;bool qa_capture=false;
+void (*qa_overlay_probe)(){};
 HWND qa_window(){return qa_focus?reinterpret_cast<HWND>(1):nullptr;}
 DWORD qa_pid(HWND,DWORD* pid){*pid=GetCurrentProcessId();return 1;}
 ULONGLONG qa_clock(){return qa_now;}
@@ -25,7 +26,7 @@ bool stock_first_person_active(){return qa_active;}
 bool stock_first_person_requested(){return qa_active;}
 bool game_camera_suspended(){return qa_spectator;}
 ComfortSnapshot comfort_snapshot(){ComfortSnapshot value;value.core=1;value.entity=2;value.context=3;value.rig=4;return value;}
-bool overlay_available(bool& visible) noexcept{visible=qa_menu;return true;}
+bool overlay_available(bool& visible) noexcept{if(qa_overlay_probe)qa_overlay_probe();visible=qa_menu;return true;}
 bool stick_captures_input(unsigned){return qa_capture;}
 std::uintptr_t resolve_stock_handler(std::uintptr_t){return 0;}
 }
