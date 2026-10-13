@@ -7,3 +7,7 @@ __pycache__/
 layout-probe.exe
 layout-probe.obj
 build-output.log
+
+/build.log
+/configure.log
+/tests.log

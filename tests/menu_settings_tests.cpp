@@ -8,7 +8,7 @@
 namespace jishsfirstpersonmod {
 void log(const std::string&) noexcept {}
 std::filesystem::path module_directory() { return std::filesystem::current_path(); }
-std::filesystem::path data_directory() { return module_directory(); }
+std::filesystem::path data_directory() { return module_directory()/"settings-integration"; }
 }
 void require(bool value,const char* message) { if(!value) throw std::runtime_error(message); }
 int main(int argc,char** argv) {
@@ -22,13 +22,43 @@ int main(int argc,char** argv) {
         recommended.stick.yaw_speed==171 && recommended.stick.mount_smoothing==70 && recommended.stick.dismount_smoothing==35 &&
         !recommended.link_smoothing && recommended.third_person_bailing && recommended.disable_spring_on_foot && recommended.stick.lock_mount_jump && recommended.stick.lock_hippy_jump,
         "tested recommended settings changed");
-    Config preset_initial;preset_initial.menu_key=VK_F10;
+    const auto library_dir=root/"personal-presets";
+    std::filesystem::remove_all(library_dir);
+    PresetLibrary library(library_dir);
+    require(library.list().empty(),"missing preset folder must be empty");
+    require(library.save("  Street  ",recommended)=="Street","name trimming failed");
+    require(library.load("street").toggle==recommended.toggle && library.load("Street").stick.yaw_speed==171,"preset round trip failed");
+    auto rejected=[&](auto operation) { try { operation();return false; } catch(const std::exception&) { return true; } };
+    require(rejected([&] { library.save("STREET",recommended); }),"case insensitive duplicate accepted");
+    for(const char* name:{"","   ","../escape","bad:name","CON","aux.txt","COM1","LPT9","recommended","Jish's Recommended","name."})
+        require(rejected([&] { library.save(name,recommended); }),"unsafe name accepted");
+    auto changed_preset=recommended;changed_preset.fov=105;
+    library.save("street",changed_preset,true);
+    require(library.load("Street").fov==105,"overwrite failed");
+    library.save("Alpha",recommended);
+    require(library.list()==std::vector<std::string>({"Alpha","Street"}),"preset sorting failed");
+    { std::ofstream bad(library_dir/"Broken.ini");bad<<"not a config"; }
+    require(rejected([&] { library.load("Broken"); }),"malformed preset accepted");
+    const auto handle=CreateFileW((library_dir/L"Street.ini").c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+    require(handle!=INVALID_HANDLE_VALUE,"failed to lock preset fixture");
+    require(rejected([&] { library.save("Street",recommended,true); }),"locked overwrite accepted");
+    CloseHandle(handle);
+    require(library.load("Street").fov==105,"failed write destroyed original");
+    library.erase("alpha");require(library.list().size()==2,"delete failed");
+    require(rejected([&] { library.erase("missing"); }),"missing delete succeeded");
+    SettingsStore personal(root/"personal-settings.ini",{});
+    Command custom;custom.kind=CommandKind::apply_preset;custom.preset=library.load("Street");
+    require(personal.submit(custom,0) && personal.snapshot().config.fov==105,"personal apply failed");
+    const auto previous=personal.snapshot().revision;custom.preset.fov=500;
+    require(!personal.submit(custom,1) && personal.snapshot().revision==previous,"invalid apply changed settings");
+    std::filesystem::remove_all(library_dir);
+    Config preset_initial;preset_initial.menu_key=VK_F10;preset_initial.look_only=true;preset_initial.cycle_restore_pending=true;preset_initial.cycle_restore_enabled=true;
     SettingsStore presets(root/"preset-settings.ini",preset_initial);
     presets.refresh_reserved({0x20,0,0});
     Command preset;preset.kind=CommandKind::recommended_preset;preset.preset=recommended;
     require(presets.submit(preset,10),"recommended preset rejected");presets.flush_due(10);
     const auto loaded=read_config(root/"preset-settings.ini");
-    require(loaded.toggle==recommended.toggle && loaded.spring.rotation==recommended.spring.rotation &&
+    require(loaded.look_only && loaded.cycle_restore_pending && loaded.cycle_restore_enabled && loaded.toggle==recommended.toggle && loaded.spring.rotation==recommended.spring.rotation &&
         loaded.look_spring.left==28 && loaded.stick.yaw_speed==171 && loaded.reserved[0]==0x20 &&
         loaded.disable_spring_on_foot && loaded.stick.lock_mount_jump && loaded.stick.lock_hippy_jump && loaded.menu_key==VK_F10 && !presets.take_enabled() && !presets.snapshot().unsaved,"preset did not save or changed activation/reserved controls/menu key");
     presets.refresh_reserved({recommended.toggle,0,0});
@@ -68,6 +98,15 @@ int main(int argc,char** argv) {
     require(read_config(file).toggle==0x30 && !store.snapshot().unsaved,"binding not saved immediately");
     bind.action=1; require(!store.submit(bind,200),"duplicate controller chord accepted");
     bind.mask=0x100; require(store.submit(bind,200),"look binding rejected"); store.flush_due(200);
+    require(store.snapshot().feedback=="Current settings saved.","autosave confirmation missing");
+    require(store.snapshot(GetTickCount64()+2000).feedback=="Current settings saved.","autosave confirmation disappeared too soon");
+    require(store.snapshot(GetTickCount64()+4000).feedback.empty(),"autosave confirmation did not expire");
+    store.set_feedback("Preset saved: Street",4000);
+    require(store.snapshot().feedback=="Preset saved: Street","explicit preset confirmation missing");
+    require(store.snapshot(GetTickCount64()+5000).feedback.empty(),"preset confirmation did not expire");
+    require(store.submit(bind,250),"save notice fixture rejected");
+    store.set_feedback("Preset overwritten: Street",4000);store.flush_due(250);
+    require(store.snapshot().feedback=="Preset overwritten: Street","autosave replaced preset confirmation");
     const auto saved=read_config(file);
     Command angle; angle.kind=CommandKind::angle; angle.action=1; angle.value=45;
     require(store.submit(angle,300),"angle change rejected"); store.flush_due(1049);
@@ -137,5 +176,21 @@ int main(int argc,char** argv) {
     require(initial.config.toggle==48 && initial.save,"legacy migration not automatic");
     const auto existing=load_initial_settings(file,legacy,db_path);
     require(existing.config.toggle==0x30 && !existing.save,"existing settings were overwritten by migration");
+    write_config(data_directory()/"settings.ini",preset_initial);
+    std::filesystem::create_directories(module_directory()/"presets");
+    write_config(module_directory()/"presets/recommended.ini",recommended);
+    require(initialize_settings(),"live settings initialization failed");
+    static int camera_updates=0;
+    set_camera_sink([](const Config&,const Config&,std::string&) { ++camera_updates;return true; });
+    require(load_recommended_preset() && camera_updates==1,"recommended camera synchronization missing");
+    require(save_personal_preset("Live",false),"live preset save failed");
+    require(load_personal_preset("Live") && camera_updates==2,"personal camera synchronization missing");
+    require(menu_snapshot().config.menu_key==VK_F10 && menu_snapshot().config.look_only && menu_snapshot().config.cycle_restore_pending,
+        "live preset changed preserved settings");
+    require(delete_personal_preset("Live"),"live preset delete failed");
+    set_camera_sink([](const Config&,const Config&,std::string& error) { error="test sync failure";return false; });
+    require(load_recommended_preset() && menu_snapshot().feedback.starts_with("Mod settings applied."),"preset success hid camera synchronization failure");
+    failure.set_feedback("Preset saved: Street",4000);
+    require(failure.snapshot(GetTickCount64()+5000).save_failed && !failure.snapshot().save_error.empty(),"preset confirmation hid persistent save failure");
     std::cout<<"Menu recording, routing, persistence, conflicts, typed requests and native migration passed\n";
 }

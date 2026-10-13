@@ -1,6 +1,6 @@
 # Native integration and comfort behavior
 
-**Version 1.19 — ReSkate 2.0.1:** Rebuilt from the working 1.15 source. Retains its camera mathematics and head-lock behavior, coordinates native first-person controls, and adds verified 2.0.x compatibility. Read [UPDATE_1_19.md](UPDATE_1_19.md) for current behavior, build instructions and validation limits. The version notes below describe historical releases, not validation of this update.
+**Version 1.19 — ReSkate 2.0.1:** Rebuilt from the working 1.15 source. Retains its camera mathematics and head-lock behavior, coordinates native first-person controls, and adds verified 2.0.x compatibility. Read [UPDATE_1_19.md](../updates/UPDATE_1_19.md) for current behavior, build instructions and validation limits. The version notes below describe historical releases, not validation of this update.
 
 **Version 1.15:** Adds Game Camera Ownership awareness. First Person temporarily releases during verified spectator camera takeovers and restores when local gameplay camera ownership returns, preserving the master preference and existing comfort/input rules. Game of Skate handoff tested successfully by the user. The config panel now shows the build version. Replay pre-entry release and general scripted camera detection remain unimplemented. See GAME_CAMERA_OWNERSHIP.md.
 

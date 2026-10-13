@@ -38,6 +38,7 @@ struct InputState {
     std::deque<MenuInput> pending;
     PointerRouter router;
     HWND selected{};
+    bool text_input{};
     MenuHotkey hotkey;
 };
 InputState& state() { static auto* value=new InputState; return *value; }
@@ -78,7 +79,7 @@ LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wp,LPARAM lp) {
                 recorded=input.hotkey.recorded;input.hotkey.recorded.reset();
                 const auto config=menu_snapshot().config;
                 const auto key=native_key_overlap(config.menu_key,config.native) ? 0:config.menu_key;
-                if(!was_recording && input.hotkey.toggle(message,static_cast<unsigned>(wp),key,(lp&(1LL<<30))!=0)) {
+                if(!was_recording && !input.text_input && input.hotkey.toggle(message,static_cast<unsigned>(wp),key,(lp&(1LL<<30))!=0)) {
                     swallow=true;
                     if(input.hotkey.hidden) { input.router={};input.pending.clear(); }
                 }
@@ -125,7 +126,7 @@ void route_panel_input(HWND window) {
     if(!old && GetLastError()) { input.links.erase(window); throw std::runtime_error("Could not attach companion-menu input."); }
     if(old) input.links.at(window)->previous=reinterpret_cast<WNDPROC>(old);
 }
-void set_panel_bounds(PanelBounds bounds,bool visible,bool dragging,bool keyboard) {
+void set_panel_bounds(PanelBounds bounds,bool visible,bool dragging,bool keyboard,bool text_input) {
     auto& input=state(); std::lock_guard lock(input.mutex);
     input.router.bounds=bounds; input.router.visible=visible;
     // The HWND receives down/up before ImGui's queued events are processed.
@@ -133,7 +134,7 @@ void set_panel_bounds(PanelBounds bounds,bool visible,bool dragging,bool keyboar
     // erase a new down event before ImGui sees it.
     (void)dragging;
     if(!visible) input.router.dragging=false;
-    input.router.keyboard=keyboard;
+    input.router.keyboard=keyboard;input.text_input=visible && text_input;
     if(!visible) input.pending.clear();
 }
 std::vector<MenuInput> take_panel_input() {

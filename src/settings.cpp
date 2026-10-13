@@ -5,6 +5,9 @@
 #include <memory>
 #include <stdexcept>
 #include <atomic>
+#include <algorithm>
+#include <functional>
+#include <cwctype>
 
 namespace jishsfirstpersonmod {
 SettingsStore::SettingsStore(std::filesystem::path path,Config initial):path_(std::move(path)) {
@@ -14,9 +17,9 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
     std::lock_guard lock(mutex_);
     try {
         if(command.kind==CommandKind::set_enabled) {
-            enabled_=command.enabled; model_.requested_enabled=command.enabled; model_.feedback="Waiting for the camera update."; return true;
+            enabled_=command.enabled; model_.requested_enabled=command.enabled; model_.feedback="Waiting for the camera update.";saving_feedback_=false;feedback_until_=0; return true;
         }
-        if(command.kind==CommandKind::retry_save) { model_.unsaved=true; due_=now; model_.feedback="Saving settings…"; return true; }
+        if(command.kind==CommandKind::retry_save) { model_.unsaved=true; due_=now; model_.feedback="Saving settingsâ€¦"; return true; }
         auto next=model_.config;
         bool immediate{};
         switch(command.kind) {
@@ -27,7 +30,7 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         case CommandKind::menu_key:
             if(native_key_overlap(command.action,next.native)) throw std::runtime_error("That panel key is already used by ReSkate.");
             next.menu_key=command.action;immediate=true;break;
-        case CommandKind::recommended_preset:
+        case CommandKind::apply_preset:
             next=command.preset;next.cycle_restore_pending=model_.config.cycle_restore_pending;next.cycle_restore_enabled=model_.config.cycle_restore_enabled;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.look_only=model_.config.look_only;
             validate_config(next);
             immediate=true;break;
@@ -75,25 +78,26 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         model_.config=next; ++model_.revision; model_.unsaved=true;
         update_binding_conflicts();
         due_=now+(immediate ? 0:750);
-        model_.feedback=command.kind==CommandKind::recommended_preset ?
-            (model_.binding_conflict ? "Preset applied. Buttons already used by another control are paused. Choose new buttons. Saving settings…":"Recommended preset applied. Saving settings…"):
-            "Saving settings…"; return true;
-    } catch(const std::exception& e) { model_.feedback=e.what(); return false; }
+        saving_feedback_=true;feedback_until_=0;
+        model_.feedback=command.kind==CommandKind::apply_preset ?
+            (model_.binding_conflict ? "Preset applied. Buttons already used by another control are paused. Choose new buttons. Saving settingsâ€¦":"Preset applied. Saving settingsâ€¦"):
+            "Saving settingsâ€¦"; return true;
+    } catch(const std::exception& e) { model_.feedback=e.what();saving_feedback_=false;feedback_until_=0; return false; }
 }
-MenuSnapshot SettingsStore::snapshot() const { std::lock_guard lock(mutex_); return model_; }
-void SettingsStore::set_feedback(const std::string& text) { std::lock_guard lock(mutex_); model_.feedback=text; }
+MenuSnapshot SettingsStore::snapshot(std::uint64_t now) const { std::lock_guard lock(mutex_);auto result=model_;if(feedback_until_ && now>=feedback_until_) result.feedback.clear();return result; }
+void SettingsStore::set_feedback(const std::string& text,std::uint64_t duration) { std::lock_guard lock(mutex_); model_.feedback=text;saving_feedback_=false;feedback_until_=duration ? GetTickCount64()+duration:0; }
 void SettingsStore::mark_enabled_queued(bool accepted) {
     std::lock_guard lock(mutex_);enabled_.reset();
     if(!accepted) { model_.requested_enabled.reset();model_.feedback="Could not change view. Check ReSkate's menu for details."; }
 }
 void SettingsStore::acknowledge_master(bool enabled) {
     std::lock_guard lock(mutex_);
-    if(model_.requested_enabled==enabled) model_.requested_enabled.reset();
+    if(model_.requested_enabled==enabled) { model_.requested_enabled.reset();if(model_.feedback=="Waiting for the camera update.") model_.feedback.clear(); }
 }
 void SettingsStore::update_binding_conflicts() {
     model_.conflicts=find_binding_conflicts(model_.config);
     model_.binding_conflict=model_.conflicts.any();
-    if(model_.binding_conflict) model_.feedback="Buttons already used by another control are paused. Clear or record new buttons. Right-stick look still works.";
+    if(model_.binding_conflict) { saving_feedback_=false;feedback_until_=0;model_.feedback="Buttons already used by another control are paused. Clear or record new buttons. Right-stick look still works."; }
 }
 void SettingsStore::refresh_native_controls(const NativeControls& native) {
     std::lock_guard lock(mutex_);if(model_.config.native==native) return;
@@ -110,7 +114,7 @@ void SettingsStore::refresh_reserved(const std::array<std::uint32_t,3>& reserved
 std::optional<bool> SettingsStore::take_enabled() { std::lock_guard lock(mutex_); const auto result=enabled_; enabled_.reset(); if(result) model_.requested_enabled.reset(); return result; }
 void SettingsStore::publish_runtime(bool active,bool available,const std::string& status) {
     std::lock_guard lock(mutex_); model_.active=active; model_.camera_available=available; model_.status=status;
-    if(model_.requested_enabled && *model_.requested_enabled==active) model_.requested_enabled.reset();
+    if(model_.requested_enabled && *model_.requested_enabled==active) { model_.requested_enabled.reset();if(model_.feedback=="Waiting for the camera update.") model_.feedback.clear(); }
 }
 void SettingsStore::flush_due(std::uint64_t now) {
     Config next; std::uint64_t revision{};
@@ -122,11 +126,19 @@ void SettingsStore::flush_due(std::uint64_t now) {
     try {
         write_config(path_,next);
         std::lock_guard lock(mutex_);
-        if(revision==model_.revision) { model_.unsaved=false; model_.feedback=model_.binding_conflict ? "Settings saved. Buttons already used by another control are paused. Choose new buttons.":"Settings saved."; }
+        if(revision==model_.revision) {
+            model_.unsaved=false;model_.save_failed=false;model_.save_error.clear();
+            if(saving_feedback_) {
+                model_.feedback=model_.binding_conflict ? "Buttons already used by another control are paused. Choose new buttons.":"Current settings saved.";
+                saving_feedback_=false;feedback_until_=model_.binding_conflict ? 0:GetTickCount64()+3000;
+            }
+        }
     } catch(const std::exception& e) {
         std::lock_guard lock(mutex_);
         log(std::string("Settings save failed: ")+e.what());
+        saving_feedback_=false;feedback_until_=0;
         model_.feedback="Applied, but not saved. Check folder permissions and retry. See the mod log for details.";
+        model_.save_failed=true;model_.save_error=model_.feedback;
         due_=~std::uint64_t{}; // Retry explicitly; never hammer an unwritable disk.
     }
 }
@@ -270,7 +282,7 @@ bool initialize_settings() {
         Command request; request.kind=CommandKind::retry_save; live_store->submit(request,GetTickCount64());
         live_store->flush_due(GetTickCount64());
     }
-    if(!initial.save) live_store->set_feedback(initial.message);
+    if(!initial.save && initial.message!="Saved settings loaded.") live_store->set_feedback(initial.message);
     changed=CreateEventW(nullptr,FALSE,FALSE,nullptr);
     const auto thread=changed ? CreateThread(nullptr,0,saver,nullptr,0,nullptr):nullptr;
     if(!thread) { log("ERROR: settings save worker could not start."); return false; }
@@ -304,7 +316,7 @@ bool submit_command(const Command& command) {
             live_store->mark_enabled_queued(accepted);return accepted;
         }
     }
-    if(command.kind==CommandKind::camera_settings || command.kind==CommandKind::recommended_preset) {
+    if(command.kind==CommandKind::camera_settings || command.kind==CommandKind::apply_preset) {
         if(const auto sink=camera_sink.load()) {
             std::string error;
             if(!sink(before,menu_snapshot().config,error) && live_store)
@@ -316,12 +328,98 @@ bool submit_command(const Command& command) {
     }
     return true;
 }
+
+namespace {
+std::wstring folded(const std::wstring& value) {
+    std::wstring result=value;
+    for(auto& c:result) c=static_cast<wchar_t>(towlower(c));
+    return result;
+}
+std::filesystem::path preset_name(const std::string& text) {
+    auto first=text.find_first_not_of(" \t\r\n");
+    if(first==std::string::npos) throw std::runtime_error("Enter a preset name.");
+    auto name=text.substr(first,text.find_last_not_of(" \t\r\n")-first+1);
+    if(name.size()>80 || name.back()=='.') throw std::runtime_error("Use a name up to 80 bytes without a trailing dot.");
+    for(unsigned char c:name) if(c<32 || std::string("<>:\"/\\|?*").find(c)!=std::string::npos)
+        throw std::runtime_error("Preset names cannot contain Windows filename symbols.");
+    auto path=std::filesystem::u8path(name);
+    auto lower=folded(path.wstring());
+    auto base=lower.substr(0,lower.find(L'.'));
+    while(!base.empty() && base.back()==L' ') base.pop_back();
+    if(lower==L"jish's recommended" || lower==L"recommended" || base==L"con" || base==L"prn" || base==L"aux" || base==L"nul" ||
+       (base.size()==4 && (base.starts_with(L"com") || base.starts_with(L"lpt")) && ((base[3]>=L'1' && base[3]<=L'9') || base[3]==L'¹' || base[3]==L'²' || base[3]==L'³')))
+        throw std::runtime_error("That preset name is reserved.");
+    return path;
+}
+std::string utf8_name(const std::filesystem::path& path) {
+    auto value=path.u8string();return {reinterpret_cast<const char*>(value.data()),value.size()};
+}
+std::filesystem::path existing_preset(const std::filesystem::path& directory,const std::filesystem::path& name) {
+    if(!std::filesystem::exists(directory)) return {};
+    for(const auto& entry:std::filesystem::directory_iterator(directory))
+        if(entry.is_regular_file() && !entry.is_symlink() && folded(entry.path().extension().wstring())==L".ini" &&
+           CompareStringOrdinal(entry.path().stem().c_str(),-1,name.c_str(),-1,TRUE)==CSTR_EQUAL) return entry.path();
+    return {};
+}
+bool preset_feedback(const std::function<void()>& operation,const char* success) {
+    if(!live_store) return false;
+    try { operation();live_store->set_feedback(success,4000);return true; }
+    catch(const std::exception& e) { log(std::string("Preset operation failed: ")+e.what());live_store->set_feedback(std::string("Preset: ")+e.what());return false; }
+}
+}
+std::vector<std::string> PresetLibrary::list() const {
+    std::vector<std::string> result;
+    if(!std::filesystem::exists(directory_)) return result;
+    for(const auto& entry:std::filesystem::directory_iterator(directory_)) {
+        if(!entry.is_regular_file() || entry.is_symlink() || folded(entry.path().extension().wstring())!=L".ini") continue;
+        auto name=utf8_name(entry.path().stem());
+        try { preset_name(name);result.push_back(name); } catch(...) {}
+    }
+    std::sort(result.begin(),result.end(),[](const auto& a,const auto& b) { return CompareStringOrdinal(std::filesystem::u8path(a).c_str(),-1,std::filesystem::u8path(b).c_str(),-1,TRUE)==CSTR_LESS_THAN; });
+    return result;
+}
+std::string PresetLibrary::save(const std::string& text,const Config& config,bool overwrite) const {
+    const auto name=preset_name(text);
+    const auto existing=existing_preset(directory_,name);
+    if(!existing.empty() && !overwrite) throw std::runtime_error("That name already exists. Choose another name or Overwrite.");
+    if(existing.empty() && overwrite) throw std::runtime_error("Preset no longer exists. Use Save as.");
+    auto saved=config;saved.native={};saved.reserved={};saved.menu_key=VK_F9;saved.look_only=false;
+    saved.cycle_restore_pending=false;saved.cycle_restore_enabled=false;
+    std::filesystem::create_directories(directory_);
+    write_config(existing.empty() ? directory_/(name.wstring()+L".ini"):existing,saved);
+    return utf8_name(existing.empty() ? name:existing.stem());
+}
+Config PresetLibrary::load(const std::string& text) const {
+    auto path=existing_preset(directory_,preset_name(text));
+    if(path.empty()) throw std::runtime_error("Preset no longer exists.");
+    return read_config(path);
+}
+void PresetLibrary::erase(const std::string& text) const {
+    auto path=existing_preset(directory_,preset_name(text));
+    if(path.empty() || !std::filesystem::remove(path)) throw std::runtime_error("Preset no longer exists.");
+}
+std::vector<std::string> personal_presets() {
+    try { return PresetLibrary(data_directory()/L"presets").list(); }
+    catch(const std::exception& e) { if(live_store) live_store->set_feedback(std::string("Cannot list presets: ")+e.what());return {}; }
+}
+bool save_personal_preset(const std::string& name,bool overwrite) {
+    return preset_feedback([&] { PresetLibrary(data_directory()/L"presets").save(name,menu_snapshot().config,overwrite); },(std::string(overwrite ? "Preset overwritten: ":"Preset saved: ")+name).c_str());
+}
+bool delete_personal_preset(const std::string& name) {
+    return preset_feedback([&] { PresetLibrary(data_directory()/L"presets").erase(name); },(std::string("Preset deleted: ")+name).c_str());
+}
+bool load_personal_preset(const std::string& name) {
+    if(!live_store) return false;
+    try { Command command;command.kind=CommandKind::apply_preset;command.preset=PresetLibrary(data_directory()/L"presets").load(name);if(!submit_command(command)) return false;if(!menu_snapshot().feedback.starts_with("Mod settings applied.")) live_store->set_feedback(std::string("Preset loaded: ")+name,4000);return true; }
+    catch(const std::exception& e) { log(std::string("Preset load failed: ")+e.what());live_store->set_feedback(std::string("Could not load preset: ")+e.what());return false; }
+}
 bool load_recommended_preset() {
     if(!live_store) return false;
     try {
-        Command command;command.kind=CommandKind::recommended_preset;
+        Command command;command.kind=CommandKind::apply_preset;
         command.preset=read_config(module_directory()/L"presets/recommended.ini");
-        return submit_command(command);
+        if(!submit_command(command)) return false;
+        if(!menu_snapshot().feedback.starts_with("Mod settings applied.")) live_store->set_feedback("Preset loaded: Jish's Recommended",4000);return true;
     } catch(const std::exception& error) {
         log(std::string("Recommended preset could not load: ")+error.what());
         live_store->set_feedback("Could not load the recommended preset. See the mod log.");return false;

@@ -48,6 +48,13 @@ void help_marker(const char* text) {
         ImGui::EndTooltip();
     }
 }
+bool readable_checkbox(const char* label,bool* value) {
+    ImGui::PushID(label);
+    bool changed=ImGui::Checkbox("##value",value);
+    ImGui::SameLine();ImGui::TextWrapped("%s",label);
+    if(ImGui::IsItemClicked()) { *value=!*value;changed=true; }
+    ImGui::PopID();return changed;
+}
 void fit_control(const char* label,bool has_help=false) {
     const float help_width=has_help ? ImGui::CalcTextSize("(?)").x+ImGui::GetStyle().ItemSpacing.x:0;
     ImGui::SetNextItemWidth(std::max(ImGui::GetFontSize()*4,
@@ -130,7 +137,7 @@ void draw_panel_frame(const PanelFrame& frame) {
     const ImVec2 maximum{std::max(200.0f,io.DisplaySize.x-16),std::max(180.0f,io.DisplaySize.y-16)};
     ImGui::SetNextWindowSize({std::min(500*dpi,maximum.x),std::min(680*dpi,maximum.y)},ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos({std::max(8.0f,io.DisplaySize.x-510*dpi),8},ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSizeConstraints({std::min(360*dpi,maximum.x),std::min(300*dpi,maximum.y)},maximum);
+    ImGui::SetNextWindowSizeConstraints({std::min(360*dpi,maximum.x),std::min(420*dpi,maximum.y)},maximum);
     const int colours=dingosdk::skate_theme::push_widget_colours();
     ImGui::PushFont(body);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,0); ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,0);
@@ -143,6 +150,145 @@ void draw_panel_frame(const PanelFrame& frame) {
         bounds={static_cast<int>(bounded.x),static_cast<int>(bounded.y),static_cast<int>(bounded.x+size.x),static_cast<int>(bounded.y+size.y)};
         ImGui::PushFont(title); ImGui::TextUnformatted("FIRST PERSON CONTROLS"); ImGui::PopFont();
         ImGui::Text("Version %s",JISH_MOD_VERSION);
+        static int tab=0;
+        const float tab_gap=8*dpi;
+        const float tab_width=(ImGui::GetContentRegionAvail().x-2*tab_gap)/3;
+        const char* tab_labels[]={"General","Controls","Camera"};
+        for(int i=0;i<3;++i) {
+            if(i) ImGui::SameLine(0,tab_gap);
+            const bool selected_tab=tab==i;
+            using namespace dingosdk::skate_theme;
+            ImGui::PushStyleColor(ImGuiCol_Button,selected_tab ? blue:tile_grey);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,selected_tab ? blue_hover:tile_light);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,selected_tab ? blue_active:tile_light);
+            ImGui::PushStyleColor(ImGuiCol_Text,white);
+            ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign,{.5f,.5f});
+            if(ImGui::Button(tab_labels[i],{tab_width,std::max(34*dpi,ImGui::GetFontSize()+12*dpi)})) {
+                if(tab==1 && i!=1) cancel_panel_recording();
+                tab=i;
+            }
+            ImGui::PopStyleVar();ImGui::PopStyleColor(4);
+        }
+        ImGui::Spacing();
+        const auto comfort=comfort_snapshot();
+        bool enabled=model.requested_enabled.value_or(comfort.initialized ? comfort.master:model.active);
+        if(readable_checkbox("Enable First Person",&enabled)) { Command command; command.kind=CommandKind::set_enabled; command.enabled=enabled; submit_command(command); }
+        if(native_key_overlap(config.menu_key,config.native)) ImGui::TextWrapped("Panel key is already used by ReSkate. Press Insert and choose another key.");
+        if(config.native.active) ImGui::TextWrapped("ReSkate's First Person hotkey also works here.");
+        if(model.requested_enabled) ImGui::TextWrapped("Waiting for the camera to change view.");
+        if(!model.status.empty()) ImGui::TextWrapped("%s",model.status.c_str());
+        if(!game_camera_suspended() && *game_camera_status()) ImGui::TextWrapped("%s",game_camera_status());
+        static std::string selected,pending;
+        static std::vector<std::string> names;
+        static bool refresh=true;
+        static char name_text[128]{};
+        static int operation=0;
+        if(refresh) { names=personal_presets();refresh=false;
+            if(std::find(names.begin(),names.end(),selected)==names.end()) selected.clear(); }
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if(ImGui::BeginCombo("##Preset",selected.empty() ? "Jish's Recommended":selected.c_str())) {
+            if(ImGui::Selectable("Jish's Recommended",selected.empty())) selected.clear();
+            for(const auto& name:names) if(ImGui::Selectable(name.c_str(),selected==name)) selected=name;
+            ImGui::EndCombo();
+        }
+        if(ImGui::Button("Load")) { cancel_panel_recording();
+            if(selected.empty()) load_recommended_preset();else load_personal_preset(selected);
+            model=menu_snapshot();config=model.config;
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Save as...")) { cancel_panel_recording();name_text[0]=0;ImGui::OpenPopup("Save preset"); }
+        ImGui::BeginDisabled(selected.empty());
+        if(ImGui::Button("Overwrite")) { pending=selected;operation=1;ImGui::OpenPopup("Confirm preset change"); }
+        ImGui::SameLine();
+        if(ImGui::Button("Delete")) { pending=selected;operation=2;ImGui::OpenPopup("Confirm preset change"); }
+        ImGui::EndDisabled();
+        ImGui::SetNextWindowSize({std::min(340*dpi,io.DisplaySize.x-16),0});
+        if(ImGui::BeginPopupModal("Save preset",nullptr,ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted("Save current settings and bindings");
+            ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Name").x-ImGui::GetStyle().ItemInnerSpacing.x);
+            if(ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+            ImGui::InputText("Name",name_text,sizeof(name_text));
+            if(ImGui::Button("Save") && save_personal_preset(name_text)) {
+                std::string text=name_text;auto first=text.find_first_not_of(' ');
+                selected=text.substr(first,text.find_last_not_of(' ')-first+1);refresh=true;ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();if(ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+            ImGui::TextWrapped("%s",menu_snapshot().feedback.c_str());ImGui::EndPopup();
+        }
+        ImGui::SetNextWindowSize({std::min(340*dpi,io.DisplaySize.x-16),0});
+        if(ImGui::BeginPopupModal("Confirm preset change",nullptr,ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextWrapped("%s preset '%s'?",operation==1 ? "Overwrite":"Delete",pending.c_str());
+            if(ImGui::Button("Confirm") && (operation==1 ? save_personal_preset(pending,true):delete_personal_preset(pending))) {
+                refresh=true;ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();if(ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+            ImGui::TextWrapped("%s",menu_snapshot().feedback.c_str());ImGui::EndPopup();
+        }
+        const auto stick_change=[&]() { Command command;command.kind=CommandKind::stick_settings;
+            command.stick=config.stick;submit_command(command); };
+        const float footer_width=ImGui::GetContentRegionAvail().x;
+        const auto wrapped_height=[&](const std::string& text) { return text.empty() ? 0.0f:ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(),FLT_MAX,footer_width,text.c_str()).y+8*dpi; };
+        const float footer=std::max(48*dpi,wrapped_height(model.feedback)+wrapped_height(model.save_failed && model.feedback!=model.save_error ? model.save_error:std::string{})+wrapped_height(graphics_error)+40*dpi);
+        ImGui::BeginChild("Settings content",{0,std::max(40.0f,ImGui::GetContentRegionAvail().y-footer)},false);
+        if(tab==0) {
+        if(readable_checkbox("Compatibility mode (look controls only)",&config.look_only)) {
+            Command command;command.kind=CommandKind::look_only;command.enabled=config.look_only;submit_command(command);config=menu_snapshot().config;
+        }
+        help_marker("Keeps right-stick look, button glances, First Person controls and comfort options. ReSkate handles camera position, field of view and Spring. Head attachment, first-person bail movement, board transition smoothing and character turning are off. Your settings are kept for full mode.");
+        ImGui::Spacing(); section("Comfort options");
+        const auto comfort_change=[&]() {
+            Command command; command.kind=CommandKind::comfort_options;
+            command.third_person_bailing=config.third_person_bailing; command.on_board_only=config.on_board_only;
+            submit_command(command);
+        };
+        ImGui::BeginDisabled(!comfort.bail_available && !config.third_person_bailing);
+        if(readable_checkbox("Third person while bailing",&config.third_person_bailing)) comfort_change();
+        help_marker("First person returns when you regain control. Button glances pause until the bail ends. With this off in full mode, the camera follows your head during bails. ReSkate stabilization and Follow flips pause while the mod follows your head; your saved settings are kept.");
+        ImGui::EndDisabled();
+        if(!config.third_person_bailing) {
+            ImGui::BeginDisabled(config.look_only || !comfort.bail_available);
+            if(readable_checkbox("Third person while getting up",&config.third_person_recovery)) {
+                Command command;command.kind=CommandKind::third_person_recovery;command.enabled=config.third_person_recovery;submit_command(command);
+            }
+            help_marker("Keeps the fall in first person, then lets ReSkate handle the camera while you get up. First person returns when you regain control.");
+            ImGui::EndDisabled();
+                if(config.look_only) ImGui::TextWrapped("Turn off Compatibility mode to use this option.");
+        }
+        if(config.native.camera_cycle_available && config.third_person_camera_switching()) {
+            ImGui::TextWrapped("First Person In Camera Cycle stays off while this is enabled. Your previous setting returns when you turn it off.");
+            help_marker("Your camera-cycle preference is kept across restarts. Changes made in ReSkate while this is on become the setting restored later. The First Person checkbox and hotkey still work.");
+        } else if(config.native.camera_cycle_available && config.cycle_restore_pending)
+            ImGui::TextWrapped("Restoring your First Person In Camera Cycle setting...");
+        if(!config.look_only && !config.third_person_bailing) ImGui::TextWrapped("The camera follows your head during bails. Stick look returns when you regain control.");
+        ImGui::BeginDisabled(config.look_only || config.third_person_bailing || !bail_collision_available());
+        if(readable_checkbox("Camera collision during bails",&config.bail_camera_collision)) {
+            Command command;command.kind=CommandKind::bail_collision;command.enabled=config.bail_camera_collision;submit_command(command);
+        }
+        help_marker("Also applies while getting up if you stay in first person. The camera may move slightly away from your head near surfaces.");
+        ImGui::EndDisabled();
+        if(config.look_only) ImGui::TextWrapped("Turn off Compatibility mode to use bail camera collision.");
+        else if(config.third_person_bailing) ImGui::TextWrapped("Turn off Third person while bailing to use bail camera collision.");
+        else if(!bail_collision_available()) ImGui::TextWrapped("Bail camera collision is unavailable. See the mod log.");
+        if(!comfort.bail_available) ImGui::TextWrapped("Automatic bail switching is unavailable. See the mod log.");
+        ImGui::BeginDisabled(!first_person_hair_available());
+        if(readable_checkbox("Bald in first person",&config.bald_first_person)) {
+            Command command;command.kind=CommandKind::bald_hair;command.enabled=config.bald_first_person;submit_command(command);
+        }
+        help_marker("Temporarily uses the smooth bald hairstyle on your screen. Other players see your original hair. Your hair returns in third person and when this is turned off. Hair colour and saved outfits are kept.");
+        ImGui::EndDisabled();
+        if(!first_person_hair_available()) ImGui::TextWrapped("Temporary bald hairstyle is unavailable. See the mod log.");
+        ImGui::BeginDisabled(!comfort.board_available);
+        if(readable_checkbox("First person on board only",&config.on_board_only)) comfort_change();
+        help_marker("Uses third person while walking. First person returns when you get on the board.");
+        ImGui::EndDisabled();
+        if(!comfort.board_available) ImGui::TextWrapped("Board-only switching is unavailable. See the mod log.");
+        if(config.native.board_only) ImGui::TextWrapped("ReSkate's Third person on foot is also enabled. Turn it off to use first person while walking.");
+        if(comfort.suppressed) ImGui::TextWrapped("%s",config.third_person_bailing && comfort.bailing ?
+            "First person will return after the bail.":config.third_person_recovery && comfort.bailing ?
+            "First person will return when you regain control.":"First person will return when you get on the board.");
+        if(comfort.suspended) ImGui::TextWrapped("Automatic camera switching is paused. Waiting for your skater.");
+
+        } else if(tab==1) {
         ImGui::Text("Show/hide panel key: %s",menu_key_label(config.menu_key).c_str());
         if(menu_key_recording()) {
             ImGui::TextUnformatted("Press a keyboard key. Insert/Escape cancels.");
@@ -153,86 +299,9 @@ void draw_panel_frame(const PanelFrame& frame) {
             if(ImGui::Button("Clear menu key")) { Command command;command.kind=CommandKind::menu_key;command.action=0;submit_command(command); }
         }
         ImGui::TextWrapped("Show or hide this panel while ReSkate's menu is open. Insert opens ReSkate's menu.");
-        if(ImGui::Button("Load Jish's recommended preset")) {
-            recorder.cancel();recorder_feedback.clear();load_recommended_preset();
-            model=menu_snapshot();config=model.config;
-        }
-        help_marker("Keeps your current First Person on/off choice, ReSkate controls and panel key.");
-        ImGui::TextWrapped("Applies Jish's recommended controls and camera settings. Saves automatically.");
-        if(ImGui::Checkbox("Compatibility mode (look controls only)",&config.look_only)) {
-            Command command;command.kind=CommandKind::look_only;command.enabled=config.look_only;submit_command(command);config=menu_snapshot().config;
-        }
-        help_marker("Keeps right-stick look, button glances, First Person controls and comfort options. ReSkate handles camera position, field of view and Spring. Head attachment, first-person bail movement, board transition smoothing and character turning are off. Your settings are kept for full mode.");
-        ImGui::TextWrapped("Keeps look controls and comfort options. ReSkate handles the camera.");
-        const auto comfort=comfort_snapshot();
-        bool enabled=model.requested_enabled.value_or(comfort.initialized ? comfort.master:model.active);
-        if(ImGui::Checkbox("Enable First Person",&enabled)) { Command command; command.kind=CommandKind::set_enabled; command.enabled=enabled; submit_command(command); }
-        if(native_key_overlap(config.menu_key,config.native)) ImGui::TextWrapped("Panel key is already used by ReSkate. Press Insert and choose another key.");
-        if(config.native.active) ImGui::TextWrapped("ReSkate's First Person hotkey also works here.");
-        if(model.requested_enabled) ImGui::TextWrapped("Waiting for the camera to change view.");
-        if(!model.status.empty()) ImGui::TextWrapped("%s",model.status.c_str());
-        if(!game_camera_suspended() && *game_camera_status()) ImGui::TextWrapped("%s",game_camera_status());
-        ImGui::Spacing(); section("COMFORT OPTIONS");
-        const auto comfort_change=[&]() {
-            Command command; command.kind=CommandKind::comfort_options;
-            command.third_person_bailing=config.third_person_bailing; command.on_board_only=config.on_board_only;
-            submit_command(command);
-        };
-        ImGui::BeginDisabled(!comfort.bail_available && !config.third_person_bailing);
-        if(ImGui::Checkbox("Third person while bailing",&config.third_person_bailing)) comfort_change();
-        help_marker("First person returns when you regain control. Button glances pause until the bail ends. With this off in full mode, the camera follows your head during bails. ReSkate stabilization and Follow flips pause while the mod follows your head; your saved settings are kept.");
-        ImGui::EndDisabled();
-        ImGui::TextWrapped("Switches to third person during bails.");
-        if(!config.third_person_bailing) {
-            ImGui::BeginDisabled(config.look_only || !comfort.bail_available);
-            if(ImGui::Checkbox("Third person while getting up",&config.third_person_recovery)) {
-                Command command;command.kind=CommandKind::third_person_recovery;command.enabled=config.third_person_recovery;submit_command(command);
-            }
-            help_marker("Keeps the fall in first person, then lets ReSkate handle the camera while you get up. First person returns when you regain control.");
-            ImGui::EndDisabled();
-            ImGui::TextWrapped("Switches to third person while getting up. First person returns when you regain control.");
-            if(config.look_only) ImGui::TextWrapped("Turn off Compatibility mode to use this option.");
-        }
-        if(config.native.camera_cycle_available && config.third_person_camera_switching()) {
-            ImGui::TextWrapped("First Person In Camera Cycle stays off while this is enabled. Your previous setting returns when you turn it off.");
-            help_marker("Your camera-cycle preference is kept across restarts. Changes made in ReSkate while this is on become the setting restored later. The First Person checkbox and hotkey still work.");
-        } else if(config.native.camera_cycle_available && config.cycle_restore_pending)
-            ImGui::TextWrapped("Restoring your First Person In Camera Cycle setting...");
-        if(!config.look_only && !config.third_person_bailing) ImGui::TextWrapped("The camera follows your head during bails. Stick look returns when you regain control.");
-        ImGui::BeginDisabled(config.look_only || config.third_person_bailing || !bail_collision_available());
-        if(ImGui::Checkbox("Camera collision during bails",&config.bail_camera_collision)) {
-            Command command;command.kind=CommandKind::bail_collision;command.enabled=config.bail_camera_collision;submit_command(command);
-        }
-        help_marker("Also applies while getting up if you stay in first person. The camera may move slightly away from your head near surfaces.");
-        ImGui::EndDisabled();
-        ImGui::TextWrapped("Keeps the camera clear of floors and objects during first-person bails.");
-        if(config.look_only) ImGui::TextWrapped("Turn off Compatibility mode to use bail camera collision.");
-        else if(config.third_person_bailing) ImGui::TextWrapped("Turn off Third person while bailing to use bail camera collision.");
-        else if(!bail_collision_available()) ImGui::TextWrapped("Bail camera collision is unavailable. See the mod log.");
-        if(!comfort.bail_available) ImGui::TextWrapped("Automatic bail switching is unavailable. See the mod log.");
-        ImGui::BeginDisabled(!first_person_hair_available());
-        if(ImGui::Checkbox("Bald in first person",&config.bald_first_person)) {
-            Command command;command.kind=CommandKind::bald_hair;command.enabled=config.bald_first_person;submit_command(command);
-        }
-        help_marker("Temporarily uses the smooth bald hairstyle on your screen. Other players see your original hair. Your hair returns in third person and when this is turned off. Hair colour and saved outfits are kept.");
-        ImGui::EndDisabled();
-        ImGui::TextWrapped("Keeps long hair out of view. Other players see your original hair.");
-        if(!first_person_hair_available()) ImGui::TextWrapped("Temporary bald hairstyle is unavailable. See the mod log.");
-        ImGui::BeginDisabled(!comfort.board_available);
-        if(ImGui::Checkbox("First person on board only",&config.on_board_only)) comfort_change();
-        help_marker("Uses third person while walking. First person returns when you get on the board.");
-        ImGui::EndDisabled();
-        if(!comfort.board_available) ImGui::TextWrapped("Board-only switching is unavailable. See the mod log.");
-        if(config.native.board_only) ImGui::TextWrapped("ReSkate's Third person on foot is also enabled. Turn it off to use first person while walking.");
-        if(comfort.suppressed) ImGui::TextWrapped("%s",config.third_person_bailing && comfort.bailing ?
-            "First person will return after the bail.":config.third_person_recovery && comfort.bailing ?
-            "First person will return when you regain control.":"First person will return when you get on the board.");
-        if(comfort.suspended) ImGui::TextWrapped("Automatic camera switching is paused. Waiting for your skater.");
-        ImGui::Spacing(); section("ON-FOOT STICK LOOK");
-        const auto stick_change=[&]() { Command command;command.kind=CommandKind::stick_settings;
-            command.stick=config.stick;submit_command(command); };
+        ImGui::Spacing(); section("Right-stick look");
         ImGui::BeginDisabled(!stick_runtime_ready() && !config.stick.enabled);
-        if(ImGui::Checkbox("Right-stick look on foot",&config.stick.enabled)) stick_change();
+        if(readable_checkbox("Right-stick look on foot",&config.stick.enabled)) stick_change();
         help_marker("Move the right stick to look around while walking in first person. Looking pauses while getting on the board.");
         ImGui::EndDisabled();
         if(!stick_runtime_ready()) ImGui::TextWrapped("Right-stick look is unavailable. See the mod log.");
@@ -255,30 +324,12 @@ void draw_panel_frame(const PanelFrame& frame) {
             config.stick.deadzone=deadzone*.01f;stick_change();
         }
         help_marker("Ignore small stick movements to prevent camera drift. Increase this if the camera moves by itself.");
-        if(ImGui::Checkbox("Invert Y",&config.stick.invert_y)) stick_change();
-        if(ImGui::Checkbox("Allow looking during jumps and climbing",&config.stick.look_during_parkour)) stick_change();
+        if(readable_checkbox("Invert Y",&config.stick.invert_y)) stick_change();
+        if(readable_checkbox("Allow looking during jumps and climbing",&config.stick.look_during_parkour)) stick_change();
         help_marker("Enables right-stick look and button glances during climbing and supported jumps. Leave this off to keep ReSkate's normal view during climbing and attached jumps. These actions turn only the camera. This does not change head attachment, and look still pauses while getting on the board.");
-        ImGui::TextWrapped("Allows camera look during jumps and climbing.");
-        ImGui::BeginDisabled(config.look_only);
-        if(ImGui::Checkbox("Attach head position during mounting / jumping",&config.stick.lock_mount_jump)) stick_change();
-        help_marker("Follows your head position while getting on the board and during on-foot jumps. Disable Spring on foot can make the difference less noticeable. ReSkate stabilization and Follow flips pause while the mod follows your head; your settings are kept.");
-        if(ImGui::Checkbox("Attach head position during hippy jumps",&config.stick.lock_hippy_jump)) stick_change();
-        help_marker("Follows your head position during hippy jumps. Ollies and other board jumps are unchanged. Disable Spring on foot can make the difference less noticeable.");
-        ImGui::TextWrapped("Makes the camera follow your head position during these actions.");
-        ImGui::Separator();
-        if(ImGui::Checkbox("Smooth foot/board transitions",&config.stick.smooth_transitions)) stick_change();
-        help_marker("Adjusts getting on and off the board separately. These settings are separate from camera Spring and button-glance smoothing.");
-        ImGui::BeginDisabled(!config.stick.smooth_transitions);
-        fit_control("Getting on board smoothing");
-        if(ImGui::SliderFloat("Getting on board smoothing",&config.stick.mount_smoothing,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        fit_control("Getting off board smoothing");
-        if(ImGui::SliderFloat("Getting off board smoothing",&config.stick.dismount_smoothing,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        ImGui::EndDisabled();
-        ImGui::TextWrapped("Higher values make getting on and off the board smoother. Bails switch immediately.");
-        ImGui::EndDisabled();
         ImGui::EndDisabled();
         ImGui::TextWrapped("Centre the stick after entering first person or changing look mode. On board, it still controls tricks.");
-        ImGui::Spacing(); section("CONTROLLER BINDS");
+        ImGui::Spacing(); section("Controller bindings");
         if(ImGui::BeginTable("bindings",3,ImGuiTableFlags_RowBg|ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn("Action",ImGuiTableColumnFlags_WidthStretch,.85f);
             ImGui::TableSetupColumn("Controller combo",ImGuiTableColumnFlags_WidthStretch,1);
@@ -314,7 +365,7 @@ void draw_panel_frame(const PanelFrame& frame) {
             }
             ImGui::EndTable();
         }
-        if(ImGui::Checkbox("Toggle glance controls",&config.toggle_glances)) {
+        if(readable_checkbox("Toggle glance controls",&config.toggle_glances)) {
             Command command;command.kind=CommandKind::toggle_glances;command.enabled=config.toggle_glances;submit_command(command);
         }
         if((config.toggle&0x100) && (config.toggle&15)) ImGui::TextWrapped("LB/L1 + D-pad First Person buttons do not trigger emotes.");
@@ -326,8 +377,10 @@ void draw_panel_frame(const PanelFrame& frame) {
         else if(config.toggle_glances) ImGui::TextWrapped("Press once to hold a glance. Press again to return. Another direction changes the glance.");
         else ImGui::TextWrapped("Hold the buttons to glance. Release to return.");
         if(!recorder_feedback.empty()) ImGui::TextWrapped("%s",recorder_feedback.c_str());
-        ImGui::Spacing(); section("CAMERA SETTINGS");
-        if(ImGui::Checkbox("Link look smoothing to camera spring",&config.link_smoothing)) {
+
+        } else {
+        ImGui::Spacing(); section("Camera settings");
+        if(readable_checkbox("Link look smoothing to camera spring",&config.link_smoothing)) {
             Command command; command.kind=CommandKind::link_smoothing; command.enabled=config.link_smoothing;
             submit_command(command); config=menu_snapshot().config;
         }
@@ -336,7 +389,7 @@ void draw_panel_frame(const PanelFrame& frame) {
             ImGui::TextUnformatted("Hotkey look smoothing");
             const auto look_change=[&]() { Command command; command.kind=CommandKind::look_settings;
                 command.spring=config.look_spring; submit_command(command); };
-            if(ImGui::Checkbox("Smooth hotkey looks",&config.look_spring.enabled)) look_change();
+            if(readable_checkbox("Smooth hotkey looks",&config.look_spring.enabled)) look_change();
             const auto strength=[&](const char* label,float& value) {
                 fit_control(label);
                 if(ImGui::SliderFloat(label,&value,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) look_change();
@@ -348,16 +401,16 @@ void draw_panel_frame(const PanelFrame& frame) {
         }
         ImGui::BeginDisabled(config.look_only);
         bool game_fov=config.fov==0;
-        if(ImGui::Checkbox("Use game's default FOV",&game_fov)) { config.fov=game_fov ? 0.0f:90.0f; settings_change(config); }
+        if(readable_checkbox("Use game's default FOV",&game_fov)) { config.fov=game_fov ? 0.0f:90.0f; settings_change(config); }
         ImGui::BeginDisabled(game_fov);
         float fov=config.fov>0 ? config.fov:90;
         fit_control("Field of view");
         if(ImGui::SliderFloat("Field of view",&fov,40,120,"%.0f degrees",ImGuiSliderFlags_AlwaysClamp)) { config.fov=fov; settings_change(config); }
         ImGui::EndDisabled();
         if(ImGui::TreeNode("Spring arm and offsets")) {
-            if(ImGui::Checkbox("Spring",&config.spring.enabled)) settings_change(config);
+            if(readable_checkbox("Spring",&config.spring.enabled)) settings_change(config);
             help_marker("Smooths how the camera follows your skater. Position offsets move the camera; rotation offsets change where it points. Higher smoothing values make it follow more slowly.");
-            if(ImGui::Checkbox("Disable Spring on foot",&config.disable_spring_on_foot)) {
+            if(readable_checkbox("Disable Spring on foot",&config.disable_spring_on_foot)) {
                 Command command;command.kind=CommandKind::spring_on_foot;command.enabled=config.disable_spring_on_foot;
                 submit_command(command);config=menu_snapshot().config;
             }
@@ -379,17 +432,42 @@ void draw_panel_frame(const PanelFrame& frame) {
             ImGui::TreePop();
         }
         ImGui::EndDisabled();
+        ImGui::Spacing(); section("Attachment and transitions");
+        ImGui::BeginDisabled(config.look_only);
+        if(readable_checkbox("Attach head position during mounting / jumping",&config.stick.lock_mount_jump)) stick_change();
+        help_marker("Follows your head position while getting on the board and during on-foot jumps. Disable Spring on foot can make the difference less noticeable. ReSkate stabilization and Follow flips pause while the mod follows your head; your settings are kept.");
+        if(readable_checkbox("Attach head position during hippy jumps",&config.stick.lock_hippy_jump)) stick_change();
+        help_marker("Follows your head position during hippy jumps. Ollies and other board jumps are unchanged. Disable Spring on foot can make the difference less noticeable.");
+        ImGui::Separator();
+        if(readable_checkbox("Smooth foot/board transitions",&config.stick.smooth_transitions)) stick_change();
+        help_marker("Adjusts getting on and off the board separately. These settings are separate from camera Spring and button-glance smoothing.");
+        ImGui::BeginDisabled(!config.stick.smooth_transitions);
+        fit_control("Getting on board smoothing");
+        if(ImGui::SliderFloat("Getting on board smoothing",&config.stick.mount_smoothing,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        fit_control("Getting off board smoothing");
+        if(ImGui::SliderFloat("Getting off board smoothing",&config.stick.dismount_smoothing,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("Higher values make getting on and off the board smoother. Bails switch immediately.");
+        ImGui::EndDisabled();
+
+        }
+        ImGui::EndChild();
+        model=menu_snapshot();
         ImGui::Separator();
         if(!model.feedback.empty()) ImGui::TextWrapped("%s",model.feedback.c_str());
-        if(model.unsaved && model.feedback.starts_with("Applied, but not saved")) {
+        if(model.save_failed && model.feedback!=model.save_error) ImGui::TextWrapped("%s",model.save_error.c_str());
+        if(model.save_failed) {
             if(ImGui::Button("Retry saving")) { Command command; command.kind=CommandKind::retry_save; submit_command(command); }
         }
         if(!graphics_error.empty()) ImGui::TextWrapped("%s",graphics_error.c_str());
+        if(ImGui::IsPopupOpen("",ImGuiPopupFlags_AnyPopupId)) {
+            bounds={0,0,static_cast<int>(io.DisplaySize.x),static_cast<int>(io.DisplaySize.y)};
+        }
         keyboard=io.WantCaptureKeyboard;
     }
     ImGui::End(); ImGui::PopStyleVar(3); ImGui::PopFont(); ImGui::PopStyleColor(colours);
     io.MouseDrawCursor=bounds.contains(static_cast<int>(io.MousePos.x),static_cast<int>(io.MousePos.y)) || (io.WantCaptureMouse && ImGui::IsMouseDown(0));
-    set_panel_bounds(bounds,true,ImGui::IsMouseDown(0)&&io.WantCaptureMouse,keyboard);
+    set_panel_bounds(bounds,true,ImGui::IsMouseDown(0)&&io.WantCaptureMouse,keyboard,io.WantTextInput);
     ImGui::Render();
 }
 void draw_panel(HWND window,bool visible) {

@@ -46,7 +46,7 @@ struct PanelFrame {
 };
 void route_panel_input(HWND window);
 bool install_panel_input_hooks();
-void set_panel_bounds(PanelBounds bounds,bool visible,bool dragging,bool keyboard);
+void set_panel_bounds(PanelBounds bounds,bool visible,bool dragging,bool keyboard,bool text_input=false);
 std::vector<MenuInput> take_panel_input();
 void hide_panel();
 void cancel_panel_recording();
