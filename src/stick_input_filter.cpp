@@ -1,3 +1,4 @@
+#include "diagnostic_log.h"
 #include "stick_runtime.h"
 #include "stick_input_filter.h"
 #include "stock_bridge.h"
@@ -14,6 +15,12 @@
 #include <set>
 #include <map>
 #include <mutex>
+#define DIRECTINPUT_VERSION 0x0800
+#include <dinput.h>
+#include <deque>
+#include <hidsdi.h>
+#include <hidpi.h>
+#include <intrin.h>
 namespace jishsfirstpersonmod {
 extern thread_local bool raw_controller_read;
 namespace {
@@ -39,6 +46,7 @@ std::uint32_t toggle_binding{};
 std::uintptr_t toggle_context{};
 ULONGLONG glance_published{};
 std::atomic<bool> emote_ready{};
+std::atomic<ULONGLONG> direct_epoch{};
 bool live_glances() {
     if(!emote_ready || raw_controller_read) return false;
     DWORD pid{};const auto window=GetForegroundWindow();bool visible{};
@@ -47,7 +55,7 @@ bool live_glances() {
         overlay_available(visible) && !visible && (toggle_eligible.load() ||
         (!game_camera_suspended() && stock_first_person_active() && stock_first_person_requested() && !comfort.suppressed && !comfort.bailing));
 }
-GlanceEmotePolicy::Result classify(unsigned path,std::uintptr_t source,std::uint32_t buttons) {
+GlanceEmotePolicy::Result classify(unsigned path,std::uintptr_t source,std::uint32_t buttons,ULONGLONG input_time=GetTickCount64()) {
     const auto now=GetTickCount64();
     const auto owner=comfort_snapshot();
     const auto age=now-glance_published;
@@ -72,10 +80,11 @@ GlanceEmotePolicy::Result classify(unsigned path,std::uintptr_t source,std::uint
     const auto consumed=state.toggle.update(toggle_live ? toggle_binding:0,buttons);
     if(consumed) { state.policy.reset();emote_event=false;state.result={consumed,0,false};return state.result; }
     if(!same_owner || !glance_live || game_camera_suspended() || !stock_first_person_active() || !stock_first_person_requested() || owner.suppressed || owner.bailing) { state.policy.reset();state.result={};return {}; }
-    state.result=state.policy.update(glance_bindings,buttons,now);
+    state.result=state.policy.update(glance_bindings,buttons,input_time);
     if(state.result.emote) emote_event=true;
     return state.result;
 }
+#include "direct_input_filter.inl"
 using StockHid=void(*)(const StockHidRead&,DWORD);
 StockHid original_hid{};
 void filter_sony_report(unsigned path,std::uintptr_t source,dingosdk::PlayStationPad kind,std::span<std::uint8_t> report) {
@@ -98,14 +107,17 @@ void filter_sony_report(unsigned path,std::uintptr_t source,dingosdk::PlayStatio
         updated.buffer=report.data();updated.edited.assign(report.begin(),report.end());
     } else { auto found=glance_sources.find({path,source});if(found!=glance_sources.end()) { found->second.buffer=nullptr;found->second.edited.clear(); } }
 }
+void filter_native_sony_read(const StockHidRead& read,DWORD size);
 void filtered_stock_hid(const StockHidRead& read,DWORD size) {
     const auto error=GetLastError();
     original_hid(read,size); // Keep ReSkate's menu capture and completion handling.
+    if(diagnostic_file_io) {SetLastError(error);return;}
     bool private_read{};{ std::lock_guard lock(glance_mutex);private_read=private_handles.contains(read.file); }
-    if(!private_read && read.buffer && size<=read.capacity && size>=10 && size<=512)
-        filter_sony_report(2,reinterpret_cast<std::uintptr_t>(read.file),read.kind,{static_cast<std::uint8_t*>(read.buffer),size});
+    if(!diagnostic_file_io && !private_read && read.buffer && size<=read.capacity && size>=10 && size<=512)
+        filter_native_sony_read(read,size);
     SetLastError(error);
 }
+#include "native_hid_filter.inl"
 template<unsigned Index> DWORD WINAPI filtered_state(DWORD slot,XINPUT_STATE* output) {
     const auto result=originals[Index](slot,output);const auto error=GetLastError();
     if(result==ERROR_SUCCESS && output && !raw_controller_read && stick_captures_input(slot))
@@ -182,11 +194,12 @@ void private_controller_handle(void* handle,bool add) {
     std::lock_guard lock(glance_mutex);
     if(add) private_handles.insert(handle);else private_handles.erase(handle);
 }
-void clear_glance_filter() { std::lock_guard lock(glance_mutex);glance_eligible=false;toggle_eligible=false;glance_sources.clear();emote_event=false; }
+void clear_glance_filter() { std::lock_guard lock(glance_mutex);glance_eligible=false;toggle_eligible=false;glance_sources.clear();emote_event=false;++direct_epoch; }
 void publish_toggle_filter(std::uint32_t toggle,bool allowed,unsigned device,std::uintptr_t context) {
     std::lock_guard lock(glance_mutex);
     if(toggle!=toggle_binding || allowed!=toggle_eligible.load() || device!=glance_device || context!=toggle_context) {
         glance_sources.clear();emote_event=false;
+        ++direct_epoch;
     }
     toggle_binding=toggle;toggle_eligible=allowed;glance_device=device;toggle_context=context;
 }
@@ -195,10 +208,11 @@ void publish_glance_filter(const dingosdk::FirstPersonLookControls& bindings,boo
     std::lock_guard lock(glance_mutex);const bool changed=device!=glance_device || toggle!=toggle_binding || toggle_allowed!=toggle_eligible.load() || context!=toggle_context;
     bool glance_changed{};
     for(unsigned i=0;i<4;++i) glance_changed=glance_changed || bindings[i].combo!=glance_bindings[i].combo;
-    if(changed || (!eligible && !toggle_allowed)) { glance_sources.clear();emote_event=false; }
+    if(changed || (!eligible && !toggle_allowed)) { glance_sources.clear();emote_event=false;++direct_epoch; }
     else if(glance_changed || eligible!=glance_eligible || owner!=glance_owner) {
         for(auto& [key,state]:glance_sources) { state.policy.reset();state.result={}; }
         emote_event=false;
+        ++direct_epoch;
     }
     toggle_binding=toggle;toggle_eligible=toggle_allowed;toggle_context=context;
     glance_bindings=bindings;glance_owner=owner;glance_device=device;glance_eligible=eligible;glance_published=GetTickCount64();
@@ -253,9 +267,11 @@ bool install_stick_input_filter() {
         if(owned_hook_prepare(target,reinterpret_cast<void*>(&filtered_stock_hid),&original)!=HookOk) return false;
         original_hid=reinterpret_cast<StockHid>(original);pending.push_back(target);
     } else log("Glance emote blocking unavailable: shared ReSkate 2.0.7 HID handler did not verify. Existing stick filters remain available.");
+    if(!prepare_direct_input(pending)) log("DirectInput gesture coverage incomplete: device adapters could not be prepared.");
+    if(!prepare_native_hid(pending)) return false;
     for(auto* target:pending) if(hook_queue_enable(target)!=HookOk) return false;
     const bool installed=apply_owned_hooks()==HookOk;emote_ready=installed && hid_verified;
-    if(emote_ready) log("Glance emote blocking ready: existing XInput/Raw Input filters and verified shared ReSkate HID report handler.");
+    if(emote_ready) log("Glance emote blocking ready: XInput/Raw Input and verified ReSkate HID handler. DirectInput coverage is reported separately per Sony device.");
     return installed;
 }
 }

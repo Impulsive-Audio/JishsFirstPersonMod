@@ -6,7 +6,7 @@
 #include "bridge_resolver.h"
 #include "owned_hooks.h"
 #include "launcher_mod.h"
-#include "rotating_log.h"
+#include "diagnostic_log.h"
 #include <shellapi.h>
 #include <atomic>
 #include <fstream>
@@ -34,15 +34,7 @@ std::filesystem::path data_directory() {
     return std::filesystem::path(local)/L"JishsFirstPersonMod";
 }
 void log(const std::string& text) noexcept {
-    try {
-        static auto* mutex = new std::mutex;
-        std::lock_guard lock(*mutex);
-        const auto dir=data_directory();
-        std::filesystem::create_directories(dir);
-        const auto record=std::to_string(GetTickCount64())+" [JishsFirstPersonMod] "+text+'\n';
-        append_rotating_log(dir/L"JishsFirstPersonMod.log",record,text_log_limit);
-        OutputDebugStringA(("[JishsFirstPersonMod] " + text + "\n").c_str());
-    } catch (...) {}
+    try {write_diagnostic_log(data_directory(),text);} catch(...) {}
 }
 bool take_toggle_request() noexcept { return toggle_request.exchange(false); }
 bool take_reload_request() noexcept { return reload_request.exchange(false); }

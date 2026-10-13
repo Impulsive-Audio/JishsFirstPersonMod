@@ -1,12 +1,14 @@
-# Jish's First Person Mod 1.27
+# Jish's First Person Mod 1.28
 
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
-Adds glance emote blocking using existing ReSkate/mod handlers. Hold LB/L1 and tap a bound D-pad direction to glance; double tap within 250 ms to emote, and hold the second tap for a held emote. Toggle bindings using LB/L1 + D-pad also block accidental emotes. See [1.27 release notes](UPDATE_1_27.md).
+Adds glance emote blocking using existing ReSkate/mod handlers. Hold LB/L1 and tap a bound D-pad direction to glance; double tap within 250 ms to emote, and hold the second tap for a held emote. Toggle bindings using LB/L1 + D-pad also block accidental emotes. See [1.28 release notes](UPDATE_1_28.md).
+
+Native DualSense and DualSense Edge controllers now use the same gesture-blocking policy as Xbox, including USB with Steam Input disabled. HID completion adapters cover large read buffers and batched reports alongside DirectInput state/event adapters. Your independent binding reader stays available. Technical validation is recorded in the source test notes.
 
 ## Install
 
-Download `JishsFirstPersonMod-1.27-reskate-2.0.7.zip` for ReSkate 2.0.7. Published packages are available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
+Download `JishsFirstPersonMod-1.28-reskate-2.0.7.zip` for ReSkate 2.0.7. Published packages are available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
 
 Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
 
@@ -52,7 +54,7 @@ Windows x64, Visual Studio C++ tools and CMake are required. Run `./build.ps1`, 
 
 All 31 Windows tests pass. ReSkate 2.0.7 uses verified native camera, physics query and cosmetic capture contracts. Bail collision remains **work in progress**; the new third-person getting-up option provides an alternative. Technical research and gameplay checklists stay in source, including [bail collision research](BAIL_COLLISION_RESEARCH.md), [local hair checks](TEST_LOCAL_HAIR.md) and [getting-up checks](TEST_THIRD_PERSON_RECOVERY.md).
 
-See [1.27 release notes](UPDATE_1_27.md), [1.26 release notes](UPDATE_1_26.md), [1.25 release notes](UPDATE_1_25.md), [1.24 release notes](UPDATE_1_24.md), [2.0.5 update notes](UPDATE_1_23.md), [2.0.5 offset audit](OFFSET_AUDIT_2_0_5.md), [2.0.4 notes](UPDATE_1_22.md), [previous release notes](UPDATE_1_21.md), and [historical notes](HISTORY.md).
+See [1.28 release notes](UPDATE_1_28.md), [1.26 release notes](UPDATE_1_26.md), [1.25 release notes](UPDATE_1_25.md), [1.24 release notes](UPDATE_1_24.md), [2.0.5 update notes](UPDATE_1_23.md), [2.0.5 offset audit](OFFSET_AUDIT_2_0_5.md), [2.0.4 notes](UPDATE_1_22.md), [previous release notes](UPDATE_1_21.md), and [historical notes](HISTORY.md).
 
 ## License
 
