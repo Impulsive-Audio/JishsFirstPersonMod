@@ -18,12 +18,14 @@ struct Config {
     float fov{};
     bool link_smoothing=true, look_smoothing_initialized=false;
     dingosdk::first_person::Settings look_spring;
+    dingosdk::first_person::Settings stick_spring;
+    bool stick_smoothing_initialized=false;
+    bool settings_migrated=false; // Read-time migration; not serialized.
     bool look_only=false;
     bool third_person_bailing=false, on_board_only=false;
     bool third_person_recovery=false;
     bool third_person_camera_switching() const { return third_person_bailing || (!look_only && third_person_recovery); }
     bool bail_camera_collision=true;
-    bool bald_first_person=true;
     bool lock_body_flips=false;
     bool spectator_first_person=false;
     bool cycle_restore_pending=false,cycle_restore_enabled=false; // Native preference retained during comfort override.
@@ -34,6 +36,12 @@ struct Config {
 inline dingosdk::first_person::Settings glance_settings(const Config& config) {
     auto settings=config.link_smoothing ? config.spring:config.look_spring;
     settings.offset={}; settings.rotation={}; return settings;
+}
+inline void initialize_stick_smoothing(Config& config) {
+    if(config.stick_smoothing_initialized) return;
+    config.stick_spring=glance_settings(config);
+    if(config.link_smoothing && config.disable_spring_on_foot && !config.look_only) config.stick_spring.enabled=false;
+    config.stick_smoothing_initialized=true;
 }
 void log(const std::string& text) noexcept;
 std::filesystem::path module_directory();

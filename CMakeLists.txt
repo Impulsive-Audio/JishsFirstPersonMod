@@ -44,7 +44,7 @@ target_link_libraries(mod_menu_ui PUBLIC mod_settings mod_imgui mod_menu_input)
 configure_file(assets/fonts.rc.in "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc" @ONLY)
 add_library(JishsFirstPersonMod SHARED
     src/spectator_runtime.cpp
-    src/body_flip_runtime.cpp src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/bail_collision.cpp src/first_person_hair.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
+    src/body_flip_runtime.cpp src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/bail_collision.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
     src/proven_debug.cpp src/proven_input.cpp src/stick_runtime.cpp src/stick_input_filter.cpp vendor/Extension/UI/Overlay/playstation_input.cpp
     vendor/Engine/Game/Build/image_identity.cpp src/menu_renderer.cpp src/recording_input.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc")
@@ -70,10 +70,6 @@ if(BUILD_TESTING)
     add_executable(sony_input_probe tools/sony_input_probe.cpp)
     target_include_directories(sony_input_probe PRIVATE vendor)
     target_link_libraries(sony_input_probe PRIVATE dinput8 dxguid cfgmgr32 hid)
-    add_executable(first_person_hair_tests tests/first_person_hair_tests.cpp)
-    target_include_directories(first_person_hair_tests PRIVATE src vendor)
-    target_link_libraries(first_person_hair_tests PRIVATE mod_settings)
-    add_test(NAME first_person_bald_hair_restore_and_persistence COMMAND first_person_hair_tests)
     add_executable(bail_collision_tests tests/bail_collision_tests.cpp)
     target_include_directories(bail_collision_tests PRIVATE src vendor)
     target_link_libraries(bail_collision_tests PRIVATE mod_settings)

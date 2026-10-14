@@ -3,6 +3,10 @@
 #include "camera_transition.h"
 #include "camera_movement.h"
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include "look_smoothing.h"
+#include "spring_policy.h"
 #include <stdexcept>
 #include <cstdlib>
 namespace jishsfirstpersonmod {
@@ -133,6 +137,52 @@ int main() {
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");
+
+    // Legacy migration preserves the effective on-foot behavior, then becomes independent.
+    const auto migration_path=module_directory()/"migration.ini";
+    for(bool linked:{false,true}) for(bool foot_off:{false,true}) {
+        { std::ofstream old(migration_path); old<<"[JishsFirstPersonMod]\nspring=1\nstrength_up=12\nstrength_down=23\nstrength_left=34\nstrength_right=45\nlink_smoothing="<<linked
+            <<"\nlook_smoothing_initialized=1\nlook_spring=1\nlook_strength_up=21\nlook_strength_down=32\nlook_strength_left=43\nlook_strength_right=54\ndisable_spring_on_foot="<<foot_off<<"\nbald_first_person=obsolete\n"; }
+        auto migrated=read_config(migration_path);
+        check(migrated.settings_migrated && migrated.stick_smoothing_initialized,"legacy migration not detected");
+        check(migrated.stick_spring.enabled==!(linked && foot_off),"legacy on-foot switch changed");
+        check(migrated.stick_spring.up==(linked ? 12:21) && migrated.stick_spring.right==(linked ? 45:54),"legacy strengths changed");
+        write_config(migration_path,migrated);
+        auto roundtrip=read_config(migration_path);
+        check(!roundtrip.settings_migrated && roundtrip.stick_spring.up==migrated.stick_spring.up,"migration repeated or lost");
+        std::ifstream saved(migration_path);std::stringstream text;text<<saved.rdbuf();
+        check(text.str().find("bald_first_person")==std::string::npos,"retired option saved");
+        roundtrip.look_spring.up=99;roundtrip.spring.up=98;
+        check(roundtrip.stick_spring.up==migrated.stick_spring.up,"stick strengths linked after migration");
+    }
+    for(bool glance_enabled:{false,true}) for(bool stick_enabled:{false,true}) {
+        Config independent;independent.link_smoothing=false;independent.look_smoothing_initialized=true;
+        independent.look_spring.enabled=glance_enabled;independent.stick_spring.enabled=stick_enabled;independent.stick_smoothing_initialized=true;
+        independent.look_spring.up=independent.look_spring.down=independent.look_spring.left=independent.look_spring.right=70;
+        independent.stick_spring=independent.look_spring;independent.stick_spring.enabled=stick_enabled;
+        LookSmoothing glance;
+        glance.apply(pose,glance_settings(independent),{},0,false);
+        const auto glancing=glance.apply(pose,glance_settings(independent),{30,0},.1,false);
+        check((glancing==target(pose,{}, {30,0}))==!glance_enabled,"glance toggle affected incorrectly");
+        for(StickAxes axis: {StickAxes{1,0},StickAxes{-1,0},StickAxes{0,1},StickAxes{0,-1}}) {
+            StickLookState a,b;auto direct=independent.stick_spring;direct.enabled=false;
+            a.update(settings,{},true,1,0,0,0,independent.stick_spring);b.update(settings,{},true,1,0,0,0,direct);
+            auto smoothed=a.update(settings,axis,true,1,.1,0,0,independent.stick_spring);
+            auto immediate=b.update(settings,axis,true,1,.1,0,0,direct);
+            check((std::abs(smoothed.heading-immediate.heading)<.0001f && std::abs(smoothed.pitch-immediate.pitch)<.0001f)==!stick_enabled,"stick directional smoothing toggle failed");
+        }
+        SettingsStore independent_store(migration_path,independent);Command smoothing;smoothing.kind=CommandKind::stick_smoothing;
+        smoothing.spring=independent.stick_spring;smoothing.spring.up=36;check(independent_store.submit(smoothing,0),"stick command rejected");
+        check(independent_store.snapshot().config.look_spring.up==70,"stick command changed glance settings");
+        independent_store.flush_due(1000);auto saved=read_config(migration_path);
+        check(saved.stick_spring.up==36 && saved.look_spring.enabled==glance_enabled && saved.stick_spring.enabled==stick_enabled,"independent settings roundtrip failed");
+        auto foot_config=camera_config_for_state(saved,true,1);
+        check(foot_config.stick_spring.up==36,"on-foot spring policy changed stick smoothing");
+        smoothing.kind=CommandKind::apply_preset;smoothing.preset=saved;
+        check(independent_store.submit(smoothing,1000) && independent_store.snapshot().config.stick_spring.up==36,"preset lost independent smoothing");
+    }
+    {auto invalid=Config{};invalid.stick_spring.up=101;bool failed=false;try{validate_config(invalid);}catch(...){failed=true;}check(failed,"invalid stick smoothing accepted");}
+
     std::cout<<"Stick axes, timing, neutral handoff, smoothing, native facing and persistence passed\n";
 }
 

@@ -1,6 +1,5 @@
 #include "menu.h"
 #include "bail_collision.h"
-#include "first_person_hair.h"
 #include "comfort_policy.h"
 #include "player_state_contract.h"
 #include "stick_runtime.h"
@@ -271,13 +270,6 @@ void draw_panel_frame(const PanelFrame& frame) {
         else if(config.third_person_bailing) ImGui::TextWrapped("Turn off Third person while bailing to use bail camera collision.");
         else if(!bail_collision_available()) ImGui::TextWrapped("Bail camera collision is unavailable. See the mod log.");
         if(!comfort.bail_available) ImGui::TextWrapped("Automatic bail switching is unavailable. See the mod log.");
-        ImGui::BeginDisabled(!first_person_hair_available());
-        if(readable_checkbox("Bald in first person",&config.bald_first_person)) {
-            Command command;command.kind=CommandKind::bald_hair;command.enabled=config.bald_first_person;submit_command(command);
-        }
-        help_marker("Temporarily uses the smooth bald hairstyle on your screen. Other players see your original hair. Your hair returns in third person and when this is turned off. Hair colour and saved outfits are kept.");
-        ImGui::EndDisabled();
-        if(!first_person_hair_available()) ImGui::TextWrapped("Temporary bald hairstyle is unavailable. See the mod log.");
         ImGui::BeginDisabled(!comfort.board_available);
         if(readable_checkbox("First person on board only",&config.on_board_only)) comfort_change();
         help_marker("Uses third person while walking. First person returns when you get on the board.");
@@ -381,16 +373,16 @@ void draw_panel_frame(const PanelFrame& frame) {
 
         } else {
         ImGui::Spacing(); section("Camera settings");
-        if(readable_checkbox("Link look smoothing to camera spring",&config.link_smoothing)) {
+        if(readable_checkbox("Link button-glance smoothing to camera Spring",&config.link_smoothing)) {
             Command command; command.kind=CommandKind::link_smoothing; command.enabled=config.link_smoothing;
             submit_command(command); config=menu_snapshot().config;
         }
         help_marker("Uses camera Spring settings for button glances. Turn this off to adjust glance smoothing separately. Changes made during a glance take effect when you return to centre.");
         if(!config.link_smoothing) {
-            ImGui::TextUnformatted("Hotkey look smoothing");
+            ImGui::TextUnformatted("Button-glance smoothing");
             const auto look_change=[&]() { Command command; command.kind=CommandKind::look_settings;
                 command.spring=config.look_spring; submit_command(command); };
-            if(readable_checkbox("Smooth hotkey looks",&config.look_spring.enabled)) look_change();
+            if(readable_checkbox("Smooth button glances",&config.look_spring.enabled)) look_change();
             const auto strength=[&](const char* label,float& value) {
                 fit_control(label);
                 if(ImGui::SliderFloat(label,&value,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) look_change();
@@ -400,6 +392,18 @@ void draw_panel_frame(const PanelFrame& frame) {
             ImGui::TextWrapped("Smooths button glances and their return to centre.");
             ImGui::Separator();
         }
+        ImGui::TextUnformatted("On-foot right-stick smoothing");
+        const auto stick_smoothing_change=[&]() { Command command; command.kind=CommandKind::stick_smoothing;
+            command.spring=config.stick_spring; submit_command(command); };
+        if(readable_checkbox("Smooth on-foot right-stick look",&config.stick_spring.enabled)) stick_smoothing_change();
+        const auto stick_strength=[&](const char* label,float& value) {
+            fit_control(label);
+            if(ImGui::SliderFloat(label,&value,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_smoothing_change();
+        };
+        stick_strength("Stick up smoothing",config.stick_spring.up); stick_strength("Stick down smoothing",config.stick_spring.down);
+        stick_strength("Stick left smoothing",config.stick_spring.left); stick_strength("Stick right smoothing",config.stick_spring.right);
+        ImGui::TextWrapped("Smooths on-foot right-stick look independently of button glances and camera Spring.");
+        ImGui::Separator();
         ImGui::BeginDisabled(config.look_only);
         bool game_fov=config.fov==0;
         if(readable_checkbox("Use game's default FOV",&game_fov)) { config.fov=game_fov ? 0.0f:90.0f; settings_change(config); }

@@ -66,3 +66,5 @@ See [LICENSE.txt](vendor/LICENSE) and dependency license files under vendor/Exte
 With **Third person while bailing** or **Third person while getting up** enabled on ReSkate 2.0.7, **First Person In Camera Cycle** is automatically disabled. The menu explains this override. Your previous preference is retained across game restarts and restored when both automatic third-person options are off. The mod's First Person checkbox and hotkey remain available.
 
 This separate local 1.30 build includes the working 1.29.1 Sony HID menu fixes. See [local integration notes](docs/updates/LOCAL_1_30_INTEGRATION.md).
+
+Local test update: bald mode and outgoing cosmetic hooks removed; button glances and on-foot right-stick smoothing are independent. Radial-menu input changes are deferred.

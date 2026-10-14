@@ -48,7 +48,6 @@ Enable First Person is the master switch in either menu and for the controller t
 
 - Camera collision during bails: enabled by default on the supported build. This is work in progress; the camera can still stick near surfaces.
 
-- Bald in first person: enabled by default on the supported build. Uses bald hair locally, restores your original hairstyle in third person, and retains your original hair in multiplayer updates.
 
 - First person on board only: walking or bailing selects third person; riding selects first person. With both options enabled, first person requires riding and no active bail/recovery.
 
@@ -203,3 +202,5 @@ Front-flip offset fix: the flip target uses animated head pose plus configured p
 Enable **Camera > Attachment and transitions > First-person spectator view** to make the existing First Person hotkey/controller binding switch spectator views during throwdowns, Game of Skate and manual party spectating. Each session starts with the normal follow camera. The chosen view follows player changes within that session and resets when spectating ends. Your own First Person preference is preserved.
 
 Head view uses ReSkate's first-person camera axes and eye midpoint, including its clearance ahead of the face. Your configured offsets, FOV, Spring and native stabilization settings apply. The rendered animation refines the camera in the same frame. A 250 ms moving-target blend handles view changes. The watched head is hidden only in the local render buffer. Missing, stale or unverified targets keep the follow camera; status explains the fallback. The option defaults off, is included in personal presets and requires the verified ReSkate 2.0.7 party spectator path. Remote camera settings and look input are not transmitted. Gameplay validation remains pending.
+
+On-foot right-stick smoothing has its own enable switch and four directional strengths. Button-glance smoothing can still follow camera Spring. Older settings migrate once using the previous on-foot smoothing behavior, including Disable Spring on foot when linked.

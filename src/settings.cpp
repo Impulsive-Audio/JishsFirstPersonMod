@@ -11,7 +11,7 @@
 
 namespace jishsfirstpersonmod {
 SettingsStore::SettingsStore(std::filesystem::path path,Config initial):path_(std::move(path)) {
-    validate_config(initial); model_.config=initial; model_.revision=1;update_binding_conflicts();
+    initialize_stick_smoothing(initial); validate_config(initial); model_.config=initial; model_.revision=1;update_binding_conflicts();
 }
 bool SettingsStore::submit(const Command& command,std::uint64_t now) {
     std::lock_guard lock(mutex_);
@@ -33,13 +33,12 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
             if(native_key_overlap(command.action,next.native)) throw std::runtime_error("That panel key is already used by ReSkate.");
             next.menu_key=command.action;immediate=true;break;
         case CommandKind::apply_preset:
-            next=command.preset;next.cycle_restore_pending=model_.config.cycle_restore_pending;next.cycle_restore_enabled=model_.config.cycle_restore_enabled;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.look_only=model_.config.look_only;
+            next=command.preset; initialize_stick_smoothing(next);next.cycle_restore_pending=model_.config.cycle_restore_pending;next.cycle_restore_enabled=model_.config.cycle_restore_enabled;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.look_only=model_.config.look_only;
             validate_config(next);
             immediate=true;break;
         case CommandKind::stick_settings: next.stick=command.stick;break;
         case CommandKind::toggle_glances: next.toggle_glances=command.enabled;immediate=true;break;
         case CommandKind::bail_collision: next.bail_camera_collision=command.enabled;immediate=true;break;
-        case CommandKind::bald_hair: next.bald_first_person=command.enabled;immediate=true;break;
         case CommandKind::binding:
             if(command.action>4) throw std::runtime_error("Unknown controller action.");
             if(command.action==0) next.toggle=command.mask; else next.look[command.action-1].combo=command.mask;
@@ -54,6 +53,9 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
                 next.look_smoothing_initialized=true;
             }
             next.link_smoothing=command.enabled; immediate=true; break;
+        case CommandKind::stick_smoothing:
+            next.stick_spring=command.spring; next.stick_spring.offset={}; next.stick_spring.rotation={};
+            next.stick_smoothing_initialized=true; break;
         case CommandKind::look_settings:
             next.look_spring=command.spring; next.look_spring.offset={}; next.look_spring.rotation={};
             next.look_smoothing_initialized=true; break;
@@ -201,11 +203,12 @@ Config import_profile(const std::filesystem::path& path) {
         }
     }
     if(status!=SQLITE_DONE) throw std::runtime_error("Reading the profile failed.");
+    initialize_stick_smoothing(result);
     validate_config(result); return result;
 }
 InitialSettings load_initial_settings(const std::filesystem::path& target,const std::filesystem::path& legacy,const std::filesystem::path& profile) {
     if(std::filesystem::exists(target)) {
-        try { return {read_config(target),"Saved settings loaded.",false}; }
+        try { auto config=read_config(target); return {config,"Saved settings loaded.",config.settings_migrated}; }
         catch(const std::exception& e) { return {{},std::string("Saved settings could not be read; original file retained: ")+e.what(),false}; }
     }
     for(const auto name:{L"JishsFirstPersonMod.ini",L"MyMod.ini"}) {
@@ -349,7 +352,7 @@ std::filesystem::path preset_name(const std::string& text) {
     auto base=lower.substr(0,lower.find(L'.'));
     while(!base.empty() && base.back()==L' ') base.pop_back();
     if(lower==L"jish's recommended" || lower==L"recommended" || base==L"con" || base==L"prn" || base==L"aux" || base==L"nul" ||
-       (base.size()==4 && (base.starts_with(L"com") || base.starts_with(L"lpt")) && ((base[3]>=L'1' && base[3]<=L'9') || base[3]==L'¹' || base[3]==L'²' || base[3]==L'³')))
+       (base.size()==4 && (base.starts_with(L"com") || base.starts_with(L"lpt")) && ((base[3]>=L'1' && base[3]<=L'9') || base[3]==L'Â¹' || base[3]==L'Â²' || base[3]==L'Â³')))
         throw std::runtime_error("That preset name is reserved.");
     return path;
 }

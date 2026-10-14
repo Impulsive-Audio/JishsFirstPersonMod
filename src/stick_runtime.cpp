@@ -208,7 +208,7 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
     if(turn && !request.turn) look.rebase_facing(body_heading);
     auto stick=config.stick;if(recovery) stick.turn_character=false;
     auto aim=look.update(stick,{input.right_x,input.right_y},true,input.device,time,recovery ? 0:native_heading,
-        recovery ? 0:body_heading,glance_settings(effective),recovery ? 0:displayed_pitch);
+        recovery ? 0:body_heading,effective.stick_spring,recovery ? 0:displayed_pitch);
     request={owner,aim,turn,input.device,time,body_heading,head.valid,recovery};
 }
 bool attach_stick_runtime(std::uintptr_t base) {

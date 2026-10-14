@@ -91,7 +91,8 @@ Config read_config(const std::filesystem::path& path) {
     cfg.bail_camera_collision=boolean("bail_camera_collision",true);
     cfg.lock_body_flips=boolean("lock_body_flips",false);
     cfg.spectator_first_person=boolean("spectator_first_person",false);
-    cfg.bald_first_person=boolean("bald_first_person",true);
+    cfg.settings_migrated=values.contains("bald_first_person");
+    values.erase("bald_first_person"); // Retired option: ignore legacy values.
     cfg.cycle_restore_pending=boolean("cycle_restore_pending",false);
     cfg.cycle_restore_enabled=boolean("cycle_restore_enabled",false);
     cfg.on_board_only=boolean("on_board_only",false);
@@ -123,6 +124,14 @@ Config read_config(const std::filesystem::path& path) {
         cfg.look_spring=cfg.spring; cfg.look_spring.offset={}; cfg.look_spring.rotation={}; cfg.look_smoothing_initialized=true;
     }
     if (!dingosdk::first_person::valid(cfg.spring)) throw std::runtime_error("spring settings outside custom build's supported ranges");
+    cfg.stick_smoothing_initialized=boolean("stick_smoothing_initialized",false);
+    cfg.stick_spring.enabled=boolean("stick_spring",false);
+    cfg.stick_spring.up=number("stick_strength_up",50); cfg.stick_spring.down=number("stick_strength_down",50);
+    cfg.stick_spring.left=number("stick_strength_left",50); cfg.stick_spring.right=number("stick_strength_right",50);
+    if(!cfg.stick_smoothing_initialized) {
+        initialize_stick_smoothing(cfg); cfg.settings_migrated=true;
+    }
+    if(!dingosdk::first_person::valid(cfg.stick_spring)) throw std::runtime_error("Stick smoothing outside supported ranges");
     if (!values.empty()) throw std::runtime_error("unknown JishsFirstPersonMod.ini setting: " + values.begin()->first);
     return cfg;
 }
@@ -135,6 +144,7 @@ void validate_config(const Config& cfg) {
        !std::isfinite(cfg.stick.pitch_speed) || cfg.stick.pitch_speed<1 || cfg.stick.pitch_speed>720 ||
        !std::isfinite(cfg.stick.deadzone) || cfg.stick.deadzone<.01f || cfg.stick.deadzone>.5f)
         throw std::runtime_error("Stick look settings outside supported ranges.");
+    if(!dingosdk::first_person::valid(cfg.stick_spring)) throw std::runtime_error("Stick smoothing outside supported ranges");
     std::set<std::uint32_t> used;
     const auto reserve=[&](std::uint32_t mask) {
         if(!dingosdk::valid_controller_combo(mask)) throw std::runtime_error("Unsupported controller buttons.");
@@ -179,8 +189,12 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
             <<"\nthird_person_recovery="<<cfg.third_person_recovery
             <<"\nlock_body_flips="<<cfg.lock_body_flips
             <<"\nspectator_first_person="<<cfg.spectator_first_person
-            <<"\nbald_first_person="<<cfg.bald_first_person
             <<"\ndisable_spring_on_foot="<<cfg.disable_spring_on_foot<<'\n';
+        auto normalized=cfg; initialize_stick_smoothing(normalized);
+        const auto& stick_spring=normalized.stick_spring;
+        out<<"stick_smoothing_initialized=1\nstick_spring="<<stick_spring.enabled
+            <<"\nstick_strength_up="<<stick_spring.up<<"\nstick_strength_down="<<stick_spring.down
+            <<"\nstick_strength_left="<<stick_spring.left<<"\nstick_strength_right="<<stick_spring.right<<'\n';
         out<<"stick_look="<<cfg.stick.enabled<<"\nstick_turn_character="<<cfg.stick.turn_character
             <<"\nstick_invert_y="<<cfg.stick.invert_y<<"\nstick_yaw_speed="<<cfg.stick.yaw_speed
             <<"\nstick_pitch_speed="<<cfg.stick.pitch_speed<<"\nstick_deadzone="<<cfg.stick.deadzone<<'\n';
