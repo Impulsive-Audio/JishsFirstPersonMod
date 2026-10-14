@@ -48,6 +48,10 @@ inline bool character_facing_allowed(const ComfortSnapshot& state,const CameraMo
     return camera_overrides_allowed(state,movement) && movement.mode==1 && movement.custom_mode==1 &&
         !movement.jumping && !movement.mounting && !movement.hippy.active && !movement.hippy.candidate;
 }
+inline bool board_free_look_allowed(const Config& config,const ComfortSnapshot& state,const CameraMovementSample& movement) {
+    return config.board.enabled && movement.mode==2 && movement.custom_mode==2 &&
+        !movement.body_flip_camera_owned && camera_look_allowed(config,state,movement);
+}
 inline const char* head_attachment_reason(const Config& config,const ComfortSnapshot& state,const CameraMovementSample& movement) {
     if(config.look_only) return "compatibility";
     if(bail_camera_locked(state,movement)) return "bail";

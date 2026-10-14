@@ -1,11 +1,13 @@
 // Included inside stick_input_filter.cpp's private namespace. Reuse its policy
 // and publication gates; DirectInput never invokes the camera toggle itself.
-struct DirectField { DWORD offset{}, mask{}; bool pov{}; };
+struct DirectField { DWORD offset{}, mask{}; bool pov{},axis{},vertical{},right_stick{},trigger{};LONG center{},low{},high{}; };
 struct DirectEvent { DWORD offset{}, data{}, time{}, sequence{}, edited{}; };
 struct DirectDecision { ULONGLONG time{}; DWORD buttons{}, consume{}; };
 struct DirectDevice {
     bool identified{}, sony{}, mapped{}, reported{}, buffered_known{};
     DWORD size{}, buffered_buttons{};
+    bool stick_captured{};
+    std::deque<DIDEVICEOBJECTDATA> restore_axes;
     ULONGLONG epoch{};
     std::vector<DirectField> fields;
     std::deque<DirectEvent> events;
@@ -35,7 +37,7 @@ using DirectFactory=HRESULT(WINAPI*)(HINSTANCE,DWORD,REFIID,void**,IUnknown*);
 void direct_sync(DirectDevice& state) {
     const auto epoch=direct_epoch.load();
     if(state.epoch!=epoch) {
-        state.epoch=epoch;state.buffered_known=false;state.buffered_buttons=0;
+        state.epoch=epoch;state.buffered_known=false;state.buffered_buttons=0;state.stick_captured=false;state.restore_axes.clear();
         state.events.clear();state.decisions.clear();
     }
 }
@@ -53,7 +55,7 @@ DWORD direct_pov(DWORD buttons) {
 void direct_reset(void* device) {
     std::lock_guard lock(direct_mutex);
     if(auto found=direct_devices.find(device);found!=direct_devices.end()) {
-        found->second.buffered_known=false;found->second.buffered_buttons=0;
+        found->second.buffered_known=false;found->second.buffered_buttons=0;found->second.stick_captured=false;found->second.restore_axes.clear();
         found->second.events.clear();found->second.decisions.clear();
     }
     std::lock_guard policy_lock(glance_mutex);
@@ -89,13 +91,23 @@ void direct_map(void* device,DirectDevice& state,const DIDATAFORMAT& format) {
         const auto& object=format.rgodf[i];WORD usage{},page{};DWORD type{};
         if(!direct_object(device,object.dwOfs,DIPH_BYOFFSET,usage,page,type)) continue;
         const bool pov=(type&DIDFT_POV)!=0;
-        constexpr DWORD sony_buttons[]{0,0x4000,0x1000,0x2000,0x8000,0x100,0x200,0,0,0x20,0x10,0x40,0x80};
+        constexpr DWORD sony_buttons[]{0,0x4000,0x1000,0x2000,0x8000,0x100,0x200,0x10000,0x20000,0x20,0x10,0x40,0x80};
         const DWORD mask=(type&DIDFT_BUTTON)!=0 && page==9 && usage<std::size(sony_buttons) ? sony_buttons[usage]:0;
+        const bool axis=(type&DIDFT_ABSAXIS)!=0 && page==1 && (usage>=0x30 && usage<=0x35);
+        LONG center{},low{},high{};
+        if(axis) {
+            DIPROPRANGE range{};range.diph={sizeof(range),sizeof(range.diph),object.dwOfs,DIPH_BYOFFSET};
+            auto** table=*reinterpret_cast<void***>(device);
+            using Property=HRESULT(STDMETHODCALLTYPE*)(void*,REFGUID,DIPROPHEADER*);
+            if(FAILED(reinterpret_cast<Property>(table[5])(device,DIPROP_RANGE,&range.diph)) || range.lMin>=range.lMax) continue;
+            low=range.lMin;high=range.lMax;
+            center=static_cast<LONG>((static_cast<long long>(range.lMin)+range.lMax)/2);
+        }
         const bool l1=mask==0x100;
-        const DWORD width=pov?4:1;
-        if((!pov && !mask) || object.dwOfs>state.size || width>state.size-object.dwOfs) continue;
+        const DWORD width=pov || axis ? 4:1;
+        if((!pov && !mask && !axis) || object.dwOfs>state.size || width>state.size-object.dwOfs) continue;
         if(pov && (page!=1 || usage!=0x39)) continue;
-        state.fields.push_back({object.dwOfs,mask,pov});
+        state.fields.push_back({object.dwOfs,mask,pov,axis,usage==0x35,usage==0x32 || usage==0x35,usage==0x33 || usage==0x34,center,low,high});
         shoulders+=l1;povs+=pov;
     }
     // Multiple hats/shoulder aliases require an explicit mapping, not guesses.
@@ -108,18 +120,26 @@ void direct_standard(void* device,DirectDevice& state,DWORD size) {
     if(state.size || (size!=sizeof(DIJOYSTATE) && size!=sizeof(DIJOYSTATE2))) return;
     // Validate standard offsets against the device's active object metadata.
     if(!state.sony) return;
-    std::array<DIOBJECTDATAFORMAT,129> objects{};
+    std::array<DIOBJECTDATAFORMAT,135> objects{};
     objects[0].dwOfs=offsetof(DIJOYSTATE,rgdwPOV);
     for(unsigned i=0;i<128;++i) objects[i+1].dwOfs=offsetof(DIJOYSTATE,rgbButtons)+i;
+    objects[129].dwOfs=offsetof(DIJOYSTATE,lZ);objects[130].dwOfs=offsetof(DIJOYSTATE,lRz);
+    objects[131].dwOfs=offsetof(DIJOYSTATE,lX);objects[132].dwOfs=offsetof(DIJOYSTATE,lY);
+    objects[133].dwOfs=offsetof(DIJOYSTATE,lRx);objects[134].dwOfs=offsetof(DIJOYSTATE,lRy);
     DIDATAFORMAT format{sizeof(DIDATAFORMAT),sizeof(DIOBJECTDATAFORMAT),DIDF_ABSAXIS,size,
         static_cast<DWORD>(objects.size()),objects.data()};
     direct_map(device,state,format);
+}
+LONG direct_axis(const DirectField& field,StickAxes axes) {
+    const float value=field.vertical ? -axes.y:axes.x;
+    const double scale=value<0 ? static_cast<double>(field.center)-field.low:static_cast<double>(field.high)-field.center;
+    return static_cast<LONG>(std::clamp(std::llround(field.center+value*scale),static_cast<long long>(field.low),static_cast<long long>(field.high)));
 }
 DWORD direct_buttons(const DirectDevice& state,const void* data) {
     DWORD buttons{};const auto* bytes=static_cast<const unsigned char*>(data);
     for(const auto& field:state.fields) {
         if(field.pov) {DWORD value{};std::memcpy(&value,bytes+field.offset,4);buttons|=direct_dpad(value);}
-        else if(bytes[field.offset]&0x80) buttons|=field.mask;
+        else if(!field.axis && (bytes[field.offset]&0x80)) buttons|=field.mask;
     }
     return buttons;
 }
@@ -155,13 +175,23 @@ template<unsigned Slot> HRESULT STDMETHODCALLTYPE direct_state(void* device,DWOR
     if(direct_internal || raw_controller_read) {SetLastError(error);return result;}
     if(FAILED(result)) {if(result==DIERR_INPUTLOST || result==DIERR_NOTACQUIRED) direct_reset(device);SetLastError(error);return result;}
     if(data) {
-        const bool live=live_glances();
+        const auto policy=stick_input_policy();const bool menu_capture=panel_gameplay_blocked();
+        const bool live=menu_capture || live_glances();
         if(!live) direct_reset(device);
         else {
             std::lock_guard lock(direct_mutex);auto& state=direct_devices[device];direct_sync(state);direct_identify(device,state);
             direct_standard(device,state,size);
             if(state.mapped && size==state.size) {
                 const auto buttons=direct_buttons(state,data);
+                if(menu_capture) for(const auto& field:state.fields) {
+                    if(field.axis) {const LONG neutral=field.trigger ? field.low:field.center;std::memcpy(static_cast<unsigned char*>(data)+field.offset,&neutral,4);}
+                    else if(field.pov) {const DWORD neutral=0xffffffffu;std::memcpy(static_cast<unsigned char*>(data)+field.offset,&neutral,4);}
+                    else static_cast<unsigned char*>(data)[field.offset]=0;
+                }
+                if(!menu_capture && policy.captures(buttons)) for(const auto& field:state.fields) if(field.axis && field.right_stick) {
+                    const auto value=direct_axis(field,policy.axes);
+                    std::memcpy(static_cast<unsigned char*>(data)+field.offset,&value,4);
+                }
                 const auto consumed=direct_classify(device,state,buttons,GetTickCount64());
                 for(const auto& field:state.fields) if(field.pov && (buttons&consumed&15)) {
                     const auto neutral=direct_pov((buttons&15)&~consumed);
@@ -178,8 +208,9 @@ template<unsigned Slot> HRESULT STDMETHODCALLTYPE direct_data(void* device,DWORD
     const auto error=GetLastError();
     if(direct_internal || raw_controller_read) {SetLastError(error);return result;}
     if(FAILED(result)) {if(result==DIERR_INPUTLOST || result==DIERR_NOTACQUIRED) direct_reset(device);SetLastError(error);return result;}
+    const auto policy=stick_input_policy();const bool menu_capture=panel_gameplay_blocked();
     if(result==DI_BUFFEROVERFLOW) direct_reset(device);
-    if(!live_glances()) direct_reset(device);
+    if(!menu_capture && !live_glances()) direct_reset(device);
     else if(data && count && *count<=capacity && stride>=4*sizeof(DWORD) && stride<=sizeof(DIDEVICEOBJECTDATA)) {
         std::lock_guard lock(direct_mutex);auto& state=direct_devices[device];direct_sync(state);direct_identify(device,state);
         if(state.sony && !state.size) {
@@ -195,7 +226,7 @@ template<unsigned Slot> HRESULT STDMETHODCALLTYPE direct_data(void* device,DWORD
         }
         if(state.mapped) {
             if(!state.buffered_known) {
-                // Seed only L1 from an independent snapshot. Replay queued L1
+                // Seed buttons from an independent snapshot. Replay queued button
                 // transitions from their pre-batch state, even on the first read.
                 std::vector<unsigned char> snapshot(state.size);
                 auto** table=*reinterpret_cast<void***>(device);DirectInternal internal;
@@ -203,16 +234,39 @@ template<unsigned Slot> HRESULT STDMETHODCALLTYPE direct_data(void* device,DWORD
                     state.buffered_buttons=direct_buttons(state,snapshot.data())&~15u;
                     for(DWORD i=*count;i>0;--i) {
                         DIDEVICEOBJECTDATA event{};std::memcpy(&event,reinterpret_cast<unsigned char*>(data)+(i-1)*stride,stride);
-                        for(const auto& field:state.fields) if(!field.pov && event.dwOfs==field.offset)
+                        for(const auto& field:state.fields) if(!field.pov && !field.axis && event.dwOfs==field.offset)
                             state.buffered_buttons=(state.buffered_buttons&~field.mask)|((event.dwData&0x80) ? 0:field.mask);
                     }
                     state.buffered_known=true;
                 }
             }
+            std::vector<unsigned char> physical(state.size);
+            bool restore=false,physical_valid=false;
+            if(std::any_of(state.fields.begin(),state.fields.end(),[](const auto& field){return field.axis;})) {
+                auto** table=*reinterpret_cast<void***>(device);DirectInternal internal;
+                physical_valid=SUCCEEDED(reinterpret_cast<DirectState>(table[9])(device,state.size,physical.data()));
+                if(physical_valid) {
+                    const bool captured=menu_capture || policy.captures(direct_buttons(state,physical.data()));
+                    restore=state.stick_captured && !captured;
+                    state.stick_captured=captured;
+                }
+            }
+            std::set<DWORD> restored;
             if(state.buffered_known) for(DWORD i=0;i<*count;++i) {
                 auto* bytes=reinterpret_cast<unsigned char*>(data)+i*stride;
                 DIDEVICEOBJECTDATA event{};std::memcpy(&event,bytes,stride);
                 const auto field=std::find_if(state.fields.begin(),state.fields.end(),[&](const auto& value){return value.offset==event.dwOfs;});
+                if(field!=state.fields.end() && field->axis) {
+                    if(menu_capture) {
+                        event.dwData=static_cast<DWORD>(field->trigger ? field->low:field->center);std::memcpy(bytes,&event,stride);
+                    } else if(restore) {
+                        std::memcpy(&event.dwData,physical.data()+field->offset,4);restored.insert(field->offset);
+                        std::memcpy(bytes,&event,stride);
+                    } else if(field->right_stick && policy.captures(state.buffered_buttons)) {
+                        event.dwData=static_cast<DWORD>(direct_axis(*field,policy.axes));std::memcpy(bytes,&event,stride);
+                    }
+                    continue;
+                }
                 if(field==state.fields.end()) continue;
                 const auto duplicate=std::find_if(state.events.begin(),state.events.end(),[&](const auto& old) {
                     return old.offset==event.dwOfs && old.data==event.dwData && old.time==event.dwTimeStamp && old.sequence==event.dwSequence;
@@ -221,7 +275,7 @@ template<unsigned Slot> HRESULT STDMETHODCALLTYPE direct_data(void* device,DWORD
                 if(field->pov) state.buffered_buttons=(state.buffered_buttons&~15u)|direct_dpad(event.dwData);
                 else state.buffered_buttons=(state.buffered_buttons&~field->mask)|((event.dwData&0x80)?field->mask:0);
                 const auto consumed=direct_classify(device,state,state.buffered_buttons,direct_time(event.dwTimeStamp));
-                DWORD edited=event.dwData;
+                DWORD edited=menu_capture ? (field->pov ? 0xffffffffu:0u):event.dwData;
                 if(field->pov && (state.buffered_buttons&consumed&15)) edited=direct_pov((state.buffered_buttons&15)&~consumed);
                 std::memcpy(bytes+offsetof(DIDEVICEOBJECTDATA,dwData),&edited,4);
                 state.events.push_back({event.dwOfs,event.dwData,event.dwTimeStamp,event.dwSequence,edited});
@@ -231,6 +285,17 @@ template<unsigned Slot> HRESULT STDMETHODCALLTYPE direct_data(void* device,DWORD
                 const auto history=std::max<std::size_t>(512,static_cast<std::size_t>(*count)*2);
                 while(state.events.size()>history) state.events.pop_front();
             }
+            // A modifier release need not generate a new axis event when the
+            // physical stick is stationary. Send its complete current position.
+            if(restore) for(const auto& field:state.fields) if(field.axis && !restored.contains(field.offset)) {
+                DWORD value{};std::memcpy(&value,physical.data()+field.offset,4);
+                state.restore_axes.push_back({field.offset,value,static_cast<DWORD>(GetTickCount64()),0,0});
+            }
+            const auto available=capacity-*count;
+            const auto added=std::min<std::size_t>(available,state.restore_axes.size());
+            for(std::size_t i=0;i<added;++i) std::memcpy(reinterpret_cast<unsigned char*>(data)+(*count+i)*stride,&state.restore_axes[i],stride);
+            *count+=static_cast<DWORD>(added);
+            if(!(flags&DIGDD_PEEK)) for(std::size_t i=0;i<added;++i) state.restore_axes.pop_front();
         }
     }
     SetLastError(error);return result;

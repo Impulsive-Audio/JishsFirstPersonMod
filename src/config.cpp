@@ -46,6 +46,7 @@ Config read_config(const std::filesystem::path& path) {
             throw std::runtime_error(name + " contains unsupported controller buttons");
         values.erase(it); return static_cast<std::uint32_t>(mask);
     };
+    cfg.menu_combo=combo("menu_combo");
     cfg.toggle = combo("first_person");
     std::set<std::uint32_t> occupied;
     // Stock reservations and the legacy toggle can become runtime conflicts.
@@ -98,13 +99,29 @@ Config read_config(const std::filesystem::path& path) {
     cfg.on_board_only=boolean("on_board_only",false);
     cfg.disable_spring_on_foot=boolean("disable_spring_on_foot",false);
     cfg.toggle_glances=boolean("toggle_glances",false);
+    cfg.board.enabled=boolean("board_look",false);
+    const bool legacy_board_center=boolean("board_auto_center",true);
+    cfg.board.center_on_modifier=boolean("board_center_on_modifier",legacy_board_center);
+    cfg.board.center_on_stick=boolean("board_center_on_stick",false);
+    cfg.board.continue_auto_center=boolean("board_continue_auto_center",true);
+    cfg.board.keep_native_input=boolean("board_keep_native_input",true);
+    cfg.board.look_smoothing=number("board_look_smoothing",12);
+    cfg.board.yaw_limit=number("board_yaw_limit",85);
+    cfg.board.pitch_limit=number("board_pitch_limit",60);
+    cfg.board.invert_y=boolean("board_invert_y",false);
+    cfg.board.modifier=values.contains("board_modifier") ? combo("board_modifier"):0x100;
+    cfg.board.yaw_speed=number("board_yaw_speed",330);
+    cfg.board.pitch_speed=number("board_pitch_speed",270);
+    cfg.board.deadzone=number("board_deadzone",.10f);
+    cfg.board.center_smoothing=number("board_center_smoothing",35);
+    cfg.board.center_pitch=number("board_center_pitch",0);
     cfg.stick.enabled=boolean("stick_look",false);
     cfg.stick.turn_character=boolean("stick_turn_character",false);
     cfg.stick.invert_y=boolean("stick_invert_y",false);
     cfg.stick.yaw_speed=number("stick_yaw_speed",120);
     cfg.stick.pitch_speed=number("stick_pitch_speed",90);
     cfg.stick.deadzone=number("stick_deadzone",.15f);
-    const float menu_key=number("menu_key",VK_F9);
+    const float menu_key=number("menu_key",VK_INSERT);
     if(!std::isfinite(menu_key) || menu_key!=std::floor(menu_key) || menu_key<0 || menu_key>255) throw std::runtime_error("Invalid menu key.");
     cfg.menu_key=static_cast<unsigned>(menu_key);
     cfg.stick.smooth_transitions=boolean("smooth_transitions",true);
@@ -133,11 +150,23 @@ Config read_config(const std::filesystem::path& path) {
     }
     if(!dingosdk::first_person::valid(cfg.stick_spring)) throw std::runtime_error("Stick smoothing outside supported ranges");
     if (!values.empty()) throw std::runtime_error("unknown JishsFirstPersonMod.ini setting: " + values.begin()->first);
+    validate_config(cfg);
     return cfg;
 }
 
 void validate_config(const Config& cfg) {
-    if(cfg.menu_key>255 || (cfg.menu_key && (cfg.menu_key<=VK_XBUTTON2 || cfg.menu_key==VK_INSERT || cfg.menu_key==VK_ESCAPE || cfg.menu_key==VK_SHIFT || cfg.menu_key==VK_CONTROL || cfg.menu_key==VK_MENU || (cfg.menu_key>=VK_LSHIFT && cfg.menu_key<=VK_RMENU)))) throw std::runtime_error("Choose a keyboard key other than Insert, Escape or a modifier.");
+    if(!dingosdk::valid_controller_combo(cfg.menu_combo)) throw std::runtime_error("Unsupported menu controller buttons.");
+    if(!dingosdk::valid_controller_combo(cfg.board.modifier) ||
+       !std::isfinite(cfg.board.yaw_speed) || cfg.board.yaw_speed<1 || cfg.board.yaw_speed>720 ||
+       !std::isfinite(cfg.board.pitch_speed) || cfg.board.pitch_speed<1 || cfg.board.pitch_speed>720 ||
+       !std::isfinite(cfg.board.deadzone) || cfg.board.deadzone<.01f || cfg.board.deadzone>.5f ||
+       !std::isfinite(cfg.board.center_smoothing) || cfg.board.center_smoothing<0 || cfg.board.center_smoothing>100 ||
+       !std::isfinite(cfg.board.look_smoothing) || cfg.board.look_smoothing<0 || cfg.board.look_smoothing>100 ||
+       !std::isfinite(cfg.board.yaw_limit) || cfg.board.yaw_limit<0 || cfg.board.yaw_limit>180 ||
+       !std::isfinite(cfg.board.pitch_limit) || cfg.board.pitch_limit<0 || cfg.board.pitch_limit>85 ||
+       !std::isfinite(cfg.board.center_pitch) || cfg.board.center_pitch< -85 || cfg.board.center_pitch>85)
+        throw std::runtime_error("On-board stick look settings outside supported ranges.");
+    if(cfg.menu_key>255 || (cfg.menu_key && (cfg.menu_key<=VK_XBUTTON2 || cfg.menu_key==VK_ESCAPE || cfg.menu_key==VK_SHIFT || cfg.menu_key==VK_CONTROL || cfg.menu_key==VK_MENU || (cfg.menu_key>=VK_LSHIFT && cfg.menu_key<=VK_RMENU)))) throw std::runtime_error("Choose a keyboard key other than Escape or a modifier.");
     for(float strength:{cfg.stick.mount_smoothing,cfg.stick.dismount_smoothing})
         if(!std::isfinite(strength) || strength<0 || strength>100) throw std::runtime_error("Transition smoothing must be 0–100 percent.");
     if(!std::isfinite(cfg.stick.yaw_speed) || cfg.stick.yaw_speed<1 || cfg.stick.yaw_speed>720 ||
@@ -201,6 +230,17 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
         out<<"smooth_transitions="<<cfg.stick.smooth_transitions<<"\nmount_smoothing="<<cfg.stick.mount_smoothing
             <<"\ndismount_smoothing="<<cfg.stick.dismount_smoothing<<'\n';
         out<<"lock_camera_mount_jump="<<cfg.stick.lock_mount_jump<<"\nlock_camera_hippy_jump="<<cfg.stick.lock_hippy_jump<<"\nlook_during_parkour="<<cfg.stick.look_during_parkour<<'\n';
+        out<<"board_look="<<cfg.board.enabled<<"\nboard_modifier="<<cfg.board.modifier
+            <<"\nboard_center_on_modifier="<<cfg.board.center_on_modifier
+            <<"\nboard_center_on_stick="<<cfg.board.center_on_stick
+            <<"\nboard_continue_auto_center="<<cfg.board.continue_auto_center
+            <<"\nboard_keep_native_input="<<cfg.board.keep_native_input
+            <<"\nboard_look_smoothing="<<cfg.board.look_smoothing
+            <<"\nboard_yaw_limit="<<cfg.board.yaw_limit<<"\nboard_pitch_limit="<<cfg.board.pitch_limit<<"\nboard_invert_y="<<cfg.board.invert_y
+            <<"\nboard_yaw_speed="<<cfg.board.yaw_speed<<"\nboard_pitch_speed="<<cfg.board.pitch_speed
+            <<"\nboard_deadzone="<<cfg.board.deadzone<<"\nboard_center_smoothing="<<cfg.board.center_smoothing
+            <<"\nboard_center_pitch="<<cfg.board.center_pitch<<'\n';
+        out<<"menu_combo="<<cfg.menu_combo<<'\n';
         out<<"menu_key="<<cfg.menu_key<<'\n';
         out.flush(); if(!out) throw std::runtime_error("Writing settings failed.");
     }

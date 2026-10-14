@@ -8,6 +8,7 @@
 #include <stdexcept>
 using namespace jishsfirstpersonmod;
 using namespace dingosdk::first_person;
+namespace jishsfirstpersonmod { thread_local bool raw_controller_read{}; }
 namespace {
 void check(bool ok,const char* why) { if(!ok) throw std::runtime_error(why); }
 Matrix pose(float yaw,float x=0) {
@@ -35,12 +36,20 @@ int main() {
     check(requests.settled(false,false),"already disabled preference unnecessarily changed");
     const auto recorded=read_native_recording([](NativeRecordingInput* input,bool allow_menu) {
         check(allow_menu,"recording did not request stock menu input bypass");
+        check(raw_controller_read,"menu recording was neutralized by the gameplay filter");
         input->available=true;input->buttons=0x301;input->device=3;
         input->style=dingosdk::ControllerStyle::dualsense;
         input->keys.fill(~std::uint64_t{}); // Native reader writes the full 48-byte structure.
     });
     check(recorded.available && recorded.buttons==0x301 && recorded.device==3 && recorded.style==dingosdk::ControllerStyle::dualsense,
         "native recording ABI lost buttons/device/controller style");
+    check(!raw_controller_read,"recording left gameplay filtering bypassed");
+    {
+        RecordingInputAccess outer;
+        read_native_recording([](NativeRecordingInput*,bool) {check(raw_controller_read,"nested reader lost bypass");});
+        check(raw_controller_read,"nested reader cleared outer bypass");
+    }
+    check(!raw_controller_read,"nested recording left gameplay filtering bypassed");
     const auto unfocused=read_native_recording([](NativeRecordingInput* input,bool) { *input={}; });
     check(!unfocused.available && !unfocused.buttons,"native focus/disconnect gate was bypassed");
     check(native_first_person_toggle("firstperson toggle") &&

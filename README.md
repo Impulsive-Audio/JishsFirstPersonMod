@@ -1,5 +1,7 @@
 # Jish's First Person Mod 1.32
 
+Includes modifier-held on-board right-stick free look and an independently opened, controller-navigable settings panel. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
+
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
 ## Install
@@ -17,7 +19,6 @@ Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-gam
 - Foot/board transition smoothing and independent look smoothing.
 - Optional third person while bailing and first person on board only. In full mode with third-person bailing off, first-person bails follow the headÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢s full rotation and position; right-stick camera look resumes when native movement control is verified.
 - Optional third person while getting up: keep the fall in first person, then return to first person when control resumes. This option defaults off and is available with Third person while bailing off.
-- Bald in first person keeps long hair out of view locally; other players see your original hairstyle.
 - Camera collision during first-person bails (**WIP**). The camera can still stick near floors and objects; third person while getting up provides an alternative.
 - Coordination with native stabilization, Follow flips and spectator camera ownership.
 - Named personal presets for settings and bindings, plus Jish’s recommended preset.
@@ -37,7 +38,7 @@ Load Jish's recommended preset through the Insert panel to apply these bindings:
 - LB/L1 + D-pad direction: glance in that direction; release to return.
 - LB/L1 + RB/R1 + D-pad Down: toggle first person.
 - Insert: open settings.
-- F9: hide or show the mod panel.
+- Insert (rebindable): open or close the mod panel alongside ReSkate.
 
 Bindings and the panel shortcut can be changed. See [detailed settings](SETTINGS.md).
 
@@ -49,7 +50,7 @@ Settings and logs are under `%LOCALAPPDATA%/JishsFirstPersonMod`. The current ca
 
 Windows x64, Visual Studio C++ tools and CMake are required. Run `./build.ps1`, then `./package.ps1`. The release install ZIP contains only Mods, scripts, dinput8.dll and LICENSE.txt.
 
-All 35 Windows tests pass. ReSkate 2.0.7 uses verified native camera, physics query, spectator and cosmetic capture contracts. Spectator gameplay validation is pending. Bail collision remains **work in progress**; the new third-person getting-up option provides an alternative. Technical research and gameplay checklists stay in source, including [bail collision research](docs/technical/BAIL_COLLISION_RESEARCH.md), [local hair checks](docs/testing/TEST_LOCAL_HAIR.md) and [getting-up checks](docs/testing/TEST_THIRD_PERSON_RECOVERY.md).
+The combined fork retains upstream tests and adds on-board/menu regressions; see the packaged validation report. ReSkate 2.0.7 uses verified native camera, physics query and spectator contracts. Upstream reports spectator gameplay validation; this combined fork still needs its own gameplay check. Bail collision remains **work in progress**; the new third-person getting-up option provides an alternative. Technical research and gameplay checklists stay in source, including [bail collision research](docs/technical/BAIL_COLLISION_RESEARCH.md) and [getting-up checks](docs/testing/TEST_THIRD_PERSON_RECOVERY.md).
 
 See [1.28 release notes](docs/updates/UPDATE_1_28.md), [1.26 release notes](docs/updates/UPDATE_1_26.md), [1.25 release notes](docs/updates/UPDATE_1_25.md), [1.24 release notes](docs/updates/UPDATE_1_24.md), [2.0.5 update notes](docs/updates/UPDATE_1_23.md), [2.0.5 offset audit](docs/technical/OFFSET_AUDIT_2_0_5.md), [2.0.4 notes](docs/updates/UPDATE_1_22.md), [previous release notes](docs/updates/UPDATE_1_21.md), and [historical notes](docs/updates/HISTORY.md).
 
@@ -59,7 +60,7 @@ See [LICENSE.txt](vendor/LICENSE) and dependency license files under vendor/Exte
 
 With **Third person while bailing** or **Third person while getting up** enabled on ReSkate 2.0.7, **First Person In Camera Cycle** is automatically disabled. The menu explains this override. Your previous preference is retained across game restarts and restored when both automatic third-person options are off. The mod's First Person checkbox and hotkey remain available.
 
-This separate local 1.30 build includes the working 1.29.1 Sony HID menu fixes. See [local integration notes](docs/updates/LOCAL_1_30_INTEGRATION.md).
+This 1.32 fork includes the working 1.29.1 Sony HID menu fixes. See [local integration notes](docs/updates/LOCAL_1_30_INTEGRATION.md).
 
 Local test update: bald mode and outgoing cosmetic hooks removed; button glances and on-foot right-stick smoothing are independent. Radial-menu input changes are deferred.
 

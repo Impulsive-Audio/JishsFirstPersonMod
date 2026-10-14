@@ -69,7 +69,7 @@ This release builds successfully and passes the automated checks. Native code an
 
 
 
-Press **F9** to hide/show only the first-person companion panel, including in the build editor. The panel remembers its hidden state until toggled again during that game session. It still requires ReSkate's menu to be open; Insert remains unchanged. Use **Bind menu key**, **Clear menu key** and **Cancel key recording** at the top of the panel to customize the saved keyboard binding. Insert, Escape and modifier-only bindings are reserved. Losing focus or closing the panel cancels recording. Loading the recommended preset preserves your menu key.
+Press **Insert** by default to open or close the companion panel independently. Insert also reaches ReSkate, so both menus may open. In Controls, use **Bind menu key** or **Clear menu key** to customize the saved keyboard binding, or record a controller menu shortcut. Escape and modifier-only keyboard bindings are reserved. Losing focus or closing the panel cancels recording. Loading camera presets preserves global menu access settings. See [controller menu controls](CONTROLLER_MENU.md).
 
 
 
@@ -195,6 +195,16 @@ The General, Controls and Camera tabs sit directly below the title/version, abov
 
 Routine autosaves show “Current settings saved” for three seconds after the write completes, then clear. The footer shows pending writes as “Saving current settings”; explicit preset load/save/overwrite/delete confirmations name the preset and disappear after four seconds. Errors remain visible. Current-setting changes do not overwrite personal presets.
 
+
+## On-board Right Stick Free Look
+
+See ON_BOARD_FREE_LOOK.md for operation and fresh defaults. Existing saved choices are preserved.
+
+Continue Auto Center Until New Look Input defaults on. A return started by modifier release continues through modifier re-presses until it reaches center or accepted right-stick camera movement interrupts it. Held native input waiting for neutral arming does not interrupt the return. Turning this option off restores the previous re-press behavior. This and all on-board settings save/load with personal presets; menu keyboard/controller access stays global.
+
+## Independent menu and controller controls
+
+See CONTROLLER_MENU.md. Insert opens this panel independently; record its controller shortcut in Controls.
 Front-flip offset fix: the flip target uses animated head pose plus configured position/rotation offsets directly. It no longer inherits the transient native-camera/head delta used by bail calibration. Regression tests cover both pitch directions, zero offsets, configured offsets and a Spring-lagged normal camera. Gameplay validation of this fix is pending.
 
 ### First-person spectator view (1.30)

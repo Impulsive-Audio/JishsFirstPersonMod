@@ -1,6 +1,7 @@
 #pragma once
 #include "Engine/Game/Input/playstation_report.h"
 #include <span>
+#include "board_look.h"
 #include "Engine/Game/Input/controller_bindings.h"
 #include <array>
 namespace jishsfirstpersonmod {
@@ -31,12 +32,24 @@ void publish_toggle_filter(std::uint32_t toggle,bool allowed,unsigned device,std
 bool glance_emote_active();
 bool glance_emote_filter_ready();
 void private_controller_handle(void* handle,bool add);
-inline bool neutral_sony_stick(dingosdk::PlayStationPad kind,std::span<std::uint8_t> report) {
+inline bool set_sony_stick(dingosdk::PlayStationPad kind,std::span<std::uint8_t> report,StickAxes axes) {
     if(!dingosdk::parse_playstation_report(kind,report.size()>64,report.data(),report.size())) return false;
     const auto id=report[0];
     const unsigned start=id==0x31 ? 2:id==0x11 ? 3:1;
-    report[start+2]=report[start+3]=128;
+    report[start+2]=static_cast<std::uint8_t>(std::clamp(std::lround(128.f+stick_short(axes.x)/258.f),0l,255l));
+    report[start+3]=axes.y==0 ? 128:static_cast<std::uint8_t>(std::clamp(std::lround(127.f-stick_short(axes.y)/258.f),0l,255l));
     sony_report_crc(report);
     return true;
 }
+inline bool neutral_sony_pad(dingosdk::PlayStationPad kind,std::span<std::uint8_t> report) {
+    if(!dingosdk::parse_playstation_report(kind,report.size()>64,report.data(),report.size())) return false;
+    const auto id=report[0];const unsigned start=id==0x31 ? 2:id==0x11 ? 3:1;
+    const bool full=kind==dingosdk::PlayStationPad::dualsense && (id==0x31 || (id==1 && report.size()<=64));
+    const unsigned buttons=start+(full ? 7:4);
+    for(unsigned i=0;i<4;++i) report[start+i]=128;
+    report[buttons]=8;report[buttons+1]=0;report[buttons+2]&=0xfc;
+    report[start+(full ? 4:7)]=report[start+(full ? 5:8)]=0;
+    sony_report_crc(report);return true;
+}
+inline bool neutral_sony_stick(dingosdk::PlayStationPad kind,std::span<std::uint8_t> report) { return set_sony_stick(kind,report,{}); }
 }

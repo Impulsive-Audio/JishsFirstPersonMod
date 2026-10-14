@@ -1,4 +1,5 @@
 #include "mod.h"
+#include "menu.h"
 #include "stick_runtime.h"
 #include "Engine/Core/Hooks/hooks.h"
 #include "stock_bridge.h"
@@ -140,14 +141,14 @@ void prepare_input() {
     request_xinput_probe(xinput_slots());
     (void)read_playstation_pads();
 }
-GameplayInput read_controller() {
+GameplayInput read_controller(bool allow_menu) {
     using namespace dingosdk::overlay::detail;
     const auto window = GetForegroundWindow();
     DWORD pid{};
     if (!window || !GetWindowThreadProcessId(window,&pid) || pid != GetCurrentProcessId()) return {};
     bool visible{};
-    if (!overlay_available(visible) || visible) return {};
-    struct RawRead { RawRead(){raw_controller_read=true;} ~RawRead(){raw_controller_read=false;} } raw;
+    if (!overlay_available(visible) || (!allow_menu && (visible || panel_gameplay_blocked()))) return {};
+    struct RawRead { bool previous{raw_controller_read};RawRead(){raw_controller_read=true;} ~RawRead(){raw_controller_read=previous;} } raw;
     const auto sample = read_controller_sample();
     GameplayInput out{};
     out.style = sample.style;

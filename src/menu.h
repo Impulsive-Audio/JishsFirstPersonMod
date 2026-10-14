@@ -1,5 +1,6 @@
 #pragma once
 #include "settings.h"
+#include "menu_controller.h"
 #include <imgui.h>
 #include <vector>
 
@@ -18,7 +19,7 @@ struct MenuHotkey {
         if(!down && !up) return false;
         if(recording) {
             if(!down || repeat) return true;
-            if(key==VK_ESCAPE || key==VK_INSERT) { recording=false;return false; }
+            if(key==VK_ESCAPE) { recording=false;return false; }
             if(key<=VK_XBUTTON2 || key==VK_SHIFT || key==VK_CONTROL || key==VK_MENU || (key>=VK_LSHIFT && key<=VK_RMENU)) return true;
             recorded=key;recording=false;return true;
         }
@@ -26,6 +27,12 @@ struct MenuHotkey {
     }
 };
 bool panel_user_visible();
+bool panel_gameplay_blocked();
+void close_panel();
+void poll_panel_controller();
+MenuControllerResult panel_controller_snapshot();
+void panel_binding_recording(bool active);
+GameplayInput menu_controller();
 void begin_menu_key_recording();
 void cancel_menu_key_recording();
 bool menu_key_recording();
@@ -43,6 +50,7 @@ struct PanelFrame {
     float delta_time=1.0f/60.0f,dpi=1;
     bool visible=true,focused=true;
     dingosdk::ControllerInput controller;
+    MenuControllerResult navigation;
 };
 void route_panel_input(HWND window);
 bool install_panel_input_hooks();
