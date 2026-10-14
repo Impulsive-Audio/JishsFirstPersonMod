@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "user_data.h"
 #include <sqlite3.h>
 #include <fstream>
 #include <cmath>
@@ -39,6 +40,7 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         case CommandKind::board_settings: next.board=command.board;break;
         case CommandKind::stick_settings: next.stick=command.stick;break;
         case CommandKind::toggle_glances: next.toggle_glances=command.enabled;immediate=true;break;
+        case CommandKind::remember_marker_glance: next.remember_marker_glance=command.enabled;immediate=true;break;
         case CommandKind::bail_collision: next.bail_camera_collision=command.enabled;immediate=true;break;
         case CommandKind::binding:
             if(command.action>6) throw std::runtime_error("Unknown controller action.");
@@ -281,6 +283,7 @@ bool initialize_settings() {
     const auto target=data_directory()/L"settings.ini";
     wchar_t local[32768]{};
     GetEnvironmentVariableW(L"LOCALAPPDATA",local,32768);
+    if(*local) migrate_user_data(std::filesystem::path(local)/L"JishsFirstPersonMod",data_directory());
     profile_path=std::filesystem::path(local)/L"ReSkate/profiles/offline/reskate.sqlite3";
     const auto initial=load_initial_settings(target,module_directory(),profile_path);
     live_store=new SettingsStore(target,initial.config);
@@ -425,7 +428,7 @@ bool load_recommended_preset() {
     if(!live_store) return false;
     try {
         Command command;command.kind=CommandKind::apply_preset;
-        command.preset=read_config(module_directory()/L"presets/recommended.ini");
+        command.preset=read_config(data_directory()/L"presets/bundled/recommended.ini");
         if(!submit_command(command)) return false;
         if(!menu_snapshot().feedback.starts_with("Mod settings applied.")) live_store->set_feedback("Preset loaded: Jish's Recommended",4000);return true;
     } catch(const std::exception& error) {

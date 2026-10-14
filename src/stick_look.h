@@ -24,12 +24,13 @@ inline StickAxes radial_stick(StickAxes input,float deadzone) {
 }
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {
-    bool ready_{},seen_{},mode_{};
+    bool ready_{},seen_{},mode_{},center_facing_{};
     unsigned device_{};
     double time_{};
-    float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},body_bias_{};
+    float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},body_bias_{},center_offset_{};
 public:
     void reset() { *this={}; }
+    void recenter_facing(float camera_offset=180.f) { reset();center_facing_=true;center_offset_=camera_offset; }
     void seed(const StickSettings& settings,unsigned device,double now,float yaw,float pitch,float body_heading) {
         reset();ready_=seen_=true;device_=device;mode_=settings.turn_character;time_=now;
         yaw_=smooth_yaw_=yaw;pitch_=smooth_pitch_=std::clamp(pitch,-85.f,85.f);
@@ -41,12 +42,15 @@ public:
                     const dingosdk::first_person::Settings& spring,float camera_pitch=0) {
         if(!settings.enabled || !eligible || !device || !std::isfinite(now)) { reset();return {}; }
         if(!seen_ || device_!=device || mode_!=settings.turn_character || now<time_ || now-time_>.25) {
-            reset();seen_=true;device_=device;mode_=settings.turn_character;time_=now;
+            const bool center=center_facing_;const float offset=center_offset_;
+            reset();center_facing_=center;center_offset_=offset;seen_=true;device_=device;mode_=settings.turn_character;time_=now;
         }
         const auto input=radial_stick(axes,settings.deadzone);
         if(!ready_) {
             time_=now;
             if(input.x!=0 || input.y!=0) return {true,false};
+            if(center_facing_ && settings.turn_character) {camera_heading=wrap_heading(body_heading+center_offset_);camera_pitch=0;}
+            center_facing_=false;
             ready_=true;yaw_=smooth_yaw_=camera_heading;pitch_=smooth_pitch_=std::clamp(camera_pitch,-85.f,85.f);
             body_bias_=wrap_heading(body_heading-camera_heading);
         }

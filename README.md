@@ -1,6 +1,6 @@
 # Jish's First Person Mod 1.33
 
-Includes modifier-held on-board right-stick free look and a controller-navigable settings panel. Press Insert once per game session before using F9 to toggle the panel independently. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
+Includes modifier-held on-board right-stick free look and a controller-navigable settings panel. Insert opens both settings menus. F9 hides or shows the first-person panel inside Insert. Standalone opening is disabled. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
 
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
@@ -38,13 +38,13 @@ Load Jish's recommended preset through the Insert panel to apply these bindings:
 - LB/L1 + D-pad direction: glance in that direction; release to return.
 - LB/L1 + RB/R1 + D-pad Down: toggle first person.
 - Insert: open settings.
-- Insert (rebindable): open or close the mod panel alongside ReSkate.
+- F9: hide or show the first-person panel inside Insert.
 
-Bindings and the panel shortcut can be changed. See [detailed settings](SETTINGS.md).
+Controller bindings can be changed. The panel uses Insert and F9. See [detailed settings](SETTINGS.md).
 
 ## Diagnostics
 
-Settings and logs are under `%LOCALAPPDATA%/JishsFirstPersonMod`. The current camera trace is `bail-camera-trace-v11.csv`, covering jumps, mounting, hippy jumps, bails and live settings changes. It records why attachment was selected and whether head data/calibration allowed it, alongside native/final camera positions. Bail diagnostics include uncontrolled/recovery phases, verified control flags, calibrated head target rotation and local recovery look. Camera trace files rotate at 8 MiB; mod and proxy text logs rotate at 1 MiB. Each keeps three older files, with `.1` the newest archive. Logging continues across rotations. Approximate retained budget for current log families is 40 MiB; older trace versions are preserved, and a blocked archive can temporarily exceed the budget while rotation retries.
+Settings are under `scripts/Custom/FirstPerson`; logs are in its `logs` subfolder. The current camera trace is `bail-camera-trace-v11.csv`, covering jumps, mounting, hippy jumps, bails and live settings changes. It records why attachment was selected and whether head data/calibration allowed it, alongside native/final camera positions. Bail diagnostics include uncontrolled/recovery phases, verified control flags, calibrated head target rotation and local recovery look. Camera trace files rotate at 8 MiB; mod and proxy text logs rotate at 1 MiB. Each keeps three older files, with `.1` the newest archive. Logging continues across rotations. Approximate retained budget for current log families is 40 MiB; older trace versions are preserved, and a blocked archive can temporarily exceed the budget while rotation retries.
 
 ## Build and validation
 

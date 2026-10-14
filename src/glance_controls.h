@@ -13,6 +13,19 @@ class GlanceControlsState {
     std::uint32_t emote_release_{};
 public:
     void reset() { *this={}; }
+    int selection() const { return toggle_ ? selected_:-1; }
+    std::array<float,2> selection_angles() const {
+        if(selected_<0 || selected_>3) return {};
+        const float angle=controls_[unsigned(selected_)].angle;
+        if(selected_==0) return {angle,0};
+        if(selected_==1) return {-angle,0};
+        if(selected_==2) return {0,-angle};
+        return {0,angle};
+    }
+    bool restore_selection(int selection) {
+        if(!initialized_ || !toggle_ || selection<0 || selection>3 || !controls_[unsigned(selection)].combo) return false;
+        selected_=selection;armed_=false;previous_={};return true;
+    }
     void centre_for_emote(std::uint32_t directions) {
         selected_=-1;held_={};previous_={};emote_release_=directions&15;
     }
@@ -41,7 +54,7 @@ public:
         if(inhibited || !input.available) { selected_=-1;armed_=false;previous_={};return {}; }
         std::uint32_t bound{};for(const auto& binding:controls) bound|=binding.combo;
         if(!armed_) {
-            armed_=(input.buttons&(bound&~shared_modifier))==0;previous_={};return {};
+            armed_=(input.buttons&(bound&~shared_modifier))==0;previous_={};return selection_angles();
         }
         int pressed=-1;unsigned count{};
         for(unsigned i=0;i<4;++i) {

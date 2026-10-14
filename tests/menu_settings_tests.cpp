@@ -8,6 +8,7 @@
 namespace jishsfirstpersonmod {
 void log(const std::string&) noexcept {}
 GameplayInput menu_controller(){return {};}
+bool overlay_available(bool& visible) noexcept {visible=false;return false;}
 std::filesystem::path module_directory() { return std::filesystem::current_path(); }
 std::filesystem::path data_directory() { return module_directory()/"settings-integration"; }
 }
@@ -182,8 +183,8 @@ int main(int argc,char** argv) {
     const auto existing=load_initial_settings(file,legacy,db_path);
     require(existing.config.toggle==0x30 && !existing.save,"existing settings were overwritten by migration");
     write_config(data_directory()/"settings.ini",preset_initial);
-    std::filesystem::create_directories(module_directory()/"presets");
-    write_config(module_directory()/"presets/recommended.ini",recommended);
+    std::filesystem::create_directories(data_directory()/"presets/bundled");
+    write_config(data_directory()/"presets/bundled/recommended.ini",recommended);
     require(initialize_settings(),"live settings initialization failed");
     static int camera_updates=0;
     set_camera_sink([](const Config&,const Config&,std::string&) { ++camera_updates;return true; });

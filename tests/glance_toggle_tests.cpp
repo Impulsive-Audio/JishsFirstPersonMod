@@ -2,6 +2,7 @@
 #include "settings.h"
 #include "binding_conflicts.h"
 #include "look_smoothing.h"
+#include "marker_glance.h"
 #include <iostream>
 #include <stdexcept>
 namespace jishsfirstpersonmod {
@@ -44,6 +45,24 @@ int main() {
     check(step(0,false,false)==std::array<float,2>{},"hold mode failed to release");
     state.reset();controls[2]={0x104,60};step(0,false,false);
     check(step(0x10c,false,false)[1]==0,"hold mode opposite cancellation changed");
+    state.reset();step(0);step(0x104);
+    MarkerGlanceMemory marker;
+    marker.observe(true,true,state.selection(),1,123,1);
+    check(marker.take(false)==-1,"marker restored while controls unavailable");
+    state.reset();step(0);
+    check(state.restore_selection(marker.take(true)),"marker direction not restored");
+    check(step(0x104)[1]==-60 && step(0x104)[1]==-60,"held return chord toggled restored direction");
+    step(0);check(step(0x104)[1]==0,"restored glance could not be toggled off after release");
+    marker.observe(false,true,2,1,123,2);check(marker.take(true)==-1,"disabled marker memory retained direction");
+    marker.observe(true,false,2,1,123,2);check(marker.take(true)==-1,"ordinary interruption remembered direction");
+    marker.observe(true,true,2,1,123,2);marker.observe(true,false,-1,1,123,8);
+    check(marker.take(true)==-1,"expired marker memory restored");
+    marker.observe(true,true,2,1,123,2);marker.observe(true,false,-1,2,123,3);
+    check(marker.take(true)==-1,"marker memory crossed controller change");
+    marker.observe(true,true,2,1,123,2);marker.observe(true,false,-1,1,456,3);
+    check(marker.take(true)==-1,"marker memory crossed worlds");
+    marker.observe(true,true,2,1,123,2);marker.observe(false,false,-1,1,123,3);
+    check(marker.take(true)==-1,"menu/focus/feature cancellation retained marker memory");
     Config config;config.toggle=0;config.look=controls;config.toggle_glances=true;
     config.reserved[0]=controls[0].combo;
     auto route=route_controller_input(config,false);state.reset();state.update(route.glance,input(0),false,true);
@@ -57,5 +76,9 @@ int main() {
     check(read_config(path).toggle_glances,"toggle preference did not persist");
     command.enabled=false;check(store.submit(command,1),"checkbox off rejected");store.flush_due(1);
     check(!read_config(path).toggle_glances,"hold preference did not persist");
+    command.kind=CommandKind::remember_marker_glance;command.enabled=true;
+    check(store.submit(command,2),"marker checkbox command rejected");store.flush_due(2);
+    check(read_config(path).remember_marker_glance,"marker preference did not persist");
+    check(!Config{}.remember_marker_glance,"marker memory enabled by default");
     std::cout<<"Toggle/hold glances, replacement, press edges, interruptions, conflicts and persistence passed\n";
 }

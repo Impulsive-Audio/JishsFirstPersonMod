@@ -37,6 +37,7 @@ std::atomic<bool> getup_verified{};
 std::mutex mutex;
 StickLookState look;
 BoardLookState board_look;
+bool recenter_handoff{};
 struct Request { ComfortSnapshot owner;StickAim aim;bool turn{};unsigned device{};double time{};float body_heading{};bool head_valid{},recovery{},board{};StickAxes native_axes{}; } request;
 float native_heading{},displayed_pitch{};double heading_time{};
 double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
@@ -207,6 +208,7 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
     const bool eligible=ready && !inhibited && movement.mode==1 && camera_look_allowed(config,owner,movement) &&
         (!bail_camera_locked(owner,movement) || !movement.view_hold) && head.valid && body_valid;
     std::lock_guard lock(mutex);
+    if(bail_camera_locked(owner,movement) || movement.mode==2) recenter_handoff=true;
     if(movement.mode==2) {
         look.reset();
         const bool board_eligible=ready && !inhibited && board_free_look_allowed(config,owner,movement) && head.valid && body_valid;
@@ -227,7 +229,14 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
     const bool turn=!config.look_only && config.stick.turn_character && character_facing_allowed(owner,movement);
     const bool recovery=!config.look_only && bail_camera_locked(owner,movement);
     if(request.owner.core && request.recovery!=recovery) look.reset();
-    if(turn && !request.turn) look.rebase_facing(body_heading);
+    if(turn && !request.turn) {
+        if(recenter_handoff) {
+            // Camera +Z points backward; after dismount/bail, face away from the body.
+            look.recenter_facing();recenter_handoff=false;
+            log("On-foot Camera and character look: recentering after board/bail handoff; waiting for neutral stick.");
+        }
+        else look.rebase_facing(body_heading);
+    }
     auto stick=config.stick;if(recovery) stick.turn_character=false;
     auto aim=look.update(stick,{input.right_x,input.right_y},true,input.device,time,recovery ? 0:native_heading,
         recovery ? 0:body_heading,effective.stick_spring,recovery ? 0:displayed_pitch);

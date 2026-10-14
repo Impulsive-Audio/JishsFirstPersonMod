@@ -7,7 +7,6 @@
 #include <memory>
 #include <windowsx.h>
 #include <stdexcept>
-#include <atomic>
 
 namespace jishsfirstpersonmod {
 bool PointerRouter::route(UINT message,WPARAM key,int x,int y) noexcept {
@@ -40,23 +39,12 @@ struct InputState {
     PointerRouter router;
     HWND selected{};
     bool text_input{};
+    bool binding_recording{};MenuControllerState controller;MenuControllerResult controller_frame;
     MenuHotkey hotkey;
-    MenuControllerState controller;
-    MenuControllerResult controller_frame;
-    bool binding_recording{};
-    bool standalone{};
-    InputState() { hotkey.hidden=true; }
-
 };
 InputState& state() { static auto* value=new InputState; return *value; }
-std::atomic<bool> panel_active{};
 using AsyncKey=SHORT(WINAPI*)(int);
 AsyncKey original_async_key{};
-using Clip=BOOL(WINAPI*)(const RECT*);using Warp=BOOL(WINAPI*)(int,int);
-Clip original_clip{};Warp original_warp{};
-RECT saved_clip{};bool clip_saved{};
-BOOL WINAPI panel_clip(const RECT* rect) {return original_clip(panel_active ? nullptr:rect);}
-BOOL WINAPI panel_warp(int x,int y) {return panel_active ? TRUE:original_warp(x,y);}
 bool owns_mouse() {
     auto& input=state(); std::lock_guard lock(input.mutex);
     if(!input.router.visible || !input.selected || GetAncestor(input.selected,GA_ROOT)!=GetForegroundWindow()) return false;
@@ -71,8 +59,8 @@ SHORT WINAPI panel_async_key(int key) {
     const auto error=GetLastError();
     HMODULE owner{};
     const bool mouse=key==VK_LBUTTON || key==VK_RBUTTON || key==VK_MBUTTON || key==VK_XBUTTON1 || key==VK_XBUTTON2;
-    const bool block=(mouse || (panel_active && key!=VK_INSERT && key!=static_cast<int>(menu_snapshot().config.menu_key))) && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        reinterpret_cast<LPCWSTR>(caller),&owner) && (owner==GetModuleHandleW(L"reskate.dll") || owner==GetModuleHandleW(nullptr)) && (panel_active || owns_mouse());
+    const bool block=mouse && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCWSTR>(caller),&owner) && owner==GetModuleHandleW(L"reskate.dll") && owns_mouse();
     SetLastError(error);
     return block ? 0:result;
 }
@@ -85,17 +73,15 @@ LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wp,LPARAM lp) {
         if(found!=input.links.end()) previous=found->second->previous;
         if(window==input.selected) {
             const bool focused=GetForegroundWindow()==GetAncestor(window,GA_ROOT);
-            if(!focused || message==WM_KILLFOCUS || (message==WM_ACTIVATEAPP && !wp)) {input.hotkey.recording=false;input.router={};panel_active=false;}
+            if(!focused || message==WM_KILLFOCUS || (message==WM_ACTIVATEAPP && !wp)) input.hotkey.recording=false;
             if(focused && (message==WM_KEYDOWN || message==WM_SYSKEYDOWN || message==WM_KEYUP || message==WM_SYSKEYUP)) {
                 const bool was_recording=input.hotkey.recording;
                 swallow=input.hotkey.key(message,static_cast<unsigned>(wp),(lp&(1LL<<30))!=0);
                 recorded=input.hotkey.recorded;input.hotkey.recorded.reset();
                 const auto config=menu_snapshot().config;
-                const auto key=config.menu_key!=VK_INSERT && native_key_overlap(config.menu_key,config.native) ? 0:config.menu_key;
-                if(!was_recording && !input.text_input && wp==VK_F9) {
-                    if((message==WM_KEYDOWN || message==WM_SYSKEYDOWN) && !(lp&(1LL<<30))) input.standalone=!input.standalone;
-                    swallow=true;
-                } else if(!was_recording && !input.text_input && input.hotkey.toggle(message,static_cast<unsigned>(wp),key,(lp&(1LL<<30))!=0)) {
+                const auto key=VK_F9;
+                if(!was_recording && wp==VK_INSERT && (message==WM_KEYDOWN || message==WM_SYSKEYDOWN) && !(lp&(1LL<<30))) input.hotkey.hidden=false;
+                if(!was_recording && !input.text_input && input.hotkey.toggle(message,static_cast<unsigned>(wp),key,(lp&(1LL<<30))!=0)) {
                     swallow=true;
                     if(input.hotkey.hidden) { input.router={};input.pending.clear(); }
                 }
@@ -108,16 +94,6 @@ LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wp,LPARAM lp) {
                 if(GetCursorInfo(&cursor)) { pointer=cursor.ptScreenPos; ScreenToClient(window,&pointer); }
             }
             swallow=swallow || input.router.route(message,wp,pointer.x,pointer.y);
-            if(input.router.visible) {
-                if(message>=WM_MOUSEFIRST && message<=WM_MOUSELAST) swallow=true;
-                if(message>=WM_KEYFIRST && message<=WM_KEYLAST && wp!=VK_INSERT && message!=WM_SYSKEYDOWN && message!=WM_SYSKEYUP) swallow=true;
-                if(message==WM_INPUT) {
-                    RAWINPUTHEADER header{};UINT size=sizeof(header);
-                    if(GetRawInputData(reinterpret_cast<HRAWINPUT>(lp),RID_HEADER,&header,&size,sizeof(header))!=UINT(-1))
-                        swallow=header.dwType!=RIM_TYPEHID;
-                }
-                if(message==WM_SETCURSOR) {SetCursor(LoadCursorW(nullptr,IDC_ARROW));swallow=true;}
-            }
             const bool relevant=(message>=WM_MOUSEFIRST && message<=WM_MOUSELAST) ||
                 (message>=WM_KEYFIRST && message<=WM_KEYLAST) || message==WM_KILLFOCUS;
             if(input.router.visible && relevant && !hotkey_owned) {
@@ -128,7 +104,6 @@ LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wp,LPARAM lp) {
         }
     }
     if(recorded) { Command command;command.kind=CommandKind::menu_key;command.action=*recorded;submit_command(command); }
-    if(message==WM_KEYDOWN || message==WM_KEYUP || message==WM_SYSKEYDOWN || message==WM_SYSKEYUP) { if(wp==VK_INSERT) swallow=false; }
     if(swallow) return message==WM_INPUT ? DefWindowProcW(window,message,wp,lp):0;
     return previous ? CallWindowProcW(previous,window,message,wp,lp):DefWindowProcW(window,message,wp,lp);
 }
@@ -139,12 +114,7 @@ bool install_panel_input_hooks() {
     const auto prepared=owned_hook_prepare(reinterpret_cast<void*>(&GetAsyncKeyState),reinterpret_cast<void*>(&panel_async_key),&original);
     if(prepared!=HookOk) return false;
     original_async_key=reinterpret_cast<AsyncKey>(original);
-    if(hook_queue_enable(reinterpret_cast<void*>(&GetAsyncKeyState))!=HookOk) return false;
-    void* clip{};void* warp{};
-    if(owned_hook_prepare(reinterpret_cast<void*>(&ClipCursor),reinterpret_cast<void*>(&panel_clip),&clip)!=HookOk ||
-       owned_hook_prepare(reinterpret_cast<void*>(&SetCursorPos),reinterpret_cast<void*>(&panel_warp),&warp)!=HookOk) return false;
-    original_clip=reinterpret_cast<Clip>(clip);original_warp=reinterpret_cast<Warp>(warp);
-    return hook_queue_enable(reinterpret_cast<void*>(&ClipCursor))==HookOk && hook_queue_enable(reinterpret_cast<void*>(&SetCursorPos))==HookOk;
+    return hook_queue_enable(reinterpret_cast<void*>(&GetAsyncKeyState))==HookOk;
 }
 void route_panel_input(HWND window) {
     auto& input=state(); std::lock_guard lock(input.mutex);
@@ -161,9 +131,6 @@ void route_panel_input(HWND window) {
 void set_panel_bounds(PanelBounds bounds,bool visible,bool dragging,bool keyboard,bool text_input) {
     auto& input=state(); std::lock_guard lock(input.mutex);
     input.router.bounds=bounds; input.router.visible=visible;
-    const bool previous=panel_active.exchange(visible);
-    if(visible && !previous) {clip_saved=GetClipCursor(&saved_clip)!=FALSE;if(original_clip) original_clip(nullptr);}
-    else if(!visible && previous && clip_saved) {if(original_clip) original_clip(&saved_clip);clip_saved=false;}
     // The HWND receives down/up before ImGui's queued events are processed.
     // Keep its capture latch until the actual release; a render frame must not
     // erase a new down event before ImGui sees it.
@@ -176,33 +143,21 @@ std::vector<MenuInput> take_panel_input() {
     auto& input=state(); std::lock_guard lock(input.mutex);
     std::vector<MenuInput> result(input.pending.begin(),input.pending.end()); input.pending.clear(); return result;
 }
-bool panel_gameplay_blocked() { return panel_active.load(); }
-void close_panel() { auto& input=state();{std::lock_guard lock(input.mutex);input.hotkey.hidden=true;input.standalone=false;}hide_panel(); }
-bool panel_standalone_visible() { auto& input=state();std::lock_guard lock(input.mutex);return input.standalone; }
-void panel_binding_recording(bool active) { auto& input=state();std::lock_guard lock(input.mutex);input.binding_recording=active; }
-MenuControllerResult panel_controller_snapshot() { auto& input=state();std::lock_guard lock(input.mutex);return input.controller_frame; }
-void poll_panel_controller() {
-    const auto pad=menu_controller();
-    auto& input=state();std::lock_guard lock(input.mutex);
-    const bool focused=input.selected && GetAncestor(input.selected,GA_ROOT)==GetForegroundWindow();
-    // No controller menu binding is passed: saved shortcuts cannot activate.
-    input.controller_frame=input.controller.update(0,pad,input.standalone || !input.hotkey.hidden,focused,input.binding_recording || input.hotkey.recording);
-    /* Controller menu shortcut activation disabled; retained for future use.
-    const auto config=menu_snapshot().config;
-    input.controller_frame=input.controller.update(config.menu_combo,pad,input.standalone || !input.hotkey.hidden,focused,input.binding_recording || input.hotkey.recording);
-    if(input.controller_frame.toggle) {
-        if(input.standalone) {input.standalone=false;input.hotkey.hidden=true;}
-        else input.hotkey.hidden=!input.hotkey.hidden;
-    }
-    */
-}
 void hide_panel() { set_panel_bounds({},false,false,false); }
+void close_panel() {auto& input=state();{std::lock_guard lock(input.mutex);input.hotkey.hidden=true;}hide_panel();}
+bool panel_gameplay_blocked() {auto& input=state();std::lock_guard lock(input.mutex);return input.router.visible;}
+void panel_binding_recording(bool active) {auto& input=state();std::lock_guard lock(input.mutex);input.binding_recording=active;}
+MenuControllerResult panel_controller_snapshot() {auto& input=state();std::lock_guard lock(input.mutex);return input.controller_frame;}
+void poll_panel_controller() {
+    const auto pad=menu_controller();auto& input=state();std::lock_guard lock(input.mutex);
+    const bool focused=input.selected && GetAncestor(input.selected,GA_ROOT)==GetForegroundWindow();
+    input.controller_frame=input.controller.update(0,pad,input.router.visible,focused,input.binding_recording || input.hotkey.recording);
+}
 bool panel_user_visible() {
-    if(panel_standalone_visible()) return true;
     const auto config=menu_snapshot().config;
     // A hotkey claimed by ReSkate must not leave a previously hidden panel
     // inaccessible. Show it with the stock menu so the user can change the key.
-    if(native_key_overlap(config.menu_key,config.native)) return true;
+
     auto& input=state();std::lock_guard lock(input.mutex);return !input.hotkey.hidden;
 }
 void begin_menu_key_recording() { auto& input=state();std::lock_guard lock(input.mutex);input.hotkey.recording=true; }

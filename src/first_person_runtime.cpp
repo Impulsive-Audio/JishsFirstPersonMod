@@ -12,6 +12,7 @@
 #include "spectator_runtime.h"
 #include <chrono>
 #include "glance_controls.h"
+#include "marker_glance.h"
 #include "stick_input_filter.h"
 namespace jishsfirstpersonmod {
 void tick_mod(std::uintptr_t client) noexcept {
@@ -19,6 +20,7 @@ void tick_mod(std::uintptr_t client) noexcept {
     using namespace dingosdk::client_source::detail;
     static ControllerComboLatch toggle;
     static GlanceControlsState look;
+    static MarkerGlanceMemory marker_glance;
     static std::array<std::uintptr_t,4> glance_owner{};
     static std::uint64_t revision{};
     static Config input_config;
@@ -36,7 +38,7 @@ void tick_mod(std::uintptr_t client) noexcept {
         const auto next_context=reader.pointer(client,8);
         const auto state=reader.value<std::uint32_t>(client,0xc4);reader.verify();
         if(!reported) { reported=true;log("Controller tick reached native client; state="+std::to_string(state)); }
-        if(context!=next_context) { context=next_context;camera=0;toggle={};look={};clear_comfort_state(); }
+        if(context!=next_context) { context=next_context;camera=0;toggle={};look={};marker_glance.clear();clear_comfort_state(); }
         const auto settings=menu_snapshot();
         if(settings.revision!=revision) {
             if(!revision || input_config.stick.lock_mount_jump!=settings.config.stick.lock_mount_jump ||
@@ -48,10 +50,11 @@ void tick_mod(std::uintptr_t client) noexcept {
                     " disable_foot="+std::to_string(settings.config.disable_spring_on_foot)+" stick="+std::to_string(settings.config.stick.enabled)+
                     " look_only="+std::to_string(settings.config.look_only));
             bool changed=input_config.look_only!=settings.config.look_only || input_config.toggle!=settings.config.toggle ||
-                input_config.toggle_glances!=settings.config.toggle_glances;
+                input_config.toggle_glances!=settings.config.toggle_glances ||
+                input_config.remember_marker_glance!=settings.config.remember_marker_glance;
             for(unsigned i=0;i<4;++i) changed=changed || input_config.look[i].combo!=settings.config.look[i].combo ||
                 input_config.look[i].angle!=settings.config.look[i].angle;
-            if(changed) { toggle={};look={};stop_stick_look();clear_stock_camera_blends(); }
+            if(changed) { toggle={};look={};marker_glance.clear();stop_stick_look();clear_stock_camera_blends(); }
             input_config=settings.config; revision=settings.revision;
         }
         update_game_camera_ownership(client,base);
@@ -76,6 +79,17 @@ void tick_mod(std::uintptr_t client) noexcept {
         const auto foreground=GetForegroundWindow();
         const bool focused=foreground && GetWindowThreadProcessId(foreground,&foreground_pid) && foreground_pid==GetCurrentProcessId();
         const bool blocked=panel_gameplay_blocked() || !ready || !menu_ready || visible || !controller.available || !focused;
+        // The same entity teleport flag used by the comfort reader. Validate
+        // the previous local entity before observing its transient transition.
+        std::uintptr_t entity_vtable{},entity_context{};std::uint8_t teleport_flag{};
+        const bool returning_to_marker=world && glance_owner[1] &&
+            memory::read(glance_owner[1],entity_vtable) && entity_vtable==base+addr::engine::skater_entity_vtable &&
+            memory::read(glance_owner[1]+0x20,entity_context) && entity_context==context &&
+            memory::read(glance_owner[1]+0x7e0,teleport_flag) && teleport_flag!=0;
+        marker_glance.observe(settings.config.remember_marker_glance && settings.config.toggle_glances &&
+            world && menu_ready && !visible && !panel_gameplay_blocked() && focused && controller.available &&
+            !game_camera_suspended() && stock_first_person_requested(),returning_to_marker,look.selection(),controller.device,
+            context,source_flight_now());
         const auto input_route=route_controller_input(settings.config,blocked);
         const auto comfort=comfort_snapshot();
         const std::array<std::uintptr_t,4> current_owner{comfort.core,comfort.entity,comfort.context,comfort.rig};
@@ -118,9 +132,14 @@ void tick_mod(std::uintptr_t client) noexcept {
         publish_glance_filter(input_route.glance,!glance_blocked,current_owner,controller.device,
             settings.config.toggle,!toggle_filter_route.toggle_blocked,context);
         const bool emote=glance_emote_active();
-        if(emote) look.centre_for_emote(15);
+        if(emote) {look.centre_for_emote(15);marker_glance.clear();}
         const auto shared_modifier=settings.config.board.enabled && movement.mode==2 ? settings.config.board.modifier:0;
-        const auto angles=look.update(input_route.glance,controller,glance_blocked,settings.config.toggle_glances,shared_modifier);
+        auto angles=look.update(input_route.glance,controller,glance_blocked,settings.config.toggle_glances,shared_modifier);
+        if(bail && !returning_to_marker) marker_glance.clear();
+        const int remembered=marker_glance.take(!glance_blocked && !returning_to_marker);
+        if(remembered>=0 && look.restore_selection(remembered)) {
+            angles=look.selection_angles();log("Return to marker: restored toggled glance.");
+        }
         set_stock_glance(camera,saved_game_fov,angles[0],angles[1]);
         // Every activation uses stock's existing request queue. This DLL never
         // switches modes, takes a camera lease, hides a head or restores a view.
@@ -133,8 +152,8 @@ void tick_mod(std::uintptr_t client) noexcept {
             }
         }
         if(take_reload_request()) { Command retry;retry.kind=CommandKind::retry_save;submit_command(retry); }
-    } catch(const SourceGuard& error) { look.reset();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);if(last_wait!=error.message) { last_wait=error.message;log(std::string("Controller input waiting: ")+error.message); } }
-      catch(const std::exception& error) { look.reset();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);log(std::string("Controller input bridge: ")+error.what()); }
-      catch(...) { look.reset();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0); }
+    } catch(const SourceGuard& error) { look.reset();marker_glance.clear();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);if(last_wait!=error.message) { last_wait=error.message;log(std::string("Controller input waiting: ")+error.message); } }
+      catch(const std::exception& error) { look.reset();marker_glance.clear();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0);log(std::string("Controller input bridge: ")+error.what()); }
+      catch(...) { look.reset();marker_glance.clear();clear_glance_filter();stop_stick_look();clear_comfort_state();set_stock_glance(0,0,0,0); }
 }
 }

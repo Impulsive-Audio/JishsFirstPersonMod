@@ -32,6 +32,35 @@ int main() {
     auto diagonal=radial_stick({1,1},.15f);check(std::abs(std::hypot(diagonal.x,diagonal.y)-1)<.00001f,"diagonal faster than straight");
     StickSettings settings;settings.enabled=true;Settings spring;
     StickLookState state;
+    auto coupled=settings;coupled.turn_character=true;
+    StickLookState recentered;recentered.recenter_facing();
+    check(!recentered.update(coupled,{1,0},true,1,0,45,90,spring,20).active,"dismount recenter skipped neutral stick");
+    const auto centered=recentered.update(coupled,{},true,1,.016,45,90,spring,20);
+    check(centered.active && centered.heading==-90 && centered.body_heading==90 && centered.pitch==0,
+        "dismount/recovery recenter faces into the body");
+    const auto facing=recentered.update(coupled,{1,0},true,1,.116,45,90,spring);
+    check(std::abs(std::abs(wrap_heading(facing.body_heading-facing.heading))-180.f)<.001f,"recentered camera and character diverged");
+    recentered.recenter_facing();
+    const auto camera_only=recentered.update(settings,{},true,1,.132,45,90,spring,20);
+    check(camera_only.heading==45 && camera_only.pitch==20,"camera-only mode was recentered");
+    for(const float heading:{-179.f,-90.f,0.f,90.f,179.f}) {
+        StickLookState dismounted;dismounted.recenter_facing();
+        const auto outward=dismounted.update(coupled,{},true,1,0,heading,heading,spring);
+        const auto camera=aim_camera(Matrix{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},outward);
+        const auto body=face_heading(Matrix{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},heading);
+        // Viewing direction is camera -Z; character facing is body +Z.
+        const float dot=-(camera[8]*body[8]+camera[9]*body[9]+camera[10]*body[10]);
+        check(dot>.999f && std::abs(wrap_heading(outward.body_heading-heading))<.001f,
+            "dismount view did not face outward without turning the character");
+    }
+    StickLookState bail_center;bail_center.recenter_facing(180.f);
+    check(!bail_center.update(coupled,{1,0},true,1,0,45,90,spring,20).active,"bail recenter skipped neutral stick");
+    const auto bail_centered=bail_center.update(coupled,{},true,1,.016,45,90,spring,20);
+    check(bail_centered.active && bail_centered.heading==-90 && bail_centered.body_heading==90 && bail_centered.pitch==0,
+        "bail recenter did not reverse camera while preserving character facing");
+    const auto bail_turned=bail_center.update(coupled,{1,0},true,1,.116,45,90,spring);
+    check(std::abs(std::abs(wrap_heading(bail_turned.body_heading-bail_turned.heading))-180.f)<.001f,
+        "character lock lost outward camera offset after bail");
     check(!state.update(settings,{1,0},true,1,0,0,0,spring).active,"held stick armed without neutral");
     check(state.update(settings,{},true,1,.016,0,0,spring).active,"neutral did not arm");
     auto aim=state.update(settings,{1,0},true,1,.116,0,0,spring);

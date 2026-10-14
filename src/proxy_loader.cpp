@@ -26,10 +26,10 @@ template<class T> T native(const char* name) {
 }
 void log(const char* message) noexcept {
     try {
-        wchar_t local[32768]{};
-        const auto size=GetEnvironmentVariableW(L"LOCALAPPDATA",local,32768);
+        wchar_t path[32768]{};
+        const auto size=GetModuleFileNameW(self,path,32768);
         if(!size || size>=32768) return;
-        const auto root=std::filesystem::path(local)/L"JishsFirstPersonMod";
+        const auto root=std::filesystem::path(path).parent_path()/L"scripts/Custom/FirstPerson/logs";
         std::filesystem::create_directories(root);
         const auto record=std::to_string(GetTickCount64())+" [dinput8 proxy] "+message+'\n';
         jishsfirstpersonmod::append_rotating_log(root/L"proxy-loader.log",record,jishsfirstpersonmod::text_log_limit);

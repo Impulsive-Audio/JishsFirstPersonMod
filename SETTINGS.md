@@ -14,7 +14,7 @@ Use the preset selector below the tabs to choose Jish's Recommended or a saved p
 
 
 
-Preset loading keeps your current First Person on/off choice, panel shortcut, compatibility mode, native controls and camera-cycle restoration state. Conflicting bindings are paused and shown in Controls. Personal presets persist in `%LOCALAPPDATA%/JishsFirstPersonMod/presets` across updates and restarts.
+Preset loading keeps your current First Person on/off choice, panel shortcut, compatibility mode, native controls and camera-cycle restoration state. Conflicting bindings are paused and shown in Controls. Personal presets persist in `scripts/Custom/FirstPerson/presets` across updates and restarts.
 
 
 
@@ -69,7 +69,7 @@ This release builds successfully and passes the automated checks. Native code an
 
 
 
-Press **Insert** by default to open or close the companion panel independently. Insert also reaches ReSkate, so both menus may open. In Controls, use **Bind menu key** or **Clear menu key** to customize the saved keyboard binding, or record a controller menu shortcut. Escape and modifier-only keyboard bindings are reserved. Losing focus or closing the panel cancels recording. Loading camera presets preserves global menu access settings. See [controller menu controls](CONTROLLER_MENU.md).
+Press **Insert** to open both menus. **F9** hides or shows the first-person panel inside Insert. Closing Insert closes both; reopening Insert restores the panel. Standalone opening is disabled. Menu keys are fixed to Insert and F9; controller shortcuts for opening the panel are disabled. Losing focus or closing the panel cancels recording. Loading camera presets preserves global menu access settings. See [controller menu controls](CONTROLLER_MENU.md).
 
 
 
@@ -121,7 +121,7 @@ With Third person while bailing off in full mode, bails follow the calibrated he
 
 
 
-For bail diagnostics, keep First Person enabled, turn Third person while bailing off, then bail and stand up. The automatically rotated trace writes `%LOCALAPPDATA%\JishsFirstPersonMod\bail-camera-trace-v10.csv`, preserving older CSVs. It records native/final camera and animation poses, Spring/input/recovery evidence, attachment validity, facing eligibility, bail view phase, native control flags, motion override, calibrated target rotation and recovery look offsets. Writing runs on the settings worker rather than the camera thread.
+For bail diagnostics, keep First Person enabled, turn Third person while bailing off, then bail and stand up. The automatically rotated trace writes `scripts/Custom/FirstPerson/logs/bail-camera-trace-v11.csv`, preserving older CSVs. It records native/final camera and animation poses, Spring/input/recovery evidence, attachment validity, facing eligibility, bail view phase, native control flags, motion override, calibrated target rotation and recovery look offsets. Writing runs on the settings worker rather than the camera thread.
 
 
 
@@ -202,9 +202,9 @@ See ON_BOARD_FREE_LOOK.md for operation and fresh defaults. Existing saved choic
 
 Continue Auto Center Until New Look Input defaults on. A return started by modifier release continues through modifier re-presses until it reaches center or accepted right-stick camera movement interrupts it. Held native input waiting for neutral arming does not interrupt the return. Turning this option off restores the previous re-press behavior. This and all on-board settings save/load with personal presets; menu keyboard/controller access stays global.
 
-## Independent menu and controller controls
+## Menu and controller controls
 
-See CONTROLLER_MENU.md. Insert opens this panel independently; record its controller shortcut in Controls.
+See CONTROLLER_MENU.md. Insert opens both menus; F9 hides/shows this panel inside Insert.
 Front-flip offset fix: the flip target uses animated head pose plus configured position/rotation offsets directly. It no longer inherits the transient native-camera/head delta used by bail calibration. Regression tests cover both pitch directions, zero offsets, configured offsets and a Spring-lagged normal camera. Gameplay validation of this fix is pending.
 
 ### First-person spectator view (1.30)

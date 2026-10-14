@@ -17,6 +17,7 @@ std::vector<MenuInput> take_panel_input() { return {}; }
 void hide_panel() {}
 void close_panel() {}
 void panel_binding_recording(bool) {}
+void poll_panel_controller() {}
 MenuControllerResult panel_controller_snapshot() { return {}; }
 void set_panel_bounds(PanelBounds,bool,bool,bool,bool) {}
 dingosdk::ControllerInput recording_controller() { return {}; }

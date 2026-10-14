@@ -12,6 +12,7 @@ namespace jishsfirstpersonmod {
 bool panel_gameplay_blocked();
 struct Config {
     bool toggle_glances=false;
+    bool remember_marker_glance=false;
     NativeControls native; // Observed settings/bindings, never saved in the mod INI.
     unsigned menu_key=VK_INSERT;
     std::uint32_t menu_combo{};

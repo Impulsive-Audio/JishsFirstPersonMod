@@ -192,20 +192,13 @@ void STDMETHODCALLTYPE execute_hook(ID3D12CommandQueue* queue,UINT count,ID3D12C
 template<class Invoke> HRESULT present_frame(IDXGISwapChain* chain,UINT flags,Invoke invoke) {
     if(!compatibility::enabled()) return invoke();
     if(presentation.chain || (flags&DXGI_PRESENT_TEST)) return invoke();
-    // Keep PR controller navigation; presentation itself follows the original
-    // stock-overlay submission path and never draws from a cached queue.
-    DXGI_SWAP_CHAIN_DESC description{};
-    if(focused_chain(chain) && SUCCEEDED(chain->GetDesc(&description))) {
-        route_panel_input(description.OutputWindow);
-        poll_panel_controller();
-    }
     poll_stock_camera();
     bool visible{}; const bool available=overlay_available(visible);
     if(focused_chain(chain)) {
         static bool reported{};
         if(!reported) { reported=true; log("Game Present observed; waiting for named overlay queue pairing"); }
     }
-    presentation={chain,available&&(visible || panel_standalone_visible())&&panel_user_visible()&&focused_chain(chain),false,false};
+    presentation={chain,available&&visible&&panel_user_visible()&&focused_chain(chain),false,false};
     struct Scope { ~Scope() { presentation={}; } } scope;
     if(!presentation.visible) {
         hide_panel();
@@ -217,42 +210,6 @@ template<class Invoke> HRESULT present_frame(IDXGISwapChain* chain,UINT flags,In
     if(pending_stock.queue && GetTickCount64()-pending_stock.time<100 && focused_chain(chain)) {
         auto queue=pending_stock.queue; pending_stock.queue.Reset();
         render_submission(chain,queue.Get());
-    }
-    // Standalone mode only reuses the exact pair learned by this working
-    // renderer from a fresh named stock submission. Never guess a device queue
-    // or use a queue associated with a different swapchain wrapper.
-    if(!visible && presentation.visible && !presentation.drawn) {
-        ComPtr<ID3D12CommandQueue> verified;
-        {
-            auto& s=state(); std::lock_guard lock(s.mutex);
-            if(s.chain && same_device(s.chain.Get(),chain) && !s.failed) verified=s.queue;
-        }
-        // ReSkate 2.0.7 uses this same GetDevice(queue) fallback when a
-        // presenting swapchain was not observed at creation. Ask the actual
-        // presenting wrapper, never another queue on the same device.
-        if(!verified) {
-            ComPtr<ID3D12CommandQueue> candidate;
-            ComPtr<ID3D12Device> chain_device,queue_device;
-            DXGI_SWAP_CHAIN_DESC description{};
-            DWORD process{};
-            if(SUCCEEDED(chain->GetDesc(&description)) && description.OutputWindow &&
-               description.BufferCount>=2 && description.BufferCount<=8 &&
-               GetWindowThreadProcessId(description.OutputWindow,&process) && process==GetCurrentProcessId() &&
-               SUCCEEDED(chain->GetDevice(IID_PPV_ARGS(&candidate))) && candidate &&
-               candidate->GetDesc().Type==D3D12_COMMAND_LIST_TYPE_DIRECT &&
-               SUCCEEDED(chain->GetDevice(IID_PPV_ARGS(&chain_device))) &&
-               SUCCEEDED(candidate->GetDevice(IID_PPV_ARGS(&queue_device))) &&
-               same_device(chain_device.Get(),queue_device.Get())) {
-                verified=candidate;
-                static bool reported{};
-                if(!reported) {reported=true;log("F9 panel: direct queue obtained from presenting swapchain; device/window validated.");}
-            }
-        }
-        if(verified) render_submission(chain,verified.Get());
-        else {
-            static bool reported{};
-            if(!reported) {reported=true;log("F9 panel waiting for verified renderer pair; open Insert once after startup or resize.");}
-        }
     }
     const auto result=invoke();
     if(result==DXGI_ERROR_DEVICE_REMOVED || result==DXGI_ERROR_DEVICE_RESET) {
@@ -288,7 +245,6 @@ bool attach(void* target,void* replacement,void** original,const char* name) {
 bool start_menu() {
     using namespace dingosdk;
     try {
-        log("Menu bootstrap: pre-PR stock-overlay renderer; graphics readiness required.");
         const auto initialized=hook_initialize();
         if(initialized!=HookOk && initialized!=HookAlreadyInitialized)
             throw std::runtime_error("Menu hook registry initialization failed.");

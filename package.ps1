@@ -16,7 +16,7 @@ try {
 
         !(Test-Path release/scripts/Custom/jishs_first_person_mod.lua) -or
 
-        !(Test-Path release/scripts/Custom/presets/recommended.ini)) { throw 'Run build.ps1 before packaging.' }
+        !(Test-Path release/scripts/Custom/FirstPerson/presets/bundled/recommended.ini)) { throw 'Run build.ps1 before packaging.' }
 
     $legacyDll = Join-Path $PSScriptRoot 'release/JishsFirstPersonMod.dll'
 

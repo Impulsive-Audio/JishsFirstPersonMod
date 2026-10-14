@@ -152,5 +152,56 @@ int main() {
     check(near(mount(locked,2,6.4,false,true),locked),"settled mount restarted at release");
     auto ordinary=locked;ordinary[12]+=.1f;
     check(near(mount(ordinary,2,6.416,false,true),ordinary),"ordinary movement smoothed after mounting");
+    // Dismount can rearm character lock a frame after the mode changes.
+    // Native state and stick changes must not replace its handoff strength.
+    auto dismount_strength=[&](float strength,bool delayed_stick) {
+        CameraTransition test;auto cfg=handoff;cfg.enabled=true;
+        cfg.up=cfg.down=cfg.left=cfg.right=strength;
+        Settings disabled;disabled.enabled=false;
+        test.apply(base,cfg,1,2,false,0,ground,&disabled,&disabled);
+        test.apply(locked,cfg,1,1,!delayed_stick,.016,special,&disabled,&disabled,true);
+        const auto next=test.apply(locked,cfg,1,1,true,.032,normal_foot,&disabled,&disabled,true);
+        check(!near(next,locked),"dismount blend replaced by disabled animation/look smoothing");
+        return test.apply(locked,cfg,1,1,true,.132,normal_foot,&disabled,&disabled,true);
+    };
+    const auto slow_dismount=dismount_strength(90,true);
+    const auto fast_dismount=dismount_strength(10,true);
+    const auto remaining=[&](const Matrix& pose) {
+        return length(rotation_vector(multiply(conjugate(orientation(locked)),orientation(pose))));
+    };
+    check(remaining(slow_dismount)>remaining(fast_dismount),"character-lock dismount ignored handoff strength");
+    check(near(slow_dismount,dismount_strength(90,false)),"delayed stick activation restarted dismount blend");
+    CameraTransition rearming;Settings transition_settings=handoff;transition_settings.enabled=true;
+    Settings no_look;no_look.enabled=false;
+    rearming.apply(base,transition_settings,1,2,false,0,ground,&no_look,&no_look);
+    const auto before_rearm=rearming.apply(locked,transition_settings,1,1,false,.016,special,&no_look,&no_look);
+    check(near(rearming.apply(resumed,transition_settings,1,1,true,.016,normal_foot,&no_look,&no_look),before_rearm),
+        "new character-lock target snapped during dismount smoothing");
+    // Character-lock smoothing must not add a positional residual to the
+    // already configured camera/head target, including during mount locks.
+    for(const float strength:{10.f,90.f}) {
+        CameraTransition head_locked;Settings cfg=handoff;cfg.enabled=true;
+        cfg.up=cfg.down=cfg.left=cfg.right=strength;
+        auto apply_head=[&](Matrix pose,int mode,double time,bool mounting,bool stick,auto state) {
+            const auto result=head_locked.apply(pose,cfg,1,mode,stick,time,state,&spring,&look,
+                mounting,true,false,mounting,true);
+            for(unsigned axis=12;axis<=14;++axis)
+                check(std::abs(result[axis]-pose[axis])<.00001f,"character-lock smoothing displaced configured head position");
+            return result;
+        };
+        apply_head(base,1,0,false,true,normal_foot);
+        auto pose=locked;
+        const auto entry=apply_head(pose,1,.016,true,false,special);
+        check(length(rotation_vector(multiply(conjugate(orientation(base)),orientation(entry))))<.00001f,
+            "head position fix removed directional mount smoothing");
+        for(int i=2;i<20;++i) {
+            pose[12]+=.1f;pose[13]+=.02f;
+            apply_head(pose,2,i*.016,i<5,false,ground);
+        }
+        pose=resumed;
+        apply_head(pose,1,.320,false,false,special);
+        apply_head(pose,1,.336,false,true,normal_foot);
+        for(int i=22;i<50;++i) {pose[14]+=.1f;apply_head(pose,1,i*.016,false,true,normal_foot);}
+    }
     std::cout<<"Non-bail camera state transitions and reset policy passed\n";
 }

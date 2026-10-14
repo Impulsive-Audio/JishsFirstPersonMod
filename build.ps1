@@ -29,6 +29,9 @@ try {
     & $cmake --install build --config Release --prefix release
 
     if ($LASTEXITCODE) { throw 'Install staging failed.' }
+    $oldPreset = Join-Path $PSScriptRoot 'release/scripts/Custom/presets/recommended.ini'
+    if (Test-Path -LiteralPath $oldPreset) { Remove-Item -LiteralPath $oldPreset }
+    New-Item -ItemType Directory -Force release/scripts/Custom/FirstPerson/logs | Out-Null
 
     Copy-Item README.md,SETTINGS.md -Destination release
     New-Item -ItemType Directory -Force release/docs | Out-Null

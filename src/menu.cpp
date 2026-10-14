@@ -216,6 +216,8 @@ void draw_panel_frame(const PanelFrame& frame) {
         }
         ImGui::SameLine();
         if(ImGui::Button("Save as...")) { cancel_panel_recording();name_text[0]=0;ImGui::OpenPopup("Save preset"); }
+        ImGui::SameLine();
+        if(ImGui::Button("Refresh presets")) refresh=true;
         ImGui::BeginDisabled(selected.empty());
         if(ImGui::Button("Overwrite")) { pending=selected;operation=1;ImGui::OpenPopup("Confirm preset change"); }
         ImGui::SameLine();
@@ -303,16 +305,8 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(comfort.suspended) ImGui::TextWrapped("Automatic camera switching is paused. Waiting for your skater.");
 
         } else if(tab==1) {
-        ImGui::Text("Show/hide panel key: %s",menu_key_label(config.menu_key).c_str());
-        if(menu_key_recording()) {
-            ImGui::TextUnformatted("Press a keyboard key. Escape cancels.");
-            if(ImGui::Button("Cancel key recording")) cancel_menu_key_recording();
-        } else {
-            if(ImGui::Button("Bind menu key")) { recorder.cancel();begin_menu_key_recording(); }
-            ImGui::SameLine();
-            if(ImGui::Button("Clear menu key")) { Command command;command.kind=CommandKind::menu_key;command.action=0;submit_command(command); }
-        }
-        ImGui::TextWrapped("Open or close this panel independently. Insert opens ReSkate's menu.");
+        ImGui::TextUnformatted("Show/hide panel key: F9 (inside Insert)");
+        ImGui::TextWrapped("Insert opens ReSkate and this panel together. F9 hides or shows this panel inside Insert.");
         // Retain shortcut UI/recording for a future compatible presentation path.
         // Controller navigation remains available with the current renderer.
         /* Controller menu shortcut disabled; retained for future use.
@@ -369,6 +363,12 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(readable_checkbox("Toggle glance controls",&config.toggle_glances)) {
             Command command;command.kind=CommandKind::toggle_glances;command.enabled=config.toggle_glances;submit_command(command);
         }
+        ImGui::BeginDisabled(!config.toggle_glances);
+        if(readable_checkbox("Remember glance on return to marker",&config.remember_marker_glance)) {
+            Command command;command.kind=CommandKind::remember_marker_glance;command.enabled=config.remember_marker_glance;submit_command(command);
+        }
+        ImGui::EndDisabled();
+        help_marker("Restores a toggled glance after returning to your marker. Other teleport actions may also retain it. Menus, bails, leaving first person and changed controls still clear the remembered direction.");
         if((config.toggle&0x100) && (config.toggle&15)) ImGui::TextWrapped("LB/L1 + D-pad First Person buttons do not trigger emotes.");
         help_marker("Opening menus, leaving first person or interrupted controls clears a held glance. With toggle off, hold the buttons to glance; opposite directions cancel.");
         if(glance_emote_filter_ready()) ImGui::TextWrapped("Hold LB/L1 and tap a bound D-pad direction to glance. Double tap to emote; hold the second tap for a held emote.");
@@ -593,7 +593,7 @@ void draw_panel(HWND window,bool visible) {
     QueryPerformanceCounter(&now);
     frame.delta_time=last.QuadPart ? std::clamp(static_cast<float>(double(now.QuadPart-last.QuadPart)/double(frequency.QuadPart)),.001f,.1f):1.0f/60;
     last=now;
-    if(frame.visible && frame.focused) {frame.controller=recording_controller();frame.navigation=panel_controller_snapshot();}
+    if(frame.visible && frame.focused) {poll_panel_controller();frame.controller=recording_controller();frame.navigation=panel_controller_snapshot();}
     draw_panel_frame(frame);
 }
 }

@@ -14,7 +14,7 @@ class CameraTransition {
     int blend_kind_{}; // 0: foot/board, 1: animation, 2: stick
     bool ready_{},blending_{},stick_{},attached_{},eligible_=true,held_{},foot_handoff_{};
     double time_{};
-    bool mounting_{},mount_blend_{};
+    bool mounting_{},mount_blend_{},foot_blend_{};
 public:
     void reset() { *this={}; }
     Matrix apply(Matrix target,const dingosdk::first_person::Settings& settings,
@@ -22,7 +22,7 @@ public:
                  std::array<std::uintptr_t,4> state={},
                  const dingosdk::first_person::Settings* animation=nullptr,
                  const dingosdk::first_person::Settings* look=nullptr,
-                 bool attached=false,bool eligible=true,bool hold=false,bool mounting=false) {
+                 bool attached=false,bool eligible=true,bool hold=false,bool mounting=false,bool direction_only=false) {
         using namespace dingosdk::first_person;
         if(!owner || !mode || !std::isfinite(now)) { reset();return target; }
         if(!ready_ || owner_!=owner || now<time_ || now-time_>.25 ||
@@ -36,30 +36,33 @@ public:
         if(hold && !mounting) {
             // A direct native action still owns its displayed-pose history.
             foot_handoff_=foot_handoff_ || mode_!=mode;
-            blending_=false;mode_=mode;stick_=stick;state_=state;
+            foot_blend_=false;blending_=false;mode_=mode;stick_=stick;state_=state;
             attached_=attached;eligible_=eligible;held_=true;time_=now;last_=target;return target;
         }
         const bool animation_changed=state_!=state || attached_!=attached || held_ || eligible_!=eligible;
+        const bool foot_changed=mode_!=mode || foot_handoff_;
         const bool changed=mount_started || (!mount_blend_ &&
-            (mode_!=mode || foot_handoff_ || animation_changed || stick_!=stick));
+            (foot_changed || (!foot_blend_ && (animation_changed || stick_!=stick))));
         if(changed) blend_kind_=(mount_started || mode_!=mode || foot_handoff_) ? 0:animation_changed ? 1:2;
+        if(changed) foot_blend_=blend_kind_==0;
         if(mount_started) mount_blend_=true;
         attached_=attached;eligible_=eligible;held_=false;foot_handoff_=false;
         const auto& blend=blend_kind_==1 && animation ? *animation:
             blend_kind_==2 && look ? *look:settings;
         if(!blend.enabled) {
             mount_blend_=false;
-            blending_=false;mode_=mode;stick_=stick;state_=state;attached_=attached;eligible_=eligible;held_=hold;time_=now;last_=target;return target;
+            foot_blend_=false;blending_=false;mode_=mode;stick_=stick;state_=state;attached_=attached;eligible_=eligible;held_=hold;time_=now;last_=target;return target;
         }
         const auto inverse=conjugate(orientation(target));
-        if(changed) {
+        const bool rebase_handoff=!changed && foot_blend_ && (animation_changed || stick_!=stick);
+        if(changed || rebase_handoff) {
             position_=rotate(inverse,subtract({last_[12],last_[13],last_[14]}, {target[12],target[13],target[14]}));
             angle_=rotation_vector(multiply(inverse,orientation(last_)));
-            velocity_={};angular_velocity_={};blending_=true;
-            mode_=mode;stick_=stick;state_=state;time_=now;
+            if(changed) { velocity_={};angular_velocity_={};time_=now; }
+            blending_=true;mode_=mode;stick_=stick;state_=state;
         } else { mode_=mode;stick_=stick;state_=state; }
         // Mount entry carries position to the head; other attachments own it immediately.
-        if(attached && !mount_blend_) { position_={};velocity_={}; }
+        if(direction_only || (attached && !mount_blend_)) { position_={};velocity_={}; }
         const float dt=static_cast<float>(now-time_);time_=now;
         if(blending_) {
             const float average=(blend.up+blend.down+blend.left+blend.right)/4;
@@ -77,6 +80,7 @@ public:
             }
         }
         // Keep the mount episode stable even if it settles before the lock releases.
+        if(!blending_) foot_blend_=false;
         if(!blending_ && !mounting) mount_blend_=false;
         last_=target;return target;
     }

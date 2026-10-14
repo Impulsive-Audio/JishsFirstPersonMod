@@ -7,6 +7,7 @@
 #include "owned_hooks.h"
 #include "launcher_mod.h"
 #include "diagnostic_log.h"
+#include "user_data.h"
 #include <shellapi.h>
 #include <atomic>
 #include <fstream>
@@ -28,13 +29,10 @@ GetOverlayStatus overlay_status{};
 namespace jishsfirstpersonmod {
 std::filesystem::path module_directory() { return directory; }
 std::filesystem::path data_directory() {
-    wchar_t local[32768]{};
-    const auto count=GetEnvironmentVariableW(L"LOCALAPPDATA",local,32768);
-    if(!count || count>=32768) return directory;
-    return std::filesystem::path(local)/L"JishsFirstPersonMod";
+    return scripts_data_directory(directory);
 }
 void log(const std::string& text) noexcept {
-    try {write_diagnostic_log(data_directory(),text);} catch(...) {}
+    try {write_diagnostic_log(data_directory()/L"logs",text);} catch(...) {}
 }
 bool take_toggle_request() noexcept { return toggle_request.exchange(false); }
 bool take_reload_request() noexcept { return reload_request.exchange(false); }

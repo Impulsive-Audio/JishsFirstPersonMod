@@ -99,6 +99,7 @@ Config read_config(const std::filesystem::path& path) {
     cfg.on_board_only=boolean("on_board_only",false);
     cfg.disable_spring_on_foot=boolean("disable_spring_on_foot",false);
     cfg.toggle_glances=boolean("toggle_glances",false);
+    cfg.remember_marker_glance=boolean("remember_marker_glance",false);
     cfg.board.enabled=boolean("board_look",false);
     const bool legacy_board_center=boolean("board_auto_center",true);
     cfg.board.center_on_modifier=boolean("board_center_on_modifier",legacy_board_center);
@@ -207,7 +208,7 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
         for(unsigned i=0;i<3;++i) out<<'\n'<<offset[i]<<'='<<cfg.spring.offset[i]<<'\n'<<rotation[i]<<'='<<cfg.spring.rotation[i];
         out<<"\nstrength_up="<<cfg.spring.up<<"\nstrength_down="<<cfg.spring.down
             <<"\nstrength_left="<<cfg.spring.left<<"\nstrength_right="<<cfg.spring.right<<'\n';
-        out<<"look_only="<<cfg.look_only<<"\ntoggle_glances="<<cfg.toggle_glances<<'\n';
+        out<<"look_only="<<cfg.look_only<<"\ntoggle_glances="<<cfg.toggle_glances<<"\nremember_marker_glance="<<cfg.remember_marker_glance<<'\n';
         out<<"link_smoothing="<<cfg.link_smoothing<<"\nlook_smoothing_initialized="<<cfg.look_smoothing_initialized
             <<"\nlook_spring="<<cfg.look_spring.enabled<<"\nlook_strength_up="<<cfg.look_spring.up
             <<"\nlook_strength_down="<<cfg.look_spring.down<<"\nlook_strength_left="<<cfg.look_spring.left

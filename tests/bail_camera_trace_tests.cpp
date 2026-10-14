@@ -20,7 +20,7 @@ std::vector<std::string> fields(const std::string& text) {
 }
 int main() {
     using namespace jishsfirstpersonmod;using namespace dingosdk::first_person;
-    const auto path=data_directory()/"bail-camera-trace-v11.csv";
+    const auto path=data_directory()/"logs/bail-camera-trace-v11.csv";
     std::filesystem::remove(path);
     const Matrix pose{1,0,0,0,0,1,0,0,0,0,1,0,1,2,3,1};
     ComfortSnapshot state;state.core=1; // invalid animation identity must not be dereferenced

@@ -6,9 +6,9 @@ Bail trace rotates at 8 MiB. Mod and proxy text logs rotate at 1 MiB. Each keeps
 
 Close Skate. Copy **dinput8.dll**, **scripts** and **Mods** into the ReSkate game folder beside Skate.exe, ReSkate.dll and ReSkateLauncher.exe. Merge scripts and Mods. Start using the normal ReSkate launcher and enable Jish's First Person Mod there. Press Insert for the companion panel.
 
-The dinput8 proxy forwards DirectInput to the genuine System32 DLL and waits for ReSkate graphics initialization before loading scripts/Custom/JishsFirstPersonMod.dll. Stock ReSkate 2.0.3 disables Custom Lua scripts; the included Lua bootstrap is retained for older releases. Saved preferences remain in %LOCALAPPDATA%/JishsFirstPersonMod.
+The dinput8 proxy forwards DirectInput to the genuine System32 DLL and waits for ReSkate graphics initialization before loading scripts/Custom/JishsFirstPersonMod.dll. Stock ReSkate 2.0.3 disables Custom Lua scripts; the included Lua bootstrap is retained for older releases. Saved preferences remain in scripts/Custom/FirstPerson.
 
-Do not overwrite another mod's existing dinput8.dll. Proxy diagnostics are in %LOCALAPPDATA%/JishsFirstPersonMod/proxy-loader.log; native mod initialization is in JishsFirstPersonMod.log.
+Do not overwrite another mod's existing dinput8.dll. Proxy diagnostics are in scripts/Custom/FirstPerson/logs/proxy-loader.log; native mod initialization is in JishsFirstPersonMod.log.
 
 To remove this installation, remove this package's dinput8.dll, scripts/Custom/JishsFirstPersonMod.dll, scripts/Custom/jishs_first_person_mod.lua and Mods/JishsFirstPersonMod. Keep your preferences and other mods.
 
