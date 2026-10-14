@@ -44,6 +44,7 @@ struct InputState {
     MenuControllerState controller;
     MenuControllerResult controller_frame;
     bool binding_recording{};
+    bool standalone{};
     InputState() { hotkey.hidden=true; }
 
 };
@@ -91,7 +92,10 @@ LRESULT CALLBACK procedure(HWND window,UINT message,WPARAM wp,LPARAM lp) {
                 recorded=input.hotkey.recorded;input.hotkey.recorded.reset();
                 const auto config=menu_snapshot().config;
                 const auto key=config.menu_key!=VK_INSERT && native_key_overlap(config.menu_key,config.native) ? 0:config.menu_key;
-                if(!was_recording && !input.text_input && input.hotkey.toggle(message,static_cast<unsigned>(wp),key,(lp&(1LL<<30))!=0)) {
+                if(!was_recording && !input.text_input && wp==VK_F9) {
+                    if((message==WM_KEYDOWN || message==WM_SYSKEYDOWN) && !(lp&(1LL<<30))) input.standalone=!input.standalone;
+                    swallow=true;
+                } else if(!was_recording && !input.text_input && input.hotkey.toggle(message,static_cast<unsigned>(wp),key,(lp&(1LL<<30))!=0)) {
                     swallow=true;
                     if(input.hotkey.hidden) { input.router={};input.pending.clear(); }
                 }
@@ -173,22 +177,32 @@ std::vector<MenuInput> take_panel_input() {
     std::vector<MenuInput> result(input.pending.begin(),input.pending.end()); input.pending.clear(); return result;
 }
 bool panel_gameplay_blocked() { return panel_active.load(); }
-void close_panel() { auto& input=state();{std::lock_guard lock(input.mutex);input.hotkey.hidden=true;}hide_panel(); }
+void close_panel() { auto& input=state();{std::lock_guard lock(input.mutex);input.hotkey.hidden=true;input.standalone=false;}hide_panel(); }
+bool panel_standalone_visible() { auto& input=state();std::lock_guard lock(input.mutex);return input.standalone; }
 void panel_binding_recording(bool active) { auto& input=state();std::lock_guard lock(input.mutex);input.binding_recording=active; }
 MenuControllerResult panel_controller_snapshot() { auto& input=state();std::lock_guard lock(input.mutex);return input.controller_frame; }
 void poll_panel_controller() {
-    const auto pad=menu_controller();const auto config=menu_snapshot().config;
+    const auto pad=menu_controller();
     auto& input=state();std::lock_guard lock(input.mutex);
     const bool focused=input.selected && GetAncestor(input.selected,GA_ROOT)==GetForegroundWindow();
-    input.controller_frame=input.controller.update(config.menu_combo,pad,!input.hotkey.hidden,focused,input.binding_recording || input.hotkey.recording);
-    if(input.controller_frame.toggle) input.hotkey.hidden=!input.hotkey.hidden;
+    // No controller menu binding is passed: saved shortcuts cannot activate.
+    input.controller_frame=input.controller.update(0,pad,input.standalone || !input.hotkey.hidden,focused,input.binding_recording || input.hotkey.recording);
+    /* Controller menu shortcut activation disabled; retained for future use.
+    const auto config=menu_snapshot().config;
+    input.controller_frame=input.controller.update(config.menu_combo,pad,input.standalone || !input.hotkey.hidden,focused,input.binding_recording || input.hotkey.recording);
+    if(input.controller_frame.toggle) {
+        if(input.standalone) {input.standalone=false;input.hotkey.hidden=true;}
+        else input.hotkey.hidden=!input.hotkey.hidden;
+    }
+    */
 }
 void hide_panel() { set_panel_bounds({},false,false,false); }
 bool panel_user_visible() {
+    if(panel_standalone_visible()) return true;
     const auto config=menu_snapshot().config;
     // A hotkey claimed by ReSkate must not leave a previously hidden panel
     // inaccessible. Show it with the stock menu so the user can change the key.
-    (void)config;
+    if(native_key_overlap(config.menu_key,config.native)) return true;
     auto& input=state();std::lock_guard lock(input.mutex);return !input.hotkey.hidden;
 }
 void begin_menu_key_recording() { auto& input=state();std::lock_guard lock(input.mutex);input.hotkey.recording=true; }

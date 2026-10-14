@@ -10,7 +10,6 @@
 #include <array>
 #include <mutex>
 #include <sstream>
-#include <map>
 
 namespace jishsfirstpersonmod {
 using Microsoft::WRL::ComPtr;
@@ -20,40 +19,6 @@ using Present1=HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain1*,UINT,UINT,const DXGI
 using Resize=HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*,UINT,UINT,UINT,DXGI_FORMAT,UINT);
 using Resize1=HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain3*,UINT,UINT,UINT,DXGI_FORMAT,UINT,const UINT*,IUnknown* const*);
 using Execute=void(STDMETHODCALLTYPE*)(ID3D12CommandQueue*,UINT,ID3D12CommandList* const*);
-using CreateHwnd=HRESULT(STDMETHODCALLTYPE*)(IDXGIFactory2*,IUnknown*,HWND,const DXGI_SWAP_CHAIN_DESC1*,const DXGI_SWAP_CHAIN_FULLSCREEN_DESC*,IDXGIOutput*,IDXGISwapChain1**);
-using BindDx12=bool(*)(IDXGISwapChain*,ID3D12CommandQueue*);
-CreateHwnd original_create{};BindDx12 original_bind{};
-std::mutex pairs_mutex;
-struct QueuePair { ComPtr<IUnknown> identity;ComPtr<ID3D12CommandQueue> queue; };
-std::map<IUnknown*,QueuePair> pairs;
-void remember_pair(IDXGISwapChain* chain,ID3D12CommandQueue* queue) {
-    if(!chain || !queue || queue->GetDesc().Type!=D3D12_COMMAND_LIST_TYPE_DIRECT) return;
-    ComPtr<IUnknown> identity;ComPtr<ID3D12Device> a,b;
-    DXGI_SWAP_CHAIN_DESC desc{};DWORD pid{};
-    if(FAILED(chain->QueryInterface(IID_PPV_ARGS(&identity))) || FAILED(chain->GetDesc(&desc)) || !desc.OutputWindow ||
-       !GetWindowThreadProcessId(desc.OutputWindow,&pid) || pid!=GetCurrentProcessId() ||
-       FAILED(chain->GetDevice(IID_PPV_ARGS(&a))) || FAILED(queue->GetDevice(IID_PPV_ARGS(&b))) || a.Get()!=b.Get()) return;
-    std::lock_guard lock(pairs_mutex);
-    if(pairs.size()>=32 && !pairs.contains(identity.Get())) pairs.erase(pairs.begin());
-    pairs[identity.Get()]={identity,queue};
-}
-ComPtr<ID3D12CommandQueue> paired_queue(IDXGISwapChain* chain) {
-    ComPtr<IUnknown> identity;if(FAILED(chain->QueryInterface(IID_PPV_ARGS(&identity)))) return {};
-    std::lock_guard lock(pairs_mutex);const auto found=pairs.find(identity.Get());return found==pairs.end() ? ComPtr<ID3D12CommandQueue>{}:found->second.queue;
-}
-void forget_pair(IDXGISwapChain* chain) {
-    ComPtr<IUnknown> identity;if(SUCCEEDED(chain->QueryInterface(IID_PPV_ARGS(&identity)))) {std::lock_guard lock(pairs_mutex);pairs.erase(identity.Get());}
-}
-HRESULT STDMETHODCALLTYPE create_hwnd(IDXGIFactory2* factory,IUnknown* device,HWND window,const DXGI_SWAP_CHAIN_DESC1* desc,
-    const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* full,IDXGIOutput* output,IDXGISwapChain1** result) {
-    const auto hr=original_create(factory,device,window,desc,full,output,result);const auto error=GetLastError();
-    ComPtr<ID3D12CommandQueue> queue;
-    if(SUCCEEDED(hr) && result && *result && device && SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&queue)))) remember_pair(*result,queue.Get());
-    SetLastError(error);return hr;
-}
-bool bind_dx12(IDXGISwapChain* chain,ID3D12CommandQueue* queue) {
-    const bool result=original_bind(chain,queue);const auto error=GetLastError();if(result) remember_pair(chain,queue);SetLastError(error);return result;
-}
 Present original_present{}; Present1 original_present1{};
 Resize original_resize{}; Resize1 original_resize1{}; Execute original_execute{};
 struct Frame { ComPtr<ID3D12Resource> buffer; ComPtr<ID3D12CommandAllocator> allocator; D3D12_CPU_DESCRIPTOR_HANDLE rtv{}; UINT64 fence{}; };
@@ -96,9 +61,8 @@ void check(HRESULT hr,const char* step) {
     if(FAILED(hr)) { std::ostringstream error; error<<step<<" failed (0x"<<std::hex<<static_cast<unsigned long>(hr)<<")"; throw std::runtime_error(error.str()); }
 }
 bool wait(Renderer& s,UINT64 value) {
-    if(s.fence->GetCompletedValue()==UINT64_MAX) return false;
     if(!value || s.fence->GetCompletedValue()>=value) return true;
-    return SUCCEEDED(s.fence->SetEventOnCompletion(value,s.fence_event)) && WaitForSingleObject(s.fence_event,1000)==WAIT_OBJECT_0 && s.fence->GetCompletedValue()!=UINT64_MAX && s.fence->GetCompletedValue()>=value;
+    return SUCCEEDED(s.fence->SetEventOnCompletion(value,s.fence_event)) && WaitForSingleObject(s.fence_event,1000)==WAIT_OBJECT_0;
 }
 bool release(Renderer& s) {
     cancel_panel_recording();
@@ -177,12 +141,11 @@ void render_submission(IDXGISwapChain* chain,ID3D12CommandQueue* queue) noexcept
         if(index>=s.frames.size()) throw std::runtime_error("Invalid UI backbuffer index.");
         auto& frame=s.frames[index];
         const auto upload=static_cast<std::size_t>(s.draws%s.upload_fences.size());
-        if(!wait(s,s.next_fence) || !wait(s,frame.fence) || !wait(s,s.upload_fences[upload])) throw std::runtime_error("UI GPU fence timed out.");
+        if(!wait(s,frame.fence) || !wait(s,s.upload_fences[upload])) throw std::runtime_error("UI GPU fence timed out.");
         const auto previous=ImGui::GetCurrentContext();
         struct Restore { ImGuiContext* previous; ~Restore() { ImGui::SetCurrentContext(previous); } } restore{previous};
         ImGui::SetCurrentContext(s.context);
         ImGui_ImplDX12_NewFrame(); draw_panel(s.window,true);
-        if(!panel_user_visible()) return;
         const auto data=ImGui::GetDrawData();
         if(!data || data->TotalVtxCount==0) return;
         check(frame.allocator->Reset(),"UI allocator reset"); check(s.commands->Reset(frame.allocator.Get(),nullptr),"UI list reset");
@@ -218,37 +181,31 @@ void STDMETHODCALLTYPE execute_hook(ID3D12CommandQueue* queue,UINT count,ID3D12C
     const auto error=GetLastError();
     static std::atomic<bool> reported{};
     if(!reported.exchange(true)) log("DX12 queue submission hook observed");
-    if(!presentation.drawing && queue->GetDesc().Type==D3D12_COMMAND_LIST_TYPE_DIRECT && stock_overlay_submission(count,lists,caller)) {
+    if(compatibility::enabled() && !presentation.drawing && queue->GetDesc().Type==D3D12_COMMAND_LIST_TYPE_DIRECT && stock_overlay_submission(count,lists,caller)) {
         static std::atomic<bool> captured{};
         if(!captured.exchange(true)) log("Named ReSkate overlay submission captured through queue hook");
         pending_stock={queue,GetTickCount64()};
-        if(presentation.chain) remember_pair(presentation.chain,queue);
         if(presentation.chain) { render_submission(presentation.chain,queue); pending_stock.queue.Reset(); }
     }
     SetLastError(error);
 }
 template<class Invoke> HRESULT present_frame(IDXGISwapChain* chain,UINT flags,Invoke invoke) {
-    if(!compatibility::enabled()) {
-        // Learn exact stock pairings during startup, before camera hooks become
-        // active. Initial HUD submissions may have stopped by the first world tick.
-        if(presentation.chain || (flags&DXGI_PRESENT_TEST)) return invoke();
-        presentation={chain,false,false,false};
-        struct StartupScope {~StartupScope(){presentation={};}} startup_scope;
-        if(pending_stock.queue && GetTickCount64()-pending_stock.time<100 && focused_chain(chain)) {
-            remember_pair(chain,pending_stock.queue.Get());pending_stock.queue.Reset();
-        }
-        return invoke();
-    }
+    if(!compatibility::enabled()) return invoke();
     if(presentation.chain || (flags&DXGI_PRESENT_TEST)) return invoke();
+    // Keep PR controller navigation; presentation itself follows the original
+    // stock-overlay submission path and never draws from a cached queue.
     DXGI_SWAP_CHAIN_DESC description{};
-    if(focused_chain(chain) && SUCCEEDED(chain->GetDesc(&description))) {route_panel_input(description.OutputWindow);poll_panel_controller();}
+    if(focused_chain(chain) && SUCCEEDED(chain->GetDesc(&description))) {
+        route_panel_input(description.OutputWindow);
+        poll_panel_controller();
+    }
     poll_stock_camera();
     bool visible{}; const bool available=overlay_available(visible);
     if(focused_chain(chain)) {
         static bool reported{};
         if(!reported) { reported=true; log("Game Present observed; waiting for named overlay queue pairing"); }
     }
-    presentation={chain,available&&panel_user_visible()&&focused_chain(chain),false,false};
+    presentation={chain,available&&(visible || panel_standalone_visible())&&panel_user_visible()&&focused_chain(chain),false,false};
     struct Scope { ~Scope() { presentation={}; } } scope;
     if(!presentation.visible) {
         hide_panel();
@@ -259,9 +216,44 @@ template<class Invoke> HRESULT present_frame(IDXGISwapChain* chain,UINT flags,In
     // Present entry. Consume only that thread's fresh, named stock submission.
     if(pending_stock.queue && GetTickCount64()-pending_stock.time<100 && focused_chain(chain)) {
         auto queue=pending_stock.queue; pending_stock.queue.Reset();
-        remember_pair(chain,queue.Get());render_submission(chain,queue.Get());
+        render_submission(chain,queue.Get());
     }
-    if(!visible) {const auto queue=paired_queue(chain);if(queue) render_submission(chain,queue.Get());}
+    // Standalone mode only reuses the exact pair learned by this working
+    // renderer from a fresh named stock submission. Never guess a device queue
+    // or use a queue associated with a different swapchain wrapper.
+    if(!visible && presentation.visible && !presentation.drawn) {
+        ComPtr<ID3D12CommandQueue> verified;
+        {
+            auto& s=state(); std::lock_guard lock(s.mutex);
+            if(s.chain && same_device(s.chain.Get(),chain) && !s.failed) verified=s.queue;
+        }
+        // ReSkate 2.0.7 uses this same GetDevice(queue) fallback when a
+        // presenting swapchain was not observed at creation. Ask the actual
+        // presenting wrapper, never another queue on the same device.
+        if(!verified) {
+            ComPtr<ID3D12CommandQueue> candidate;
+            ComPtr<ID3D12Device> chain_device,queue_device;
+            DXGI_SWAP_CHAIN_DESC description{};
+            DWORD process{};
+            if(SUCCEEDED(chain->GetDesc(&description)) && description.OutputWindow &&
+               description.BufferCount>=2 && description.BufferCount<=8 &&
+               GetWindowThreadProcessId(description.OutputWindow,&process) && process==GetCurrentProcessId() &&
+               SUCCEEDED(chain->GetDevice(IID_PPV_ARGS(&candidate))) && candidate &&
+               candidate->GetDesc().Type==D3D12_COMMAND_LIST_TYPE_DIRECT &&
+               SUCCEEDED(chain->GetDevice(IID_PPV_ARGS(&chain_device))) &&
+               SUCCEEDED(candidate->GetDevice(IID_PPV_ARGS(&queue_device))) &&
+               same_device(chain_device.Get(),queue_device.Get())) {
+                verified=candidate;
+                static bool reported{};
+                if(!reported) {reported=true;log("F9 panel: direct queue obtained from presenting swapchain; device/window validated.");}
+            }
+        }
+        if(verified) render_submission(chain,verified.Get());
+        else {
+            static bool reported{};
+            if(!reported) {reported=true;log("F9 panel waiting for verified renderer pair; open Insert once after startup or resize.");}
+        }
+    }
     const auto result=invoke();
     if(result==DXGI_ERROR_DEVICE_REMOVED || result==DXGI_ERROR_DEVICE_RESET) {
         auto& s=state(); std::lock_guard lock(s.mutex); s.failed=false; release(s); log("UI device removed/reset; waiting for recreated swapchain.");
@@ -284,14 +276,7 @@ HRESULT STDMETHODCALLTYPE resize_hook(IDXGISwapChain* chain,UINT count,UINT widt
     before_resize(chain); return original_resize(chain,count,width,height,format,flags);
 }
 HRESULT STDMETHODCALLTYPE resize1_hook(IDXGISwapChain3* chain,UINT count,UINT width,UINT height,DXGI_FORMAT format,UINT flags,const UINT* nodes,IUnknown* const* queues) {
-    before_resize(chain);forget_pair(chain);
-    const auto result=original_resize1(chain,count,width,height,format,flags,nodes,queues);
-    if(SUCCEEDED(result) && queues && count) {
-        ComPtr<ID3D12CommandQueue> queue;bool same=true;
-        for(UINT i=1;i<count;++i) same=same && queues[i]==queues[0];
-        if(same && queues[0] && SUCCEEDED(queues[0]->QueryInterface(IID_PPV_ARGS(&queue)))) remember_pair(chain,queue.Get());
-    }
-    return result;
+    before_resize(chain); return original_resize1(chain,count,width,height,format,flags,nodes,queues);
 }
 bool attach(void* target,void* replacement,void** original,const char* name) {
     using namespace dingosdk;
@@ -303,6 +288,7 @@ bool attach(void* target,void* replacement,void** original,const char* name) {
 bool start_menu() {
     using namespace dingosdk;
     try {
+        log("Menu bootstrap: pre-PR stock-overlay renderer; graphics readiness required.");
         const auto initialized=hook_initialize();
         if(initialized!=HookOk && initialized!=HookAlreadyInitialized)
             throw std::runtime_error("Menu hook registry initialization failed.");
@@ -331,10 +317,6 @@ bool start_menu() {
             !attach(table[13],reinterpret_cast<void*>(&resize_hook),reinterpret_cast<void**>(&original_resize),"ResizeBuffers") ||
             !attach(table[39],reinterpret_cast<void*>(&resize1_hook),reinterpret_cast<void**>(&original_resize1),"ResizeBuffers1") ||
             !attach(queue_table[10],reinterpret_cast<void*>(&execute_hook),reinterpret_cast<void**>(&original_execute),"ExecuteCommandLists")) return false;
-        auto** factory_table=*reinterpret_cast<void***>(factory.Get());
-        if(!attach(factory_table[15],reinterpret_cast<void*>(&create_hwnd),reinterpret_cast<void**>(&original_create),"CreateSwapChainForHwnd")) return false;
-        if(const auto bind=GetProcAddress(GetModuleHandleW(L"reskate.dll"),"DingoSDKOverlayBindDx12"))
-            if(!attach(reinterpret_cast<void*>(bind),reinterpret_cast<void*>(&bind_dx12),reinterpret_cast<void**>(&original_bind),"ReSkate BindDx12")) return false;
         if(!install_panel_input_hooks()) throw std::runtime_error("Companion mouse polling isolation hook failed.");
         const auto status=apply_owned_hooks();
         if(status!=HookOk) { log("ERROR: menu hook transaction failed: "+std::to_string(status)); return false; }
@@ -342,13 +324,4 @@ bool start_menu() {
         return true;
     } catch(const std::exception& e) { log(std::string("ERROR: menu bootstrap: ")+e.what()); return false; }
 }
-// Optional companion ABI: return only the exact swapchain/queue pair already
-// validated by this renderer. Caller owns the returned COM reference.
-extern "C" __declspec(dllexport) bool JishFirstPersonMenuQueueForSwapchain(
-    IDXGISwapChain* chain,ID3D12CommandQueue** output) noexcept {
-    if(!output)return false;*output=nullptr;
-    try {auto queue=paired_queue(chain);if(!queue)return false;*output=queue.Detach();return true;}
-    catch(...){return false;}
-}
-
 }

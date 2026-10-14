@@ -100,14 +100,7 @@ DWORD WINAPI worker(void*) noexcept {
         if (!overlay_status) { jishsfirstpersonmod::log("ERROR: stock overlay status export unavailable; no hooks installed"); status = 3; return 0; }
         // Custom Lua executes during startup. Do not initialize graphics/input
         // or attach game hooks until stock has a stable, ready swapchain.
-        HMODULE early_pin{};
-        if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_PIN,reinterpret_cast<LPCWSTR>(&worker),&early_pin)) {status=3;return 0;}
-        struct EarlyMenuRollback {
-            bool committed{};
-            ~EarlyMenuRollback() {if(!committed) {jishsfirstpersonmod::compatibility::disable();dingosdk::rollback_owned_hooks();}}
-        } early_menu;
-        if(!jishsfirstpersonmod::start_menu()) {status=3;return 0;}
-        jishsfirstpersonmod::log("Menu creation hooks ready; camera/input setup waits for graphics readiness.");
+        jishsfirstpersonmod::log("waiting for ReSkate graphics readiness; no hooks installed yet");
         ULONGLONG ready_since{};
         bool ready{};
         for (unsigned tries=0; tries<6000; ++tries) {
@@ -144,8 +137,8 @@ DWORD WINAPI worker(void*) noexcept {
         if (!jishsfirstpersonmod::install_hooks(base)) {
             jishsfirstpersonmod::publish_runtime(false,false,"Camera hooks failed. See JishsFirstPersonMod.log."); status = 3; return 0;
         }
-
-        jishsfirstpersonmod::compatibility::enable();rollback.committed=true;early_menu.committed=true;
+        if(!jishsfirstpersonmod::start_menu()) { status=3;return 0; }
+        jishsfirstpersonmod::compatibility::enable();rollback.committed=true;
         status = 2;
         jishsfirstpersonmod::log("initialised once; controller requests feed the existing native ReSkate camera");
     } catch (const std::exception& e) { jishsfirstpersonmod::log(std::string("ERROR: initialisation failed: ") + e.what()); status = 3; }

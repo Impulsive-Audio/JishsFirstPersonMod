@@ -313,6 +313,9 @@ void draw_panel_frame(const PanelFrame& frame) {
             if(ImGui::Button("Clear menu key")) { Command command;command.kind=CommandKind::menu_key;command.action=0;submit_command(command); }
         }
         ImGui::TextWrapped("Open or close this panel independently. Insert opens ReSkate's menu.");
+        // Retain shortcut UI/recording for a future compatible presentation path.
+        // Controller navigation remains available with the current renderer.
+        /* Controller menu shortcut disabled; retained for future use.
         ImGui::TextWrapped("Controller menu shortcut: %s",dingosdk::controller_combo_label(config.menu_combo,controller.style).c_str());
         if(recorder.recording && recorder.action==6) {
             if(ImGui::Button("Cancel menu shortcut")) cancel_panel_recording();
@@ -324,6 +327,7 @@ void draw_panel_frame(const PanelFrame& frame) {
             ImGui::EndDisabled();
         }
         if(recorder.recording && recorder.action==6) ImGui::TextWrapped("Release all buttons, hold your shortcut, then release to save. B/Circle cancels.");
+        */
         ImGui::TextWrapped("D-pad / left stick: navigate and adjust. A/Cross: select. B/Circle: back or close. LB/RB: change tabs.");
         if(ImGui::Button("Close menu")) close_panel();
         ImGui::Spacing(); section("Controller bindings");

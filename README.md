@@ -1,6 +1,6 @@
-# Jish's First Person Mod 1.32
+# Jish's First Person Mod 1.33
 
-Includes modifier-held on-board right-stick free look and an independently opened, controller-navigable settings panel. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
+Includes modifier-held on-board right-stick free look and a controller-navigable settings panel. Press Insert once per game session before using F9 to toggle the panel independently. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
 
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 

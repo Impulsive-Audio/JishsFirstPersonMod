@@ -27,6 +27,7 @@ struct MenuHotkey {
     }
 };
 bool panel_user_visible();
+bool panel_standalone_visible();
 bool panel_gameplay_blocked();
 void close_panel();
 void poll_panel_controller();

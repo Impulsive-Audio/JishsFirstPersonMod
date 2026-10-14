@@ -2,12 +2,7 @@
 
 Included with on-board free look in one combined contribution against the upstream 1.32 source.
 
-Insert (or your saved keyboard panel key) opens/closes the panel alongside
-ReSkate. Insert remains ReSkate's menu. The panel starts closed. In Controls,
-Record menu shortcut saves a controller button/combo; Clear shortcut removes it.
-Controller shortcuts start unbound, support triggers, and remain accessible
-while the panel is hidden. Recording uses release-to-save; B/Circle cancels.
-Menu access is global and is preserved when loading camera presets.
+Open Insert once per game session, then use F9 to toggle the companion panel independently. Insert continues to open ReSkate's menu. Keyboard panel bindings remain available in Controls. Controller shortcuts for opening the panel are commented out; controller navigation remains available.
 
 D-pad or left stick navigates, left/right adjusts sliders, A/Cross selects,
 B/Circle backs out of editing/popups or closes the panel, and LB/RB switches

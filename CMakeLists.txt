@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(JishsFirstPersonMod VERSION 1.32.0 LANGUAGES C CXX ASM_MASM)
+project(JishsFirstPersonMod VERSION 1.33.0 LANGUAGES C CXX ASM_MASM)
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "JishsFirstPersonMod requires Windows x64")
 endif()
