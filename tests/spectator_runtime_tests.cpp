@@ -16,6 +16,7 @@ std::uintptr_t stock{},game=0x140000000ULL;
 Render replacement{};
 Config config;
 bool compatible=true,image_verified=true;
+bool render_chain_known=false;
 void check(bool value,const char* reason);
 Matrix rendered_camera{};
 unsigned render_writes{};
@@ -36,7 +37,7 @@ Matrix pose(float x,float y,float z) { Matrix result{};dingosdk::first_person::w
 namespace jishsfirstpersonmod {
 void log(const std::string&) noexcept {}
 MenuSnapshot menu_snapshot() { MenuSnapshot result;result.config=config;return result; }
-std::uintptr_t resolve_stock_handler(std::uintptr_t address) { return address==game+dingosdk::addr::engine::board_render_pose ? stock+spectator::render_hook:0; }
+std::uintptr_t resolve_stock_handler(std::uintptr_t address) { return render_chain_known && address==game+dingosdk::addr::engine::board_render_pose ? stock+spectator::render_hook:0; }
 namespace compatibility { bool enabled() { return compatible; } }
 }
 namespace dingosdk {
@@ -62,8 +63,12 @@ int main() { try {
     stock_contract::selected=profile;
     code(stock+spectator::party_getter,spectator::party_signature);code(stock+spectator::remote_getter,spectator::remote_signature);
     code(stock+spectator::render_hook,spectator::render_signature);code(stock+spectator::party_transform_return-17,spectator::transform_signature);
-    image_verified=false;initialize_spectator(game,stock);check(!spectator_available() && !replacement,"unsupported game enabled spectator bridge");image_verified=true;
-    initialize_spectator(game,stock,write_camera);check(spectator_available() && replacement,"verified runtime bridge did not initialize");
+    put(stock+spectator::party_getter,static_cast<unsigned char>(0));initialize_spectator(game,stock,write_camera);
+    check(!spectator_available() && !replacement && spectator_status().find("signature differs")!=std::string::npos,"signature failure was not explained");
+    code(stock+spectator::party_getter,spectator::party_signature);
+    // Spectator-local contracts suffice even when broad image/profile checks differ.
+    image_verified=false;stock_contract::selected=nullptr;
+    Config retry;retry.spectator_first_person=true;update_spectator_session(false,retry,context,false,0x1234);check(spectator_available() && replacement,"verified runtime bridge did not initialize");image_verified=true;stock_contract::selected=profile;
     check(spectator_transform_call(stock+spectator::party_transform_return) && !spectator_transform_call(stock+spectator::party_transform_return+1),"unrelated camera accepted");
     check(spectator_fov_call(stock+spectator::party_fov_return) && !spectator_fov_call(stock+spectator::party_fov_return+1),"unrelated FOV caller accepted");
     put(stock+spectator::party_pointer,address(party));put(stock+spectator::remote_pointer,address(remotes));

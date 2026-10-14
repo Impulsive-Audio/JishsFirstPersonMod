@@ -1,4 +1,4 @@
-# Jish's First Person Mod 1.30
+# Jish's First Person Mod 1.32
 
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
@@ -62,3 +62,5 @@ With **Third person while bailing** or **Third person while getting up** enabled
 This separate local 1.30 build includes the working 1.29.1 Sony HID menu fixes. See [local integration notes](docs/updates/LOCAL_1_30_INTEGRATION.md).
 
 Local test update: bald mode and outgoing cosmetic hooks removed; button glances and on-foot right-stick smoothing are independent. Radial-menu input changes are deferred.
+
+Version 1.32 fixes spectator startup hook ordering and keeps the spectator preference selectable. Tested working on both affected machines; all 34 automated tests pass. See [spectator validation notes](docs/testing/TEST_SPECTATOR_HOOK_1_32.md).

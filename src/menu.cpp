@@ -438,12 +438,10 @@ void draw_panel_frame(const PanelFrame& frame) {
         }
         ImGui::EndDisabled();
         ImGui::Spacing(); section("Attachment and transitions");
-        ImGui::BeginDisabled(!spectator_available());
         if(readable_checkbox("First-person spectator view",&config.spectator_first_person)) {
             Command command;command.kind=CommandKind::spectator_first_person;command.enabled=config.spectator_first_person;submit_command(command);
         }
         help_marker("During throwdown turns, Game of Skate or party spectating, use your First Person binding to switch between the watched head view and the follow camera. Each session starts in follow view. Uses received animation and your camera offsets/FOV; the other player's exact camera input is not transmitted.");
-        ImGui::EndDisabled();
         if(!spectator_available() || config.spectator_first_person)ImGui::TextWrapped("%s",spectator_status().c_str());
         ImGui::BeginDisabled(config.look_only);
         if(readable_checkbox("Lock head during on-board body flips",&config.lock_body_flips)) {

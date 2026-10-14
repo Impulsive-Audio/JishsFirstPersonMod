@@ -18,6 +18,7 @@ namespace jishsfirstpersonmod {
 namespace {
 std::mutex spectator_mutex;
 std::atomic<bool> supported{};
+std::atomic<bool> preference_seen{};
 std::uintptr_t game_base{},stock_base{},context{},view_camera{};
 std::uintptr_t camera_client{};
 DWORD camera_thread{};
@@ -101,11 +102,24 @@ bool spectator_fov_call(std::uintptr_t caller) noexcept { return supported.load(
 std::string spectator_status() { std::lock_guard lock(spectator_mutex);return feedback; }
 void initialize_spectator(std::uintptr_t game,std::uintptr_t stock,SpectatorRenderWriter writer) {
     using namespace dingosdk;
-    if(std::string_view(stock_contract::contract().version)!="2.0.7" || !supported_build::running_image_matches(game) ||
-        !spectator::verify_contract(memory_read,stock) || resolve_stock_handler(game+addr::engine::board_render_pose)!=stock+spectator::render_hook) {
-        log("Spectator head view unavailable: private camera/render contract not verified.");return;
-    }
+    if(supported.load()) return;
     game_base=game;stock_base=stock;render_writer=writer;
+    const auto unavailable=[&](const std::string& reason) {
+        std::lock_guard lock(spectator_mutex);
+        feedback="Spectator preference can be saved; runtime unavailable: "+reason;
+        log(feedback);
+    };
+    for(const auto& check:std::array<std::pair<std::uintptr_t,std::string_view>,4>{{
+        {spectator::party_getter,spectator::party_signature}, {spectator::remote_getter,spectator::remote_signature},
+        {spectator::render_hook,spectator::render_signature}, {spectator::party_transform_return-17,spectator::transform_signature}}}) {
+        if(!spectator::signature(memory_read,stock+check.first,check.second)) {
+            unavailable("ReSkate spectator signature differs at RVA "+std::to_string(check.first)+".");return;
+        }
+    }
+    const auto handler=resolve_stock_handler(game+addr::engine::board_render_pose);
+    if(handler!=stock+spectator::render_hook) {
+        log("Spectator native render chain not recognized; attaching directly to the verified ReSkate spectator render function. Resolved address="+std::to_string(handler));
+    }
     void* forwarding{};
     auto* entry=reinterpret_cast<void*>(stock+spectator::render_hook);
     auto result=owned_hook_prepare(entry,reinterpret_cast<void*>(&render),&forwarding);
@@ -113,11 +127,14 @@ void initialize_spectator(std::uintptr_t game,std::uintptr_t stock,SpectatorRend
         original_render=reinterpret_cast<Render>(forwarding);result=hook_queue_enable(entry);
         if(result==HookOk)result=apply_owned_hooks();
     }
-    if(result!=HookOk) { log("Spectator render hook unavailable: "+hook_failure_description(result));return; }
+    if(result!=HookOk) { unavailable("render hook installation failed: "+hook_failure_description(result));return; }
     { std::lock_guard lock(spectator_mutex);feedback="Spectator view: follow camera. Use the First Person binding while watching.";supported=true; }
     log("Spectator head view: verified ReSkate 2.0.7 ID/slot/generation bridge and party camera/render callbacks.");
 }
 void update_spectator_session(bool watching,const Config& config,std::uintptr_t next_context,bool blocked,std::uintptr_t client) {
+    const bool previously_enabled=preference_seen.exchange(config.spectator_first_person);
+    if(config.spectator_first_person && !previously_enabled && !supported.load() && game_base && stock_base)
+        initialize_spectator(game_base,stock_base,render_writer);
     std::lock_guard lock(spectator_mutex);
     // Restore before the next native animation update; shrinking only the
     // renderer's remote buffer never changes ReSkate's received pose vectors.
