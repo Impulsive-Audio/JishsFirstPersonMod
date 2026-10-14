@@ -1,16 +1,10 @@
-# Jish's First Person Mod 1.30 (development source)
+# Jish's First Person Mod 1.30
 
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
-Adds optional on-board body-flip head lock and first-person spectator view with 250 ms camera handoffs. See [1.30 notes](docs/updates/UPDATE_1_30.md), [body-flip checks](docs/testing/TEST_BODY_FLIP.md) and [spectator checks](docs/testing/TEST_SPECTATOR.md). Personal presets and the ReSkate-styled tabbed menu remain available.
-
-Includes glance emote blocking using existing ReSkate/mod handlers. Hold LB/L1 and tap a bound D-pad direction to glance; double tap within 250 ms to emote, and hold the second tap for a held emote. Toggle bindings using LB/L1 + D-pad also block accidental emotes. See [1.28 release notes](docs/updates/UPDATE_1_28.md).
-
-Native DualSense and DualSense Edge controllers now use the same gesture-blocking policy as Xbox, including USB with Steam Input disabled. HID completion adapters cover large read buffers and batched reports alongside DirectInput state/event adapters. Your independent binding reader stays available. Technical validation is recorded in the source test notes.
-
 ## Install
 
-This is 1.30 development source targeting ReSkate 2.0.7. Build with `build.ps1` and package with `package.ps1` for local testing. Published builds remain available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest); this source update does not create a 1.30 release. Close Skate before extracting a locally built package's **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** beside Skate.exe and ReSkateLauncher.exe.
+Close Skate before extracting a locally built package's **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** beside Skate.exe and ReSkateLauncher.exe.
 
 Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
 
