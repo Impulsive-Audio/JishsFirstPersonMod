@@ -4,12 +4,18 @@
 #include <Windows.h>
 namespace jishsfirstpersonmod {
 HeadPose read_animation_head(const ComfortSnapshot& state) noexcept {
-    using namespace dingosdk;using namespace first_person;
     HeadPose result;if(!state.state_valid || !state.entity) return result;
     try {
-        auto read=[](std::uintptr_t address,void* data,std::size_t size) { return memory::read_bytes(address,data,size); };
         const auto base=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-        const auto component=multiplayer::read_native_skater_component(read,base,state.entity);
+        auto read=[](std::uintptr_t address,void* data,std::size_t size) { return dingosdk::memory::read_bytes(address,data,size); };
+        return read_animation_head_component(dingosdk::multiplayer::read_native_skater_component(read,base,state.entity),base);
+    } catch(...) { return {}; }
+}
+HeadPose read_animation_head_component(std::uintptr_t component,std::uintptr_t base) noexcept {
+    using namespace dingosdk;using namespace first_person;
+    HeadPose result;
+    try {
+        auto read=[](std::uintptr_t address,void* data,std::size_t size) { return memory::read_bytes(address,data,size); };
         std::uintptr_t holder{};if(!memory::read(component+0xa0,holder)) return result;
         const auto pose=multiplayer::read_native_pose_layout(read,base,holder,512);
         if(!pose.buffer || pose.count!=395) return result;

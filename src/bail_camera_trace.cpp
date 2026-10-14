@@ -103,11 +103,11 @@ void flush_bail_camera_trace() noexcept {
         std::vector<Sample> batch;
         { std::lock_guard lock(trace_mutex);batch.swap(pending); }
         if(batch.empty()) return;
-        const auto path=data_directory()/"bail-camera-trace-v10.csv";
+        const auto path=data_directory()/"bail-camera-trace-v11.csv";
         std::filesystem::create_directories(path.parent_path());
         const std::string_view header="time_ms,event,phase,mode,custom_mode,physics,active_child,child_vtable,state_valid,animation_valid,wipeout_request,animation_wipeout,recovery,bail_latched,selector_valid,selector_current,selector_next,requested,active,saved_spring,effective_spring,native_spring,disable_foot,lock_mount_jump,mounting,jumping,stick_enabled,stick_active,turn_character,look_pitch,look_yaw,native_x,native_y,native_z,native_qx,native_qy,native_qz,native_qw,final_x,final_y,final_z,final_qx,final_qy,final_qz,final_qw,facing_valid,facing_x,facing_y,facing_z,facing_qx,facing_qy,facing_qz,facing_qw,head_valid,root_x,root_y,root_z,root_qx,root_qy,root_qz,root_qw,head_x,head_y,head_z,head_qx,head_qy,head_qz,head_qw,camera_head_distance_m,custom_position_delta_m,custom_angle_delta_deg,dropped,hold_phase,view_blocked,head_attached,offset_calibrated,offset_x,offset_y,offset_z,lock_hippy_jump,hippy_candidate,hippy_active,hippy_rising_samples,hippy_up_speed,reconciling,reconcile_remaining_deg,manual_takeover,facing_eligible\n";
         std::string extended_header(header);extended_header.pop_back();
-        extended_header+=",settings_revision,settings_changed,detected_action,attachment_reason,attachment_requested,camera_eligible,attachment_status,native_child,episode_type,episode_reset_reason,bail_view_phase,recovery_verified,recovery_controllable,recovery_flags,recovery_motion_override,head_target_qx,head_target_qy,head_target_qz,head_target_qw,recovery_look_yaw,recovery_look_pitch,getup_requested,getup_locked,getup_camera_phase,getup_blend_progress,head_target_x,head_target_y,head_target_z\n";
+        extended_header+=",settings_revision,settings_changed,detected_action,attachment_reason,attachment_requested,camera_eligible,attachment_status,native_child,episode_type,episode_reset_reason,bail_view_phase,recovery_verified,recovery_controllable,recovery_flags,recovery_motion_override,head_target_qx,head_target_qy,head_target_qz,head_target_qw,recovery_look_yaw,recovery_look_pitch,getup_requested,getup_locked,getup_camera_phase,getup_blend_progress,head_target_x,head_target_y,head_target_z,body_flip_tilt,body_flip_rate,body_flip_phase,body_flip_head_lock\n";
         std::ostringstream out;
         out<<std::setprecision(9);
         for(const auto& s:batch) {
@@ -137,10 +137,11 @@ void flush_bail_camera_trace() noexcept {
                 <<','<<(s.view.getup_camera_phase==1 ? "smoothed_head_follow":s.view.getup_camera_phase==2 ? "blending":s.view.getup_camera_phase==3 ? "attached":"normal")
                 <<','<<s.view.getup_blend;
             for(const auto value:s.view.head_target) out<<','<<value;
+            out<<','<<m.body_flip_tilt<<','<<m.body_flip_rate<<','<<m.body_flip_phase<<','<<m.body_flip_head_lock;
             out<<'\n';
         }
         if(!append_rotating_log(path,out.str(),trace_log_limit,log_archives,extended_header))
-            log("Could not write bail-camera-trace-v10.csv; later batches will retry.");
+            log("Could not write bail-camera-trace-v11.csv; later batches will retry.");
     } catch(...) { log("Bail camera trace flush failed."); }
 }
 }

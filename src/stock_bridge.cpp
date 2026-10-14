@@ -4,6 +4,7 @@
 #include "comfort_policy.h"
 #include "camera_cycle_override.h"
 #include "game_camera_ownership.h"
+#include "spectator_runtime.h"
 #include "settings.h"
 #include "stick_runtime.h"
 #include "camera_policy.h"
@@ -61,6 +62,11 @@ NativeControls read_native_controls(void* model) {
         if(dingosdk::memory::read(address+model_debug_offset+16+47,cycle) && cycle<=1) {
             native.camera_cycle_available=true;native.camera_cycle=cycle!=0;
         }
+    }
+    std::array<float,4> look{};
+    if(dingosdk::memory::read(address+model_debug_offset+16+48,look) &&
+        std::all_of(look.begin(),look.end(),[](float value){return std::isfinite(value) && value>=0 && value<=100;})) {
+        native.smoothing=look[0];native.head_pitch=look[1];native.head_roll=look[2];native.bob=look[3];
     }
     std::uint8_t available{};
     const auto bindings_offset=bindings_model_offset();
@@ -174,6 +180,11 @@ bool console_hook(void* user,const char* command,char* result,std::size_t size) 
     // Toggle master intent instead, including while comfort/ownership has
     // temporarily released the camera. Explicit on/off and other commands pass.
     if(compatibility::enabled() && command && native_first_person_toggle(command)) {
+        if(menu_snapshot().config.spectator_first_person && spectator_available() && game_camera_suspended()) {
+            const bool accepted=toggle_spectator_view();
+            if(result && size)strncpy_s(result,size,accepted ? "Spectator view changed.":spectator_status().c_str(),_TRUNCATE);
+            return accepted;
+        }
         const auto state=comfort_snapshot();
         const bool master=state.initialized ? state.master:stock_first_person_requested();
         const bool accepted=request_user_first_person(!master);
@@ -212,7 +223,7 @@ void read_hook(void* user,void* model) {
     const auto intent=activation_intent.load();
     if(intent>=0 && (debug->first_person==(intent!=0) || GetTickCount64()-intent_time.load()>3000)) activation_intent=-1;
     auto message=native_string(reinterpret_cast<std::uintptr_t>(debug)+(debug->camera_available ? debug_status_offset():camera_issue_offset()));
-    if(game_camera_suspended()) message=game_camera_status();
+    if(game_camera_suspended()) message=snapshot.config.spectator_first_person && spectator_available() ? spectator_status():game_camera_status();
     if(message.empty()) message=debug->camera_available ? "Camera ready.":"Waiting for ReSkate's camera.";
     publish_runtime(debug->first_person,debug->camera_available,message);
     if(snapshot.config.look_only) {

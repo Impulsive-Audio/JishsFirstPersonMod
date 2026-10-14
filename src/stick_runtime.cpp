@@ -10,6 +10,7 @@
 #include "settings.h"
 #include "camera_policy.h"
 #include "head_attachment.h"
+#include "body_flip_runtime.h"
 #include "Extension/Skater/free_flight.h"
 #include "owned_hooks.h"
 #include "bridge_resolver.h"
@@ -139,6 +140,11 @@ CameraMovementSample live_camera_movement() {
         evidence.bail=bail_recovery || bail_camera_locked(o,result);evidence.stage=stage;
         evidence.position_valid=body_valid;evidence.position={body[12],body[13],body[14]};evidence.hippy=result.hippy;
         result.jump_episode=jump_tracker.update(evidence,now());
+        const auto flip=body_flip_status();
+        if(flip.owner==std::array<std::uintptr_t,4>{o.core,o.entity,o.context,o.rig}) {
+            result.body_flip_head_lock=flip.owns_head();result.body_flip_camera_owned=flip.owns_camera();
+            result.body_flip_tilt=flip.tilt;result.body_flip_rate=flip.rate;result.body_flip_phase=static_cast<unsigned>(flip.phase);
+        }
         return result;
     } catch(...) { return unavailable(); }
 }

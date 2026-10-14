@@ -1,34 +1,15 @@
 #include "Extension/UI/Overlay/overlay_internal.h"
-#include <iostream>
+#include "Extension/Multiplayer/Hud/native_party_internal.h"
+#include "Extension/Multiplayer/Remote/native_skater_internal.h"
+#include <cstdio>
 #include <cstddef>
+static_assert(offsetof(dingosdk::overlay::detail::State,callbacks)==0x590 && offsetof(dingosdk::overlay::detail::State,model)==0x5c0);
+static_assert(offsetof(dingosdk::overlay::Model,bindings)==0x5f78);
+static_assert(int(dingosdk::overlay::DebugAction::reset_first_person_arm)==34);
 int main() {
-    using namespace dingosdk::overlay;
-    static_assert(offsetof(dingosdk::overlay::detail::State,callbacks)==0x4d0);
-    static_assert(offsetof(dingosdk::overlay::detail::State,model)==0x500);
-    static_assert(offsetof(Model,debug)==128);
-    static_assert(offsetof(Model,bindings)==0x5f50);
-    static_assert(offsetof(dingosdk::ControllerBindingsModel,action_combos)==40);
-    static_assert(offsetof(dingosdk::ControllerBindingsModel,status)==72);
-    static_assert(offsetof(dingosdk::first_person::Settings,board_only)==46);
-    static_assert(offsetof(DebugModel,camera_unavailable)==0xa0);
-    static_assert(offsetof(DebugModel,status)==0x1a8);
-    static_assert(offsetof(DebugModel,first_person_arm)==16);
-    static_assert(offsetof(dingosdk::first_person::Settings,stabilize)==44);
-    static_assert(sizeof(DebugRequest)==12 && offsetof(DebugRequest,value)==8);
-    static_assert(sizeof(CallbacksV3)==48 && offsetof(CallbacksV3,read_model)==8 && offsetof(CallbacksV3,queue_debug)==24);
-    static_assert(int(DebugAction::set_first_person)==13 && int(DebugAction::set_first_person_spring_right)==25 && int(DebugAction::reset_first_person_arm)==33);
-    static_assert(offsetof(dingosdk::overlay::detail::State,started)==0x328);
-    static_assert(offsetof(dingosdk::overlay::detail::State,ready)==0x329);
-    static_assert(offsetof(dingosdk::overlay::detail::State,stop)==0x2bb);
-    static_assert(offsetof(dingosdk::overlay::detail::State,failed)==0x330);
-    static_assert(offsetof(dingosdk::overlay::detail::State,swapchain)==0x430);
-    static_assert(offsetof(dingosdk::overlay::detail::State,rendered_frames)==0x490);
-    std::cout << "callbacks=" << offsetof(dingosdk::overlay::detail::State,callbacks) << '\n';
-    std::cout << "model=" << offsetof(dingosdk::overlay::detail::State,model) << '\n';
-    std::cout << "debug=" << offsetof(Model,debug) << '\n';
-    std::cout << "issue=" << offsetof(DebugModel,camera_unavailable) << '\n';
-    std::cout << "status=" << offsetof(DebugModel,status) << '\n';
-    std::cout << "arm=" << offsetof(DebugModel,first_person_arm) << '\n';
-    std::cout << "arm_size=" << sizeof(dingosdk::first_person::Settings) << '\n';
-    std::cout << "fp=" << int(DebugAction::set_first_person) << " reset=" << int(DebugAction::reset_first_person_arm) << '\n';
+using namespace dingosdk::overlay;
+printf("callbacks=%zx model=%zx debug=%zx bindings=%zx state_size=%zx\n",offsetof(detail::State,callbacks),offsetof(detail::State,model),offsetof(Model,debug),offsetof(Model,bindings),sizeof(detail::State));
+using P=dingosdk::multiplayer::native_party_detail::State;
+using R=dingosdk::multiplayer::native_skater_detail::Remote;
+printf("party_size=%zx selected=%zx epoch=%zx published=%zx positions=%zx remote_size=%zx buffer=%zx generation=%zx\n",sizeof(P),offsetof(P,spectating),offsetof(P,spectating_epoch),offsetof(P,published),offsetof(P,positions),sizeof(R),offsetof(R,written_buffer),offsetof(R,generation));
 }

@@ -1,8 +1,8 @@
-# Jish's First Person Mod 1.29.1
+# Jish's First Person Mod 1.30 (development source)
 
 First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
 
-Adds named personal presets and a clearer General, Controls and Camera menu while retaining the ReSkate styling. See [1.29 release notes](docs/updates/UPDATE_1_29.md).
+Adds optional on-board body-flip head lock and first-person spectator view with 250 ms camera handoffs. See [1.30 notes](docs/updates/UPDATE_1_30.md), [body-flip checks](docs/testing/TEST_BODY_FLIP.md) and [spectator checks](docs/testing/TEST_SPECTATOR.md). Personal presets and the ReSkate-styled tabbed menu remain available.
 
 Includes glance emote blocking using existing ReSkate/mod handlers. Hold LB/L1 and tap a bound D-pad direction to glance; double tap within 250 ms to emote, and hold the second tap for a held emote. Toggle bindings using LB/L1 + D-pad also block accidental emotes. See [1.28 release notes](docs/updates/UPDATE_1_28.md).
 
@@ -10,7 +10,7 @@ Native DualSense and DualSense Edge controllers now use the same gesture-blockin
 
 ## Install
 
-Download `JishsFirstPersonMod-1.29.1-reskate-2.0.7.zip` for ReSkate 2.0.7. Published packages are available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest). Close Skate, then extract **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** into the ReSkate folder beside Skate.exe and ReSkateLauncher.exe.
+This is 1.30 development source targeting ReSkate 2.0.7. Build with `build.ps1` and package with `package.ps1` for local testing. Published builds remain available from [Releases](https://github.com/Jish2637/JishsFirstPersonMod/releases/latest); this source update does not create a 1.30 release. Close Skate before extracting a locally built package's **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** beside Skate.exe and ReSkateLauncher.exe.
 
 Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
 
@@ -49,13 +49,13 @@ Bindings and the panel shortcut can be changed. See [detailed settings](SETTINGS
 
 ## Diagnostics
 
-Settings and logs are under `%LOCALAPPDATA%/JishsFirstPersonMod`. The current camera trace is `bail-camera-trace-v10.csv`, covering jumps, mounting, hippy jumps, bails and live settings changes. It records why attachment was selected and whether head data/calibration allowed it, alongside native/final camera positions. Bail diagnostics include uncontrolled/recovery phases, verified control flags, calibrated head target rotation and local recovery look. Camera trace files rotate at 8 MiB; mod and proxy text logs rotate at 1 MiB. Each keeps three older files, with `.1` the newest archive. Logging continues across rotations. Approximate retained budget for current log families is 40 MiB; older trace versions are preserved, and a blocked archive can temporarily exceed the budget while rotation retries.
+Settings and logs are under `%LOCALAPPDATA%/JishsFirstPersonMod`. The current camera trace is `bail-camera-trace-v11.csv`, covering jumps, mounting, hippy jumps, bails and live settings changes. It records why attachment was selected and whether head data/calibration allowed it, alongside native/final camera positions. Bail diagnostics include uncontrolled/recovery phases, verified control flags, calibrated head target rotation and local recovery look. Camera trace files rotate at 8 MiB; mod and proxy text logs rotate at 1 MiB. Each keeps three older files, with `.1` the newest archive. Logging continues across rotations. Approximate retained budget for current log families is 40 MiB; older trace versions are preserved, and a blocked archive can temporarily exceed the budget while rotation retries.
 
 ## Build and validation
 
 Windows x64, Visual Studio C++ tools and CMake are required. Run `./build.ps1`, then `./package.ps1`. The release install ZIP contains only Mods, scripts, dinput8.dll and LICENSE.txt.
 
-All 32 Windows tests pass. ReSkate 2.0.7 uses verified native camera, physics query and cosmetic capture contracts. Bail collision remains **work in progress**; the new third-person getting-up option provides an alternative. Technical research and gameplay checklists stay in source, including [bail collision research](docs/technical/BAIL_COLLISION_RESEARCH.md), [local hair checks](docs/testing/TEST_LOCAL_HAIR.md) and [getting-up checks](docs/testing/TEST_THIRD_PERSON_RECOVERY.md).
+All 35 Windows tests pass. ReSkate 2.0.7 uses verified native camera, physics query, spectator and cosmetic capture contracts. Spectator gameplay validation is pending. Bail collision remains **work in progress**; the new third-person getting-up option provides an alternative. Technical research and gameplay checklists stay in source, including [bail collision research](docs/technical/BAIL_COLLISION_RESEARCH.md), [local hair checks](docs/testing/TEST_LOCAL_HAIR.md) and [getting-up checks](docs/testing/TEST_THIRD_PERSON_RECOVERY.md).
 
 See [1.28 release notes](docs/updates/UPDATE_1_28.md), [1.26 release notes](docs/updates/UPDATE_1_26.md), [1.25 release notes](docs/updates/UPDATE_1_25.md), [1.24 release notes](docs/updates/UPDATE_1_24.md), [2.0.5 update notes](docs/updates/UPDATE_1_23.md), [2.0.5 offset audit](docs/technical/OFFSET_AUDIT_2_0_5.md), [2.0.4 notes](docs/updates/UPDATE_1_22.md), [previous release notes](docs/updates/UPDATE_1_21.md), and [historical notes](docs/updates/HISTORY.md).
 
@@ -65,4 +65,4 @@ See [LICENSE.txt](vendor/LICENSE) and dependency license files under vendor/Exte
 
 With **Third person while bailing** or **Third person while getting up** enabled on ReSkate 2.0.7, **First Person In Camera Cycle** is automatically disabled. The menu explains this override. Your previous preference is retained across game restarts and restored when both automatic third-person options are off. The mod's First Person checkbox and hotkey remain available.
 
-Version 1.29.1 fixes menus crashing with native Sony USB controllers by correcting HID/render lock ordering and batched report capture. See [patch notes](docs/updates/PATCH_1_29_SONY_HID.md).
+This separate local 1.30 build includes the working 1.29.1 Sony HID menu fixes. See [local integration notes](docs/updates/LOCAL_1_30_INTEGRATION.md).

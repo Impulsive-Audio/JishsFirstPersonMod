@@ -58,6 +58,12 @@ public:
         }
         info_.calibrated=calibrated_;info_.offset=offset_;return target;
     }
+    CameraMatrix attach_full(CameraMatrix target,const HeadPose& head) const {
+        using namespace dingosdk::first_person;
+        if(head.valid && calibrated_) write(target,normalized(multiply(orientation(head.head),rotation_offset_)),
+            add(position(head.head),rotate(orientation(head.head),offset_)));
+        return target;
+    }
     CameraMatrix apply(CameraMatrix native,const HeadPose& head,bool bail,bool /*normal*/,double now,bool controllable=false,bool getup_requested=false,const Vec3* player=nullptr,bool renewed=false) {
         using namespace dingosdk::first_person;
         if(!std::isfinite(now)) { reset();return native; }

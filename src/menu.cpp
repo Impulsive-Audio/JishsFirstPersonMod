@@ -6,6 +6,7 @@
 #include "stick_runtime.h"
 #include "stick_input_filter.h"
 #include "game_camera_ownership.h"
+#include "spectator_runtime.h"
 #include "Extension/UI/skate_theme.h"
 #include "Extension/UI/Overlay/skate_style.h"
 #include <windowsx.h>
@@ -433,6 +434,20 @@ void draw_panel_frame(const PanelFrame& frame) {
         }
         ImGui::EndDisabled();
         ImGui::Spacing(); section("Attachment and transitions");
+        ImGui::BeginDisabled(!spectator_available());
+        if(readable_checkbox("First-person spectator view",&config.spectator_first_person)) {
+            Command command;command.kind=CommandKind::spectator_first_person;command.enabled=config.spectator_first_person;submit_command(command);
+        }
+        help_marker("During throwdown turns, Game of Skate or party spectating, use your First Person binding to switch between the watched head view and the follow camera. Each session starts in follow view. Uses received animation and your camera offsets/FOV; the other player's exact camera input is not transmitted.");
+        ImGui::EndDisabled();
+        if(!spectator_available() || config.spectator_first_person)ImGui::TextWrapped("%s",spectator_status().c_str());
+        ImGui::BeginDisabled(config.look_only);
+        if(readable_checkbox("Lock head during on-board body flips",&config.lock_body_flips)) {
+            Command command;command.kind=CommandKind::lock_body_flips;command.enabled=config.lock_body_flips;submit_command(command);
+        }
+        help_marker("Detects front/back flips and body rolls near 90 degrees of tilt while airborne on the board. Blends to your head over 250 ms, follows position and rotation directly, then blends back. Grabs are not required. Near-vertical transitions may also trigger it.");
+        ImGui::EndDisabled();
+        if(config.look_only) ImGui::TextWrapped("Turn off Compatibility mode to use body-flip head lock.");
         ImGui::BeginDisabled(config.look_only);
         if(readable_checkbox("Attach head position during mounting / jumping",&config.stick.lock_mount_jump)) stick_change();
         help_marker("Follows your head position while getting on the board and during on-foot jumps. Disable Spring on foot can make the difference less noticeable. ReSkate stabilization and Follow flips pause while the mod follows your head; your settings are kept.");

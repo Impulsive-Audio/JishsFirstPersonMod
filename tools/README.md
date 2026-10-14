@@ -47,3 +47,10 @@ Dependencies are maintainer-only; players need no Python installation.
 With the listed Python dependencies installed, run `python verify_native_interop.py path/to/reskate.dll`. This read-only check validates the exact 2.0.0/2.0.1/2.0.2 release hash, native sampler and console-queue prologues, and two sampler call destinations. It complements `inspect_hooks.py`; it does not prove runtime hook safety or in-game camera behavior.
 
 For controller recording, run `python tools/verify_recording_reader.py path/to/ReSkate.dll`. This also includes the exact 2.0.2 reader and menu-enabled call sites.
+
+## 1.30 spectator verification
+
+Run `python tools/audit_spectator_bridge.py path/to/ReSkate-2.0.7.dll` to verify the exact image, private state getter/data references, remote storage stride, render hook and party camera/FOV call sites. This is read-only and does not load the DLL. Compile `tools/spectator_layout_probe.cpp` against the official 2.0.7 source with MSVC release STL layout to validate the POD offsets. See [spectator test results](../docs/testing/TEST_SPECTATOR.md). Other ReSkate versions are deliberately unsupported by this spectator bridge.
+
+
+Current development source: private spectator, Sony HID and cosmetic hooks target verified ReSkate 2.0.7. Use audit_spectator_bridge.py and verify_glance_hid.py for this target. See docs/RESKATE_2_0_7_REVERT.md.

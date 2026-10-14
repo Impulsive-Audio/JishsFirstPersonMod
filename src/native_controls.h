@@ -33,6 +33,7 @@ inline bool native_keyboard_binding(std::uint32_t binding) {
 struct NativeControls {
     bool active{},board_only{},stabilize{},follow_flips{};
     bool camera_cycle_available{},camera_cycle{};
+    float smoothing=60,head_pitch=86,head_roll=0,bob=25;
     std::array<std::uint32_t,17> bindings{};
     bool operator==(const NativeControls&) const = default;
 };

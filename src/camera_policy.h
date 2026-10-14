@@ -51,6 +51,7 @@ inline bool character_facing_allowed(const ComfortSnapshot& state,const CameraMo
 inline const char* head_attachment_reason(const Config& config,const ComfortSnapshot& state,const CameraMovementSample& movement) {
     if(config.look_only) return "compatibility";
     if(bail_camera_locked(state,movement)) return "bail";
+    if(config.lock_body_flips && movement.body_flip_head_lock) return "body_flip";
     // An action's explicit switch wins over foot attachment. Spring suppression
     // still applies independently, so disabling attachment does not enable Spring.
     if(jump_camera_action(movement)) return action_camera_locked(config,movement) ? camera_action(movement):"none";

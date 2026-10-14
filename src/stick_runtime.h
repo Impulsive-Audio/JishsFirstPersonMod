@@ -18,6 +18,8 @@ struct CameraMovementSample {
     bool recovery_verified{},recovery_controllable{},recovery_override{};
     std::uint32_t recovery_flags{};
     bool getting_up{};
+    bool body_flip_head_lock{},body_flip_camera_owned{};
+    float body_flip_tilt{},body_flip_rate{};unsigned body_flip_phase{};
     bool position_valid{};dingosdk::first_person::Vec3 position{};
     HippyJumpState hippy;
     JumpEpisodeState jump_episode;

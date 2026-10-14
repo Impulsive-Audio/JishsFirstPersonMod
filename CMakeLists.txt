@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(JishsFirstPersonMod VERSION 1.29.1 LANGUAGES C CXX ASM_MASM)
+project(JishsFirstPersonMod VERSION 1.30.0 LANGUAGES C CXX ASM_MASM)
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "JishsFirstPersonMod requires Windows x64")
 endif()
@@ -43,7 +43,8 @@ target_include_directories(mod_menu_ui PUBLIC src vendor)
 target_link_libraries(mod_menu_ui PUBLIC mod_settings mod_imgui mod_menu_input)
 configure_file(assets/fonts.rc.in "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc" @ONLY)
 add_library(JishsFirstPersonMod SHARED
-    src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/bail_collision.cpp src/first_person_hair.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
+    src/spectator_runtime.cpp
+    src/body_flip_runtime.cpp src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/bail_collision.cpp src/first_person_hair.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
     src/proven_debug.cpp src/proven_input.cpp src/stick_runtime.cpp src/stick_input_filter.cpp vendor/Extension/UI/Overlay/playstation_input.cpp
     vendor/Engine/Game/Build/image_identity.cpp src/menu_renderer.cpp src/recording_input.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc")
@@ -53,6 +54,15 @@ target_link_libraries(JishsFirstPersonMod PRIVATE mod_menu_ui mod_hooks mod_comp
 set_target_properties(JishsFirstPersonMod PROPERTIES PREFIX "" OUTPUT_NAME "JishsFirstPersonMod")
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(spectator_tests tests/spectator_tests.cpp)
+    target_link_libraries(spectator_tests PRIVATE mod_settings)
+    add_test(NAME spectator_identity_view_visibility_and_persistence COMMAND spectator_tests)
+    add_executable(spectator_runtime_tests tests/spectator_runtime_tests.cpp src/spectator_runtime.cpp src/head_attachment.cpp)
+    target_include_directories(spectator_runtime_tests PRIVATE src vendor)
+    add_test(NAME spectator_mocked_camera_render_and_restoration COMMAND spectator_runtime_tests)
+    add_executable(body_flip_tests tests/body_flip_tests.cpp)
+    target_link_libraries(body_flip_tests PRIVATE mod_settings)
+    add_test(NAME body_flip_detection_handoffs_and_persistence COMMAND body_flip_tests)
     add_executable(menu_layout_tests tests/menu_layout_tests.cpp src/menu.cpp "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc")
     target_compile_definitions(menu_layout_tests PRIVATE JISH_MOD_VERSION="${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
     target_link_libraries(menu_layout_tests PRIVATE mod_settings mod_imgui user32)

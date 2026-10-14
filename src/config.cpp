@@ -89,6 +89,8 @@ Config read_config(const std::filesystem::path& path) {
     cfg.third_person_bailing=boolean("third_person_bailing",false);
     cfg.third_person_recovery=boolean("third_person_recovery",false);
     cfg.bail_camera_collision=boolean("bail_camera_collision",true);
+    cfg.lock_body_flips=boolean("lock_body_flips",false);
+    cfg.spectator_first_person=boolean("spectator_first_person",false);
     cfg.bald_first_person=boolean("bald_first_person",true);
     cfg.cycle_restore_pending=boolean("cycle_restore_pending",false);
     cfg.cycle_restore_enabled=boolean("cycle_restore_enabled",false);
@@ -175,6 +177,8 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
             <<"\non_board_only="<<cfg.on_board_only
             <<"\nbail_camera_collision="<<cfg.bail_camera_collision
             <<"\nthird_person_recovery="<<cfg.third_person_recovery
+            <<"\nlock_body_flips="<<cfg.lock_body_flips
+            <<"\nspectator_first_person="<<cfg.spectator_first_person
             <<"\nbald_first_person="<<cfg.bald_first_person
             <<"\ndisable_spring_on_foot="<<cfg.disable_spring_on_foot<<'\n';
         out<<"stick_look="<<cfg.stick.enabled<<"\nstick_turn_character="<<cfg.stick.turn_character

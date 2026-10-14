@@ -23,6 +23,8 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         auto next=model_.config;
         bool immediate{};
         switch(command.kind) {
+        case CommandKind::lock_body_flips: next.lock_body_flips=command.enabled;immediate=true;break;
+        case CommandKind::spectator_first_person: next.spectator_first_person=command.enabled;immediate=true;break;
         case CommandKind::third_person_recovery: next.third_person_recovery=command.enabled;immediate=true;break;
         case CommandKind::look_only:
             next.look_only=command.enabled;enabled_.reset();model_.requested_enabled.reset();immediate=true;break;

@@ -30,15 +30,15 @@ int main() {
     }
     for(const auto& profile:contracts) {
         selected=&profile;
-        const bool v2=std::string_view(profile.version)=="2.0.0" || std::string_view(profile.version)=="2.0.1" || std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3" || std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5" || std::string_view(profile.version)=="2.0.6" || std::string_view(profile.version)=="2.0.7";
+        const bool v2=std::string_view(profile.version)=="2.0.0" || std::string_view(profile.version)=="2.0.1" || std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3" || std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5" || std::string_view(profile.version)=="2.0.6" || std::string_view(profile.version)=="2.0.7" || std::string_view(profile.version)=="2.0.8";
         if(v2) {
-            const bool latest=std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3" || std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5" || std::string_view(profile.version)=="2.0.6" || std::string_view(profile.version)=="2.0.7";
-            require(native_sampler_rva()==(std::string_view(profile.version)=="2.0.7" ? 0x22bb20:uses_v206_layout(&profile) ? 0x21ec50:(std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5") ? 0x2196c0:uses_v203_layout(&profile) ? 0x210080:latest ? 0x273020:0x26f810),"wrong native sampler profile");
-            require(console_queue_rva()==(std::string_view(profile.version)=="2.0.7" ? 0x42210:uses_v206_layout(&profile) ? 0x41d90:(std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5") ? 0x411b0:uses_v203_layout(&profile) ? 0x40e30:latest ? 0x3ec00:0x3ea30),"wrong console callback profile");
+            const bool latest=std::string_view(profile.version)=="2.0.2" || std::string_view(profile.version)=="2.0.3" || std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5" || std::string_view(profile.version)=="2.0.6" || std::string_view(profile.version)=="2.0.7" || std::string_view(profile.version)=="2.0.8";
+            require(native_sampler_rva()==(std::string_view(profile.version)=="2.0.8" ? 0xa467a0:std::string_view(profile.version)=="2.0.7" ? 0x22bb20:uses_v206_layout(&profile) ? 0x21ec50:(std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5") ? 0x2196c0:uses_v203_layout(&profile) ? 0x210080:latest ? 0x273020:0x26f810),"wrong native sampler profile");
+            require(console_queue_rva()==(std::string_view(profile.version)=="2.0.8" ? 0x811900:std::string_view(profile.version)=="2.0.7" ? 0x42210:uses_v206_layout(&profile) ? 0x41d90:(std::string_view(profile.version)=="2.0.4" || std::string_view(profile.version)=="2.0.5") ? 0x411b0:uses_v203_layout(&profile) ? 0x40e30:latest ? 0x3ec00:0x3ea30),"wrong console callback profile");
         }
         require(is_v2()==v2,"reviewed version selected wrong bridge family");
         require(callbacks_offset()==(uses_v206_layout(&profile) ? 0x590:uses_v203_layout(&profile) ? 0x4d0:v2 ? 0x4b8:0x4b0) && model_offset()==(uses_v206_layout(&profile) ? 0x5c0:uses_v203_layout(&profile) ? 0x500:v2 ? 0x4e8:0x4e0),"overlay layout mismatch");
-        require(bindings_model_offset()==(uses_v206_layout(&profile) ? 0x5f78:0x5f50),"bindings model layout mismatch");
+        require(bindings_model_offset()==(std::string_view(profile.version)=="2.0.8" ? 0x5f88:uses_v206_layout(&profile) ? 0x5f78:0x5f50),"bindings model layout mismatch");
         for(int action=first_person;action<=reset;++action) {
             const Request original{action,true,12.5f};
             const auto wire=to_native(original);Request decoded;

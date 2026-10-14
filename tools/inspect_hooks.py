@@ -182,7 +182,8 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0, new_
         raise InspectionError('Mutex lock thunk ABI changed')
     if new_lock[1].operands[0].imm != signature(old,new,old_lock[1].operands[0].imm) or unlock != signature(old,new,baseline['mutex_unlock_rva']):
         raise InspectionError('Status mutex functions differ from matched ABI')
-    if accessor != signature(old,new,old_calls[0],160, {0x14:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None):
+    tls_layout = {0x14:(0xe8b8,0xead0)} if old.digest=='8ae11491fca59317e561211e6abffb0e0dc26890a8845c8e1b0217c2c1a0a427' and new.digest=='ef237e13b2c5ade4e24a7bbdd7824680cb79fd6bdf8d1c13340a0d375ddd2fda' else {0x14:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
+    if accessor != signature(old,new,old_calls[0],160,tls_layout):
         raise InspectionError('State accessor changed')
     def constructor(image, getter, cb_offset, mdl_offset):
         candidates = []
@@ -206,7 +207,8 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0, new_
         raise InspectionError('FOV writer no longer writes the verified camera field')
     old_init = source_initializer(old)
     init = source_initializer(new)
-    if signature(old,new,old_init,layout_replacements={0x29:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None) != init:
+    init_tls = {0x29:(0xe8b8,0xead0)} if tls_layout=={0x14:(0xe8b8,0xead0)} else {0x29:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
+    if signature(old,new,old_init,layout_replacements=init_tls) != init:
         raise InspectionError('SourceTrial initializer changed')
     old_code = old.code(old_init,max(old.function(old_init)[1]-old_init,256))
     new_code = new.code(init,max(new.function(init)[1]-init,256))
@@ -252,6 +254,11 @@ def main():
         if old.export('DingoSDKOverlayGetStatus') != baseline['status_rva']:
             raise InspectionError('Baseline export differs from compiled profile')
         a,b = source_blocks(args.baseline_source),source_blocks(args.source)
+        if args.version == "2.0.8" and old_version == "2.0.7":
+            key='Extension/UI/Overlay/overlay.h:Model'
+            addition='GrindExitModelgrind_exit;'
+            if addition not in b[key]: raise InspectionError('Reviewed grind exit model addition missing')
+            b[key]=b[key].replace(addition,'',1)
         if args.version == "2.0.6" and old_version == "2.0.5":
             additions = {
                 'Engine/Game/Skater/first_person_spring.h:Settings': ['boolcamera_cycle=false;'],
@@ -290,10 +297,10 @@ def main():
         changed = [key for key in a if a[key] != b[key]]
         if changed:
             raise InspectionError('Source layout/API changed; investigate: '+', '.join(changed))
-        result = inspect(old,new,baseline,0x590 if old_version in ("2.0.6", "2.0.7") else 0x4d0 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4b8 if old_version.startswith("2.") else 0x4b0,
-                         0x5c0 if old_version in ("2.0.6", "2.0.7") else 0x500 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4e8 if old_version.startswith("2.") else 0x4e0,
-                         0x590 if args.version in ("2.0.6", "2.0.7") else 0x4d0 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None,
-                         0x5c0 if args.version in ("2.0.6", "2.0.7") else 0x500 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None)
+        result = inspect(old,new,baseline,0x590 if old_version in ("2.0.6", "2.0.7", "2.0.8") else 0x4d0 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4b8 if old_version.startswith("2.") else 0x4b0,
+                         0x5c0 if old_version in ("2.0.6", "2.0.7", "2.0.8") else 0x500 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4e8 if old_version.startswith("2.") else 0x4e0,
+                         0x590 if args.version in ("2.0.6", "2.0.7", "2.0.8") else 0x4d0 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None,
+                         0x5c0 if args.version in ("2.0.6", "2.0.7", "2.0.8") else 0x500 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None)
         print(f'{old_version} -> {args.version}\nSHA-256: {new.digest}')
         for name in FIELDS:
             print(f'{name:24} {baseline[name]:#010x} -> {result[name]:#010x}  OK')

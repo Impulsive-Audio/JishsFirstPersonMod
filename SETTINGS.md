@@ -1,3 +1,11 @@
+## On-board body-flip head lock (1.30)
+
+Camera > Attachment and transitions > Lock head during on-board body flips defaults off. It is independent of right-stick look and the mounting/hippy-jump switches, and requires full mode. It uses the skater's body up axis and verified on-board air states 200/201; no grab is required.
+
+Near 80 degrees of tilt from world upright, sustained increasing tilt starts a 250 ms blend into head position and rotation with the configured camera offsets. After the handoff, the camera follows directly without Spring or continuous smoothing. Settling rotation, landing, dismounting or disabling the option starts a 250 ms return. Glances pause during the handoff/lock; on-board trick input remains available. Flip targets use configured camera offsets directly; movement-induced Spring lag is excluded.
+
+Near-vertical airborne transitions may resemble flips. This motion-based detector needs gameplay validation. Menus, focus loss, teleports, invalid poses, camera ownership changes and bails discard the flip state. The setting is saved in current settings and personal presets; older presets default it off.
+
 ## Personal presets and menu tabs (1.29)
 
 
@@ -170,7 +178,7 @@ Menus, focus loss, controller disconnection/change, leaving first person, blocke
 
 
 
-On ReSkate 2.0.6 and 2.0.7, enabling **Third person while bailing** automatically disables **First Person In Camera Cycle**. The mod menu shows this next to the bail option. The native preference is retained across restarts and preset changes, then restored when third-person bails is disabled. Editing the native camera-cycle preference while the override is active updates the preference to restore; the effective setting stays off. This also applies in Compatibility mode. Older ReSkate versions are unchanged.
+On ReSkate 2.0.6, 2.0.7 and 2.0.8, enabling **Third person while bailing** automatically disables **First Person In Camera Cycle**. The mod menu shows this next to the bail option. The native preference is retained across restarts and preset changes, then restored when third-person bails is disabled. Editing the native camera-cycle preference while the override is active updates the preference to restore; the effective setting stays off. This also applies in Compatibility mode. Older ReSkate versions are unchanged.
 
 
 
@@ -187,3 +195,11 @@ The General, Controls and Camera tabs sit directly below the title/version, abov
 
 
 Routine autosaves show “Current settings saved” for three seconds after the write completes, then clear. The footer shows pending writes as “Saving current settings”; explicit preset load/save/overwrite/delete confirmations name the preset and disappear after four seconds. Errors remain visible. Current-setting changes do not overwrite personal presets.
+
+Front-flip offset fix: the flip target uses animated head pose plus configured position/rotation offsets directly. It no longer inherits the transient native-camera/head delta used by bail calibration. Regression tests cover both pitch directions, zero offsets, configured offsets and a Spring-lagged normal camera. Gameplay validation of this fix is pending.
+
+### First-person spectator view (1.30)
+
+Enable **Camera > Attachment and transitions > First-person spectator view** to make the existing First Person hotkey/controller binding switch spectator views during throwdowns, Game of Skate and manual party spectating. Each session starts with the normal follow camera. The chosen view follows player changes within that session and resets when spectating ends. Your own First Person preference is preserved.
+
+Head view uses ReSkate's first-person camera axes and eye midpoint, including its clearance ahead of the face. Your configured offsets, FOV, Spring and native stabilization settings apply. The rendered animation refines the camera in the same frame. A 250 ms moving-target blend handles view changes. The watched head is hidden only in the local render buffer. Missing, stale or unverified targets keep the follow camera; status explains the fallback. The option defaults off, is included in personal presets and requires the verified ReSkate 2.0.7 party spectator path. Remote camera settings and look input are not transmitted. Gameplay validation remains pending.

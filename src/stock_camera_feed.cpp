@@ -10,10 +10,13 @@
 #include "bail_camera_trace.h"
 #include "bail_view.h"
 #include "bail_collision.h"
+#include "body_flip_runtime.h"
+#include "spectator_runtime.h"
 #include "owned_hooks.h"
 #include "Engine/Core/Platform/memory.h"
 #include "Engine/Game/Build/20260929/client_source_spawn.h"
 #include "Extension/Skater/free_flight.h"
+#include "Extension/Skater/client_source_spawn_internal.h"
 #include <atomic>
 #include <intrin.h>
 #include <chrono>
@@ -33,6 +36,7 @@ std::mutex smoothing_mutex;
 LookSmoothing smoothing;
 CameraTransition transition;
 BailView bail_view;
+body_flip::Camera flip_camera;
 BailCollision collision;
 CollisionPoint collision_seed{},collision_player{};
 bool collision_seed_ready{},collision_player_ready{};
@@ -44,10 +48,40 @@ bool from_stock(void* caller) {
         reinterpret_cast<LPCWSTR>(caller),&owner) && owner==stock_module;
 }
 void reset_camera_smoothing() {
+    reset_body_flip();flip_camera.reset();
     collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
     smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;
 }
+bool write_spectator_render(std::uintptr_t client,std::uintptr_t camera,const Matrix& pose,float fov) {
+    auto rejected=[](const std::string& reason) {
+        static ULONGLONG last{};
+        const auto tick=GetTickCount64();
+        if(!last || tick-last>=1000) { last=tick;log("Spectator render camera rejected: "+reason); }
+        return false;
+    };
+    try {
+        dingosdk::client_source::detail::SourceTrial trial;trial.base=game_base;
+        const auto current=dingosdk::client_source::detail::source_camera_snapshot(trial,client);
+        // ReSkate checks input inactivity before entering party spectate, not
+        // after activating mode 1. Match its owned-camera check here: the
+        // activation flag is not evidence that another camera took ownership.
+        if(current.mode!=1 || current.active!=camera || !current.view_enabled || !dingosdk::valid_flight_transform(pose))
+            return rejected("mode="+std::to_string(current.mode)+" active="+std::to_string(current.active)+
+                " expected="+std::to_string(camera)+" enabled="+std::to_string(current.view_enabled));
+        original_transform(camera,&pose);
+        if(fov>1 && fov<175)original_fov(camera,fov);
+        return true;
+    } catch(const dingosdk::client_source::detail::SourceGuard& issue) { return rejected(issue.message); }
+      catch(...) { return rejected("Native camera snapshot unavailable."); }
+}
 void transform_hook(std::uintptr_t camera,const Matrix* input) {
+    if(spectator_transform_call(reinterpret_cast<std::uintptr_t>(_ReturnAddress()))) {
+        { std::lock_guard lock(smoothing_mutex);reset_camera_smoothing(); }
+        Matrix normal{},output{};
+        if(input && dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(input),normal) && dingosdk::valid_flight_transform(normal) &&
+            spectator_transform(camera,normal,output)) { original_transform(camera,&output);return; }
+        original_transform(camera,input);return;
+    }
     if(game_camera_suspended()) {
         { std::lock_guard lock(smoothing_mutex);reset_camera_smoothing(); }
         original_transform(camera,input);return;
@@ -92,7 +126,14 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                 if(interrupted) reset_camera_smoothing();
                 if(!movement.mode || !state.state_valid || interrupted) { reset_camera_smoothing();suspended=true; }
                 else {
+                    auto flip=body_flip_status();
                     const bool bail=bail_camera_locked(state,movement);
+                    if(bail || flip.owner!=std::array<std::uintptr_t,4>{state.core,state.entity,state.context,state.rig}) {
+                        reset_body_flip();flip=body_flip_status();flip_camera.reset();
+                    }
+                    const bool flip_owned=flip.owns_camera();
+                    movement.body_flip_head_lock=flip.owns_head();movement.body_flip_camera_owned=flip_owned;
+                    movement.body_flip_tilt=flip.tilt;movement.body_flip_rate=flip.rate;movement.body_flip_phase=static_cast<unsigned>(flip.phase);
                     const bool attached=head_position_attached(config,state,movement);
                     const bool normal=character_facing_allowed(state,movement) ||
                         (camera_overrides_allowed(state,movement) && movement.mode==2 && movement.custom_mode==2);
@@ -135,11 +176,12 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         view.getup_camera_phase=final_view.getup_camera_phase;view.getup_blend=final_view.getup_blend;
                         view.head_target=final_view.head_target;view.attached=final_view.attached;view.getup_locked=final_view.getup_locked;
                     } else if(!valid) {
+                        reset_body_flip();flip_camera.reset();
                         smoothing.reset();transition.reset();suspended=true;
                         collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
                         bail_view.reset();view=bail_view.info();
                     } else {
-                        if(!eligible) { smoothing.reset();suspended=true; }
+                        if(!eligible || flip_owned) { smoothing.reset();suspended=!eligible; }
                         else {
                             const auto effective=effective_camera_config(config,stock_first_person_requested(),state,movement);
                             const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
@@ -148,7 +190,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             matrix=aim_camera(matrix,aim);
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
-                        if(attached) matrix=bail_view.attach(matrix,head);
+                        if(attached && !flip_owned) matrix=bail_view.attach(matrix,head);
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
                         const bool mount_handoff=config.stick.enabled && movement.mounting;
                         handoff.up=handoff.down=handoff.left=handoff.right=(mount_handoff || movement.mode==2) ? config.stick.mount_smoothing:config.stick.dismount_smoothing;
@@ -156,10 +198,19 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         const auto look_settings=glance_settings(config);
                         normal_position={matrix[12],matrix[13],matrix[14]};
                         matrix=bail_view.finish(matrix,head,player,frame,control,&normal_position);
-                        if(owns_return) transition.reset();
+                        if(owns_return || flip_owned) transition.reset();
                         else matrix=transition.apply(matrix,handoff,state.core,movement.mode,aim.active,frame,movement.state,
                             &config.spring,&look_settings,attached,eligible,!eligible,mount_handoff);
-                        view=bail_view.info();changed=true;
+                        const auto flip_target=body_flip::head_target(head.head,config.spring);
+                        matrix=flip_camera.apply(matrix,flip_target,flip,frame);
+                        view=bail_view.info();
+                        if(flip_owned) {
+                            view.head_target=body_flip::position(flip_target);
+                            view.target_rotation=dingosdk::first_person::orientation(flip_target);
+                            view.offset={config.spring.offset[0],config.spring.offset[1],-config.spring.offset[2]};
+                            view.calibrated=true;view.attached=flip.phase==body_flip::Phase::locked;
+                        }
+                        changed=true;
                     }
                     if(changed) {
                         const CollisionPoint desired{matrix[12],matrix[13],matrix[14]};
@@ -182,7 +233,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             bail_view.accept_displayed_position(corrected);
                         } else { collision.reset();collision_world=0; }
                         collision_seed={matrix[12],matrix[13],matrix[14]};collision_seed_ready=true;
-                        if(!bail && valid) bail_view.remember(matrix,native,head,normal);
+                        if(!bail && valid) bail_view.remember(matrix,native,head,normal && !flip_owned);
                     }
                 }
             }
@@ -196,6 +247,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
     original_transform(camera,input);
 }
 bool fov_hook(std::uintptr_t camera,float value) {
+    if(spectator_fov_call(reinterpret_cast<std::uintptr_t>(_ReturnAddress())))return original_fov(camera,spectator_fov(camera,value));
     if(!menu_snapshot().config.look_only && !game_camera_suspended() && camera==watched_camera.load() && stock_first_person_requested() && menu_snapshot().config.fov==0 && from_stock(_ReturnAddress()))
         value=game_fov.load();
     return original_fov(camera,value);
@@ -241,7 +293,7 @@ bool install_stock_camera_feed(std::uintptr_t base,HMODULE stock) {
     original_transform=reinterpret_cast<Transform>(base+addresses::camera_transform_setter);
     feed_prepared.store(true,std::memory_order_release);
     set_background_flush(flush_bail_camera_trace);
-    log("Camera trace v10 ready: smoothed get-up head position and seamless 300 ms return; no get-up character writes.");
+    log("Camera trace v11 ready: smoothed get-up head position and seamless 300 ms return; no get-up character writes.");
     bool source_ready=false;
     for(unsigned tries=0;tries<6000;++tries) {
         std::uint8_t initialized{};std::uintptr_t live_base{},callback{};
@@ -267,9 +319,11 @@ bool install_stock_camera_feed(std::uintptr_t base,HMODULE stock) {
     auto result=hook_queue_enable(fov_target);
     if(result==HookOk) result=apply_owned_hooks();
     if(result!=HookOk) { log("ERROR: stock FOV hook attach failed: "+std::to_string(result));return false; }
+    initialize_spectator(base,reinterpret_cast<std::uintptr_t>(stock),write_spectator_render);
     log("Native camera input feed prepared without patching Skate camera code.");return true;
 }
 bool restore_stock_camera_feed() {
+    reset_spectator_view();
     feed_prepared=false;
     if(!transform_installed) return true;
     auto* slot=reinterpret_cast<void* volatile*>(reinterpret_cast<std::uintptr_t>(stock_module)+stock_contract::contract().source_transform_rva);

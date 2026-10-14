@@ -20,7 +20,7 @@ std::vector<std::string> fields(const std::string& text) {
 }
 int main() {
     using namespace jishsfirstpersonmod;using namespace dingosdk::first_person;
-    const auto path=data_directory()/"bail-camera-trace-v10.csv";
+    const auto path=data_directory()/"bail-camera-trace-v11.csv";
     std::filesystem::remove(path);
     const Matrix pose{1,0,0,0,0,1,0,0,0,0,1,0,1,2,3,1};
     ComfortSnapshot state;state.core=1; // invalid animation identity must not be dereferenced
@@ -36,6 +36,7 @@ int main() {
     column("reconciling");column("reconcile_remaining_deg");column("manual_takeover");column("facing_eligible");
     column("native_child");column("episode_type");column("episode_reset_reason");
     column("bail_view_phase");column("recovery_verified");column("recovery_controllable");column("recovery_flags");
+    column("body_flip_tilt");column("body_flip_rate");column("body_flip_phase");column("body_flip_head_lock");
     column("getup_camera_phase");column("getup_blend_progress");column("head_target_x");
     column("head_target_qw");column("recovery_look_yaw");column("recovery_look_pitch");
     unsigned count=0;std::vector<std::string> row;

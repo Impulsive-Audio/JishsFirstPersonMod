@@ -7,6 +7,9 @@
 #include "stick_runtime.h"
 #include "camera_policy.h"
 #include "head_attachment.h"
+#include "body_flip_runtime.h"
+#include "spectator_runtime.h"
+#include <chrono>
 #include "glance_controls.h"
 #include "stick_input_filter.h"
 namespace jishsfirstpersonmod {
@@ -80,11 +83,18 @@ void tick_mod(std::uintptr_t client) noexcept {
         // input gap just because glance settings or camera ownership changed.
         const bool toggle_filter_blocked=!world || !stock_bridge_ready() || !menu_ready || visible || !controller.available || !focused;
         const auto toggle_filter_route=route_controller_input(settings.config,toggle_filter_blocked);
+        update_spectator_session(world && game_camera_suspended(),settings.config,context,
+            !world || !menu_ready || visible || !focused,client);
         publish_toggle_filter(settings.config.toggle,!toggle_filter_route.toggle_blocked,controller.device,context);
         if(current_owner!=glance_owner) { glance_owner=current_owner;look.reset(); }
         auto movement=live_camera_movement();
         if(!settings.config.look_only) tick_hippy_jump(settings.config,comfort,movement,source_flight_now());
         if(!stock_first_person_requested()) { set_bail_view_suspended(false);movement.view_hold=false; }
+        tick_body_flip(settings.config,comfort,movement,
+            std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(),
+            !world || !ready || !menu_ready || visible || !focused || game_camera_suspended() ||
+            !stock_first_person_requested() || comfort.suppressed);
+        const auto flip=body_flip_status();movement.body_flip_head_lock=flip.owns_head();movement.body_flip_camera_owned=flip.owns_camera();
         const bool bail=bail_camera_locked(comfort,movement);
         if(!bail) { set_bail_view_suspended(false);movement.view_hold=false; }
         const bool native_camera=(settings.config.native.board_only && movement.mode==1) || game_camera_suspended() || !camera_look_allowed(settings.config,comfort,movement) || !read_animation_head(comfort).valid;
@@ -95,10 +105,13 @@ void tick_mod(std::uintptr_t client) noexcept {
         }
         const bool camera_interrupted=take_camera_suspension();
         tick_stick_look(settings.config,controller,comfort,input_route.stick_blocked || native_camera || camera_interrupted || !stock_first_person_active() || comfort.suppressed);
-        const bool pressed=toggle.update(settings.config.toggle,controller,input_route.toggle_blocked);
+        const bool spectator_switch=settings.config.spectator_first_person && spectator_available() && game_camera_suspended();
+        const bool pressed=toggle.update(settings.config.toggle,controller,spectator_switch ? toggle_filter_route.toggle_blocked:input_route.toggle_blocked);
         if(pressed) log("Controller First Person chord detected.");
         const bool script_toggle=take_toggle_request();
-        const bool glance_blocked=blocked || bail || native_camera || camera_interrupted || !stock_first_person_active() || comfort_snapshot().suppressed;
+        const bool spectator_toggle=(pressed || script_toggle) && spectator_switch && !toggle_filter_route.toggle_blocked;
+        if(spectator_toggle)toggle_spectator_view();
+        const bool glance_blocked=blocked || movement.body_flip_camera_owned || bail || native_camera || camera_interrupted || !stock_first_person_active() || comfort_snapshot().suppressed;
         // Camera readiness can briefly drop while the queued toggle executes.
         // Its emote suppression belongs to live gameplay, not camera readiness.
         publish_glance_filter(input_route.glance,!glance_blocked,current_owner,controller.device,
@@ -112,7 +125,7 @@ void tick_mod(std::uintptr_t client) noexcept {
         if(ready) {
             if(const auto request=take_enabled_command()) {
                 request_user_first_person(*request);
-            } else if((pressed || script_toggle) && !blocked) {
+            } else if((pressed || script_toggle) && !spectator_switch && !blocked) {
                 const bool enabled=!(comfort.initialized ? comfort.master:stock_first_person_requested());
                 request_user_first_person(enabled);
             }
