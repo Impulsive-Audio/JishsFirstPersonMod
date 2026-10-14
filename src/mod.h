@@ -5,13 +5,16 @@
 #include "Engine/Game/Input/controller_bindings.h"
 #include "Engine/Game/Skater/first_person_spring.h"
 #include "stick_look.h"
+#include "board_look.h"
 #include "native_controls.h"
 
 namespace jishsfirstpersonmod {
+bool panel_gameplay_blocked();
 struct Config {
     bool toggle_glances=false;
     NativeControls native; // Observed settings/bindings, never saved in the mod INI.
-    unsigned menu_key=VK_F9;
+    unsigned menu_key=VK_INSERT;
+    std::uint32_t menu_combo{};
     std::uint32_t toggle{};
     dingosdk::FirstPersonLookControls look = dingosdk::default_look_controls;
     dingosdk::first_person::Settings spring;
@@ -31,6 +34,7 @@ struct Config {
     bool cycle_restore_pending=false,cycle_restore_enabled=false; // Native preference retained during comfort override.
     bool disable_spring_on_foot=false;
     StickSettings stick;
+    BoardLookSettings board;
     std::array<std::uint32_t,3> reserved{};
 };
 inline dingosdk::first_person::Settings glance_settings(const Config& config) {
@@ -58,7 +62,7 @@ void hide_current_head() noexcept;
 bool begin_head_hide() noexcept;
 void end_head_hide() noexcept;
 struct GameplayInput:dingosdk::ControllerInput { float right_x{},right_y{},left_x{},left_y{}; };
-GameplayInput read_controller();
+GameplayInput read_controller(bool allow_menu=false);
 void prepare_input();
 void tick_mod(std::uintptr_t client) noexcept;
 void camera_tick_begin() noexcept;

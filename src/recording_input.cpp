@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "menu.h"
 #include "native_recording.h"
 #include "stock_contract.h"
 #include "Engine/Core/Platform/memory.h"
@@ -39,6 +40,7 @@ NativeRecordingReader native_reader() {
 // Independent Windows snapshots remain readable when stock's XInput hooks
 // intentionally return neutral gameplay input to the game behind its menu.
 dingosdk::ControllerInput recording_controller() {
+    RecordingInputAccess access;
     static const auto reader=native_reader();
     if(reader) return read_native_recording(reader);
     using namespace winrt::Windows::Gaming::Input;
@@ -85,4 +87,22 @@ dingosdk::ControllerInput recording_controller() {
     if(sony.pad.right_trigger>30) result.buttons|=0x20000;
     return result;
 }
+GameplayInput menu_controller() {
+    RecordingInputAccess access;
+    auto input=read_controller(true);
+    const auto buttons=recording_controller();
+    static_cast<dingosdk::ControllerInput&>(input)=buttons;
+    try {
+        using namespace winrt::Windows::Gaming::Input;
+        static thread_local const auto apartment=RoInitialize(RO_INIT_MULTITHREADED);(void)apartment;
+        for(const auto& pad:Gamepad::Gamepads()) {
+            const auto reading=pad.GetCurrentReading();
+            if(std::hypot(reading.LeftThumbstickX,reading.LeftThumbstickY)>std::hypot(input.left_x,input.left_y)) {
+                input.left_x=static_cast<float>(reading.LeftThumbstickX);input.left_y=static_cast<float>(reading.LeftThumbstickY);
+            }
+        }
+    } catch(...) {}
+    return input;
+}
+
 }

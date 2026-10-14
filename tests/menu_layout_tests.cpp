@@ -12,9 +12,12 @@ bool key_recording{};
 void begin_menu_key_recording() { key_recording=true; }
 void cancel_menu_key_recording() { key_recording=false; }
 bool menu_key_recording() { return key_recording; }
-std::string menu_key_label(unsigned) { return "F9"; }
+std::string menu_key_label(unsigned) { return "Insert"; }
 std::vector<MenuInput> take_panel_input() { return {}; }
 void hide_panel() {}
+void close_panel() {}
+void panel_binding_recording(bool) {}
+MenuControllerResult panel_controller_snapshot() { return {}; }
 void set_panel_bounds(PanelBounds,bool,bool,bool,bool) {}
 dingosdk::ControllerInput recording_controller() { return {}; }
 ComfortSnapshot comfort_snapshot() { ComfortSnapshot s;s.initialized=true;s.board_available=true;s.bail_available=true;return s; }
@@ -27,14 +30,14 @@ bool spectator_ready=true;
 bool spectator_available() noexcept { return spectator_ready; }
 std::string spectator_status() { return spectator_ready ? "Spectator view: follow camera. Use the First Person binding to switch.":"First-person spectator view requires verified ReSkate 2.0.7."; }
 }
-int main() { try {
+int main(int argc,char**) { try {
  using namespace jishsfirstpersonmod;
  for(float dpi:{1.0f,1.5f,2.0f}) {
   ImGui::CreateContext();load_panel_fonts();auto& io=ImGui::GetIO();
   unsigned char* pixels;int width,height;io.Fonts->GetTexDataAsRGBA32(&pixels,&width,&height);io.Fonts->SetTexID(1);
-  PanelFrame frame;frame.dpi=dpi;frame.display_size={1000*dpi,800*dpi};
+  PanelFrame frame;frame.dpi=dpi;frame.display_size={1000*dpi,(argc>1 ? 1200:800)*dpi};
   draw_panel_frame(frame);
-  ImGui::SetWindowSize("JishsFirstPersonMod",{360*dpi,680*dpi});
+  ImGui::SetWindowSize("JishsFirstPersonMod",{360*dpi,(argc>1 ? 1120:680)*dpi});
   for(int tab=0;tab<3;++tab) {
    // Click the real tab widget on the next frame.
    for(int pass=0;pass<4;++pass) {
@@ -46,10 +49,19 @@ int main() { try {
    if(window->ScrollMax.y>0) throw std::runtime_error("header/footer overflow at minimum panel width");
    if(tab==1) begin_menu_key_recording();
    if(tab==2 && key_recording) throw std::runtime_error("tab change did not cancel recording");
+   if(tab==2) {
+    bool found=false;
+    for(auto* child:ImGui::GetCurrentContext()->Windows) if(std::string(child->Name).find("Settings content")!=std::string::npos) {
+     if(!(child->ChildFlags&ImGuiChildFlags_NavFlattened)) throw std::runtime_error("controller must enter section container before widgets");
+     ImGui::SetScrollY(child,child->ScrollMax.y);found=true;
+    }
+    if(!found) throw std::runtime_error("Camera content child missing");
+    draw_panel_frame(frame);draw_panel_frame(frame);
+   }
    for(int state=0;state<(tab==2 ? 2:1);++state) {
    if(state) { spectator_ready=false;draw_panel_frame(frame);draw_panel_frame(frame); }
    // Capture draw data and atlas for independent raster inspection.
-   auto stem="menu-"+std::to_string(int(dpi*100))+"-"+std::to_string(tab)+(state ? "-disabled":"");
+   auto stem=std::string(argc>1 ? "menu-tall-":"menu-")+std::to_string(int(dpi*100))+"-"+std::to_string(tab)+(state ? "-disabled":"");
    std::ofstream out(stem+".json");out<<"{\"width\":"<<frame.display_size.x<<",\"height\":"<<frame.display_size.y<<",\"atlasWidth\":"<<width<<",\"atlasHeight\":"<<height<<",\"commands\":[";
    bool first=true;auto data=ImGui::GetDrawData();
    for(int l=0;l<data->CmdListsCount;++l) {auto list=data->CmdLists[l];for(const auto& cmd:list->CmdBuffer) {
@@ -72,6 +84,16 @@ int main() { try {
   io.AddInputCharactersUTF8("My preset");draw_panel_frame(frame);
   auto* text=ImGui::GetInputTextState(popup->GetID("Name"));
   if(!text || std::string(text->TextA.Data)!="My preset" || !io.WantTextInput) throw std::runtime_error("preset text input/capture failed");
+  frame.controller={true,0x2000,1};frame.navigation.ready=true;
+  frame.navigation.navigation.available=true;frame.navigation.navigation.device=1;
+  frame.navigation.navigation.buttons=0x2000;draw_panel_frame(frame);
+  frame.controller.buttons=0;frame.navigation.navigation.buttons=0;draw_panel_frame(frame);
+  if(ImGui::IsPopupOpen("",ImGuiPopupFlags_AnyPopupId)) throw std::runtime_error("controller Back did not dismiss preset popup");
+  frame.navigation.tab_delta=1;draw_panel_frame(frame);frame.navigation.tab_delta=0;
+  frame.controller.buttons=2;frame.navigation.navigation.buttons=2;draw_panel_frame(frame);
+  frame.controller.buttons=0;frame.navigation.navigation.buttons=0;draw_panel_frame(frame);
+  if(!(io.BackendFlags&ImGuiBackendFlags_HasGamepad) || !ImGui::GetCurrentContext()->NavId)
+      throw std::runtime_error("real menu did not establish controller navigation focus");
   ImGui::DestroyContext();
  }
  std::cout<<"Menu frames rendered at 100%, 150%, 200% DPI\n";

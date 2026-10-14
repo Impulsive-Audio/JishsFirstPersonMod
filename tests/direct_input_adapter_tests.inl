@@ -1,6 +1,6 @@
 struct FakeDirect {
     void** table{};
-    bool sony=true,ansi=false;
+    bool sony=true,ansi=false,axes=false;
     DWORD l1=52,pov=32,cross=49;
     std::vector<unsigned char> physical=std::vector<unsigned char>(sizeof(DIJOYSTATE2),0);
     std::vector<DIDEVICEOBJECTDATA> queued;
@@ -8,6 +8,9 @@ struct FakeDirect {
     ULONG references=1;
 };
 HRESULT STDMETHODCALLTYPE fake_direct_property(void* pointer,REFGUID property,DIPROPHEADER* header) {
+    if(&property==&DIPROP_RANGE && static_cast<FakeDirect*>(pointer)->axes) {
+        auto& range=*reinterpret_cast<DIPROPRANGE*>(header);range.lMin=0;range.lMax=65535;return DI_OK;
+    }
     if(&property!=&DIPROP_VIDPID) return DIERR_UNSUPPORTED;
     reinterpret_cast<DIPROPDWORD*>(header)->dwData=static_cast<FakeDirect*>(pointer)->sony ? 0x0ce6054c:0x028e045e;
     return DI_OK;
@@ -20,6 +23,9 @@ HRESULT STDMETHODCALLTYPE fake_direct_object(void* pointer,void* output,DWORD of
     if(offset==device.pov) {type=DIDFT_POV;page=1;usage=0x39;}
     else if(offset==device.l1) {type=DIDFT_PSHBUTTON|DIDFT_MAKEINSTANCE(4);page=9;usage=5;}
     else if(offset==device.cross) {type=DIDFT_PSHBUTTON|DIDFT_MAKEINSTANCE(1);page=9;usage=2;}
+    else if(device.axes && (offset==offsetof(DIJOYSTATE,lZ) || offset==offsetof(DIJOYSTATE,lRz))) {
+        type=DIDFT_ABSAXIS;page=1;usage=offset==offsetof(DIJOYSTATE,lZ) ? 0x32:0x35;
+    }
     else return DIERR_OBJECTNOTFOUND;
     if(device.ansi) {auto& value=*static_cast<DIDEVICEOBJECTINSTANCEA*>(output);value.dwType=type;value.wUsagePage=page;value.wUsage=usage;}
     else {auto& value=*static_cast<DIDEVICEOBJECTINSTANCEW*>(output);value.dwType=type;value.wUsagePage=page;value.wUsage=usage;}

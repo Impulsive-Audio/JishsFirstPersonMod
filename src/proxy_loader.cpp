@@ -57,7 +57,7 @@ DWORD WINAPI load_companion(void*) noexcept {
                 if(const auto query=reinterpret_cast<Status>(GetProcAddress(runtime,"DingoSDKOverlayGetStatus"))) {
                     dingosdk::overlay::Status status{};
                     query(&status);
-                    if(status.started && status.ready && !status.failed && !status.stopping) { ready=true;break; }
+                    if(!status.failed && !status.stopping) { ready=true;break; }
                     if(status.failed || status.stopping) { log("ReSkate failed or stopped; companion not loaded.");return 0; }
                 }
             }

@@ -1,4 +1,5 @@
 #include "native.h"
+#include "menu.h"
 #include "mod.h"
 #include "settings.h"
 #include "stock_bridge.h"
@@ -74,14 +75,14 @@ void tick_mod(std::uintptr_t client) noexcept {
         DWORD foreground_pid{};
         const auto foreground=GetForegroundWindow();
         const bool focused=foreground && GetWindowThreadProcessId(foreground,&foreground_pid) && foreground_pid==GetCurrentProcessId();
-        const bool blocked=!ready || !menu_ready || visible || !controller.available || !focused;
+        const bool blocked=panel_gameplay_blocked() || !ready || !menu_ready || visible || !controller.available || !focused;
         const auto input_route=route_controller_input(settings.config,blocked);
         const auto comfort=comfort_snapshot();
         const std::array<std::uintptr_t,4> current_owner{comfort.core,comfort.entity,comfort.context,comfort.rig};
         // Publish toggle suppression before any head, camera or hair-related
         // work. Reconcile actual binding/world changes here without opening an
         // input gap just because glance settings or camera ownership changed.
-        const bool toggle_filter_blocked=!world || !stock_bridge_ready() || !menu_ready || visible || !controller.available || !focused;
+        const bool toggle_filter_blocked=panel_gameplay_blocked() || !world || !stock_bridge_ready() || !menu_ready || visible || !controller.available || !focused;
         const auto toggle_filter_route=route_controller_input(settings.config,toggle_filter_blocked);
         update_spectator_session(world && game_camera_suspended(),settings.config,context,
             !world || !menu_ready || visible || !focused,client);
@@ -118,7 +119,8 @@ void tick_mod(std::uintptr_t client) noexcept {
             settings.config.toggle,!toggle_filter_route.toggle_blocked,context);
         const bool emote=glance_emote_active();
         if(emote) look.centre_for_emote(15);
-        const auto angles=look.update(input_route.glance,controller,glance_blocked,settings.config.toggle_glances);
+        const auto shared_modifier=settings.config.board.enabled && movement.mode==2 ? settings.config.board.modifier:0;
+        const auto angles=look.update(input_route.glance,controller,glance_blocked,settings.config.toggle_glances,shared_modifier);
         set_stock_glance(camera,saved_game_fov,angles[0],angles[1]);
         // Every activation uses stock's existing request queue. This DLL never
         // switches modes, takes a camera lease, hides a head or restores a view.

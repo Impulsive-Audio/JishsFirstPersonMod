@@ -1,4 +1,5 @@
 #include "menu.h"
+#include <imgui_internal.h>
 #include "bail_collision.h"
 #include "comfort_policy.h"
 #include "player_state_contract.h"
@@ -111,9 +112,10 @@ void feed_input(HWND window) {
 }
 }
 void publish_menu_error(const std::string& error) { graphics_error=error; log(error); }
-void cancel_panel_recording() { recorder.cancel(); recorder_feedback.clear();cancel_menu_key_recording(); }
+void cancel_panel_recording() { recorder.cancel(); recorder_feedback.clear();cancel_menu_key_recording();panel_binding_recording(false); }
 void load_panel_fonts() {
     auto& io=ImGui::GetIO(); io.IniFilename=nullptr; io.LogFilename=nullptr;
+    io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
     io.BackendPlatformName="JishsFirstPersonMod Win32 messages";
     body=embedded(L"FONT_BODY",17); heading=embedded(L"FONT_HEADING",22); title=embedded(L"FONT_BRUSH",24);
     if(!body) body=io.Fonts->AddFontDefault(); if(!heading) heading=body; if(!title) title=heading;
@@ -123,6 +125,22 @@ void draw_panel_frame(const PanelFrame& frame) {
     const bool visible=frame.visible,focused=frame.focused;
     if(!visible || !focused) { cancel_panel_recording(); io.ClearInputKeys(); io.ClearInputMouse(); hide_panel(); return; }
     io.AddFocusEvent(true); if(frame.window) feed_input(frame.window);
+    const auto& navigation=frame.navigation;
+    const auto pad=navigation.ready ? navigation.navigation:GameplayInput{};
+    if(pad.available) io.BackendFlags|=ImGuiBackendFlags_HasGamepad;else io.BackendFlags&=~ImGuiBackendFlags_HasGamepad;
+    const auto button=[&](ImGuiKey key,std::uint32_t bit){io.AddKeyEvent(key,pad.available && (pad.buttons&bit)!=0);};
+    button(ImGuiKey_GamepadDpadUp,1);button(ImGuiKey_GamepadDpadDown,2);
+    button(ImGuiKey_GamepadDpadLeft,4);button(ImGuiKey_GamepadDpadRight,8);
+    button(ImGuiKey_GamepadFaceDown,0x1000);button(ImGuiKey_GamepadFaceRight,0x2000);
+    const auto axis=[&](ImGuiKey key,float value){const float amount=std::clamp((value-.25f)/.75f,0.f,1.f);io.AddKeyAnalogEvent(key,amount>0,amount);};
+    axis(ImGuiKey_GamepadLStickUp,pad.left_y);axis(ImGuiKey_GamepadLStickDown,-pad.left_y);
+    axis(ImGuiKey_GamepadLStickLeft,-pad.left_x);axis(ImGuiKey_GamepadLStickRight,pad.left_x);
+    static bool previous_back{};
+    const bool back=(frame.controller.buttons&0x2000)!=0;
+    const bool cancel=back && !previous_back;previous_back=back;
+    const bool popup=ImGui::IsPopupOpen("",ImGuiPopupFlags_AnyPopupId);
+    if(cancel && (recorder.recording || menu_key_recording())) cancel_panel_recording();
+    else if(cancel && navigation.ready && !popup && !ImGui::IsAnyItemActive()) {close_panel();return;}
     ImGui::NewFrame();
     auto model=menu_snapshot(); auto config=model.config;
     const auto controller=frame.controller;
@@ -151,6 +169,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         ImGui::PushFont(title); ImGui::TextUnformatted("FIRST PERSON CONTROLS"); ImGui::PopFont();
         ImGui::Text("Version %s",JISH_MOD_VERSION);
         static int tab=0;
+        if(navigation.ready && navigation.tab_delta && !recorder.recording && !popup) {cancel_panel_recording();tab=(tab+navigation.tab_delta+3)%3;ImGui::SetKeyboardFocusHere();}
         const float tab_gap=8*dpi;
         const float tab_width=(ImGui::GetContentRegionAvail().x-2*tab_gap)/3;
         const char* tab_labels[]={"General","Controls","Camera"};
@@ -164,7 +183,7 @@ void draw_panel_frame(const PanelFrame& frame) {
             ImGui::PushStyleColor(ImGuiCol_Text,white);
             ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign,{.5f,.5f});
             if(ImGui::Button(tab_labels[i],{tab_width,std::max(34*dpi,ImGui::GetFontSize()+12*dpi)})) {
-                if(tab==1 && i!=1) cancel_panel_recording();
+                if(tab!=i) cancel_panel_recording();
                 tab=i;
             }
             ImGui::PopStyleVar();ImGui::PopStyleColor(4);
@@ -173,7 +192,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         const auto comfort=comfort_snapshot();
         bool enabled=model.requested_enabled.value_or(comfort.initialized ? comfort.master:model.active);
         if(readable_checkbox("Enable First Person",&enabled)) { Command command; command.kind=CommandKind::set_enabled; command.enabled=enabled; submit_command(command); }
-        if(native_key_overlap(config.menu_key,config.native)) ImGui::TextWrapped("Panel key is already used by ReSkate. Press Insert and choose another key.");
+        if(config.menu_key!=VK_INSERT && native_key_overlap(config.menu_key,config.native)) ImGui::TextWrapped("Panel key is already used by ReSkate. Press Insert and choose another key.");
         if(config.native.active) ImGui::TextWrapped("ReSkate's First Person hotkey also works here.");
         if(model.requested_enabled) ImGui::TextWrapped("Waiting for the camera to change view.");
         if(!model.status.empty()) ImGui::TextWrapped("%s",model.status.c_str());
@@ -204,6 +223,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         ImGui::EndDisabled();
         ImGui::SetNextWindowSize({std::min(340*dpi,io.DisplaySize.x-16),0});
         if(ImGui::BeginPopupModal("Save preset",nullptr,ImGuiWindowFlags_AlwaysAutoResize)) {
+            if(cancel) ImGui::CloseCurrentPopup();
             ImGui::TextUnformatted("Save current settings and bindings");
             ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Name").x-ImGui::GetStyle().ItemInnerSpacing.x);
             if(ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
@@ -217,6 +237,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         }
         ImGui::SetNextWindowSize({std::min(340*dpi,io.DisplaySize.x-16),0});
         if(ImGui::BeginPopupModal("Confirm preset change",nullptr,ImGuiWindowFlags_AlwaysAutoResize)) {
+            if(cancel) ImGui::CloseCurrentPopup();
             ImGui::TextWrapped("%s preset '%s'?",operation==1 ? "Overwrite":"Delete",pending.c_str());
             if(ImGui::Button("Confirm") && (operation==1 ? save_personal_preset(pending,true):delete_personal_preset(pending))) {
                 refresh=true;ImGui::CloseCurrentPopup();
@@ -229,7 +250,7 @@ void draw_panel_frame(const PanelFrame& frame) {
         const float footer_width=ImGui::GetContentRegionAvail().x;
         const auto wrapped_height=[&](const std::string& text) { return text.empty() ? 0.0f:ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(),FLT_MAX,footer_width,text.c_str()).y+8*dpi; };
         const float footer=std::max(48*dpi,wrapped_height(model.feedback)+wrapped_height(model.save_failed && model.feedback!=model.save_error ? model.save_error:std::string{})+wrapped_height(graphics_error)+40*dpi);
-        ImGui::BeginChild("Settings content",{0,std::max(40.0f,ImGui::GetContentRegionAvail().y-footer)},false);
+        ImGui::BeginChild("Settings content",{0,std::max(40.0f,ImGui::GetContentRegionAvail().y-footer)},ImGuiChildFlags_NavFlattened);
         if(tab==0) {
         if(readable_checkbox("Compatibility mode (look controls only)",&config.look_only)) {
             Command command;command.kind=CommandKind::look_only;command.enabled=config.look_only;submit_command(command);config=menu_snapshot().config;
@@ -284,44 +305,27 @@ void draw_panel_frame(const PanelFrame& frame) {
         } else if(tab==1) {
         ImGui::Text("Show/hide panel key: %s",menu_key_label(config.menu_key).c_str());
         if(menu_key_recording()) {
-            ImGui::TextUnformatted("Press a keyboard key. Insert/Escape cancels.");
+            ImGui::TextUnformatted("Press a keyboard key. Escape cancels.");
             if(ImGui::Button("Cancel key recording")) cancel_menu_key_recording();
         } else {
             if(ImGui::Button("Bind menu key")) { recorder.cancel();begin_menu_key_recording(); }
             ImGui::SameLine();
             if(ImGui::Button("Clear menu key")) { Command command;command.kind=CommandKind::menu_key;command.action=0;submit_command(command); }
         }
-        ImGui::TextWrapped("Show or hide this panel while ReSkate's menu is open. Insert opens ReSkate's menu.");
-        ImGui::Spacing(); section("Right-stick look");
-        ImGui::BeginDisabled(!stick_runtime_ready() && !config.stick.enabled);
-        if(readable_checkbox("Right-stick look on foot",&config.stick.enabled)) stick_change();
-        help_marker("Move the right stick to look around while walking in first person. Looking pauses while getting on the board.");
-        ImGui::EndDisabled();
-        if(!stick_runtime_ready()) ImGui::TextWrapped("Right-stick look is unavailable. See the mod log.");
-        ImGui::BeginDisabled(!config.stick.enabled);
-        ImGui::BeginDisabled(config.look_only);
-        int mode=config.stick.turn_character ? 1:0;
-        fit_control("Look mode",true);
-        if(ImGui::Combo("Look mode",&mode,"Camera only\0Camera and character\0")) {
-            config.stick.turn_character=mode==1;stick_change();
+        ImGui::TextWrapped("Open or close this panel independently. Insert opens ReSkate's menu.");
+        ImGui::TextWrapped("Controller menu shortcut: %s",dingosdk::controller_combo_label(config.menu_combo,controller.style).c_str());
+        if(recorder.recording && recorder.action==6) {
+            if(ImGui::Button("Cancel menu shortcut")) cancel_panel_recording();
+        } else {
+            ImGui::BeginDisabled(recorder.recording || !controller.available);
+            if(ImGui::Button("Record menu shortcut")) {recorder.begin(6,GetTickCount64());recorder_feedback.clear();}
+            ImGui::EndDisabled();ImGui::SameLine();ImGui::BeginDisabled(recorder.recording || !config.menu_combo);
+            if(ImGui::Button("Clear shortcut")) {Command command;command.kind=CommandKind::binding;command.action=6;submit_command(command);}
+            ImGui::EndDisabled();
         }
-        help_marker("Camera only lets you look without turning your skater. Camera and character turns your skater too. Compatibility mode uses camera only.");
-        ImGui::EndDisabled();
-        fit_control("Horizontal sensitivity");
-        if(ImGui::SliderFloat("Horizontal sensitivity",&config.stick.yaw_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        fit_control("Vertical sensitivity");
-        if(ImGui::SliderFloat("Vertical sensitivity",&config.stick.pitch_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        float deadzone=config.stick.deadzone*100;
-        fit_control("Stick deadzone",true);
-        if(ImGui::SliderFloat("Stick deadzone",&deadzone,1,50,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) {
-            config.stick.deadzone=deadzone*.01f;stick_change();
-        }
-        help_marker("Ignore small stick movements to prevent camera drift. Increase this if the camera moves by itself.");
-        if(readable_checkbox("Invert Y",&config.stick.invert_y)) stick_change();
-        if(readable_checkbox("Allow looking during jumps and climbing",&config.stick.look_during_parkour)) stick_change();
-        help_marker("Enables right-stick look and button glances during climbing and supported jumps. Leave this off to keep ReSkate's normal view during climbing and attached jumps. These actions turn only the camera. This does not change head attachment, and look still pauses while getting on the board.");
-        ImGui::EndDisabled();
-        ImGui::TextWrapped("Centre the stick after entering first person or changing look mode. On board, it still controls tricks.");
+        if(recorder.recording && recorder.action==6) ImGui::TextWrapped("Release all buttons, hold your shortcut, then release to save. B/Circle cancels.");
+        ImGui::TextWrapped("D-pad / left stick: navigate and adjust. A/Cross: select. B/Circle: back or close. LB/RB: change tabs.");
+        if(ImGui::Button("Close menu")) close_panel();
         ImGui::Spacing(); section("Controller bindings");
         if(ImGui::BeginTable("bindings",3,ImGuiTableFlags_RowBg|ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn("Action",ImGuiTableColumnFlags_WidthStretch,.85f);
@@ -467,6 +471,92 @@ void draw_panel_frame(const PanelFrame& frame) {
         ImGui::TextWrapped("Higher values make getting on and off the board smoother. Bails switch immediately.");
         ImGui::EndDisabled();
 
+        ImGui::Spacing(); section("Off-Board Right Stick Free Look");
+        ImGui::PushID("off_board_look");
+        ImGui::BeginDisabled(!stick_runtime_ready() && !config.stick.enabled);
+        if(readable_checkbox("Right-stick look on foot",&config.stick.enabled)) stick_change();
+        help_marker("Move the right stick to look around while walking in first person. Looking pauses while getting on the board.");
+        ImGui::EndDisabled();
+        if(!stick_runtime_ready()) ImGui::TextWrapped("Right-stick look is unavailable. See the mod log.");
+        ImGui::BeginDisabled(!config.stick.enabled);
+        ImGui::BeginDisabled(config.look_only);
+        int mode=config.stick.turn_character ? 1:0;
+        fit_control("Look mode",true);
+        if(ImGui::Combo("Look mode",&mode,"Camera only\0Camera and character\0")) {
+            config.stick.turn_character=mode==1;stick_change();
+        }
+        help_marker("Camera only lets you look without turning your skater. Camera and character turns your skater too. Compatibility mode uses camera only.");
+        ImGui::EndDisabled();
+        fit_control("Horizontal sensitivity");
+        if(ImGui::SliderFloat("Horizontal sensitivity",&config.stick.yaw_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        fit_control("Vertical sensitivity");
+        if(ImGui::SliderFloat("Vertical sensitivity",&config.stick.pitch_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        float deadzone=config.stick.deadzone*100;
+        fit_control("Stick deadzone",true);
+        if(ImGui::SliderFloat("Stick deadzone",&deadzone,1,50,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) {
+            config.stick.deadzone=deadzone*.01f;stick_change();
+        }
+        help_marker("Ignore small stick movements to prevent camera drift. Increase this if the camera moves by itself.");
+        if(readable_checkbox("Invert Y",&config.stick.invert_y)) stick_change();
+        if(readable_checkbox("Allow looking during jumps and climbing",&config.stick.look_during_parkour)) stick_change();
+        help_marker("Enables right-stick look and button glances during climbing and supported jumps. Leave this off to keep ReSkate's normal view during climbing and attached jumps. These actions turn only the camera. This does not change head attachment, and look still pauses while getting on the board.");
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("Centre the stick after entering first person or changing look mode. On board, it still controls tricks.");
+        ImGui::PopID();
+        ImGui::Spacing(); section("On-board Right Stick Free Look");
+        ImGui::PushID("board_look");
+        const auto board_change=[&]() { Command command;command.kind=CommandKind::board_settings;
+            command.board=config.board;submit_command(command); };
+        ImGui::BeginDisabled(!stick_runtime_ready() && !config.board.enabled);
+        if(readable_checkbox("Enable on-board Right Stick Free Look",&config.board.enabled)) board_change();
+        help_marker("Hold your modifier to look around while on board in first person. The right stick stops controlling tricks while held. Release the modifier to restore skating controls.");
+        ImGui::EndDisabled();
+        ImGui::BeginDisabled(!config.board.enabled);
+        ImGui::TextWrapped("Modifier: %s",recorder.recording && recorder.action==5 ? "Recording...":dingosdk::controller_combo_label(config.board.modifier,controller.style).c_str());
+        if(recorder.recording && recorder.action==5) {
+            if(ImGui::Button("Cancel")) { recorder.cancel();recorder_feedback="Recording cancelled. Buttons unchanged."; }
+        } else {
+            ImGui::BeginDisabled(recorder.recording || !controller.available);
+            if(ImGui::Button("Record modifier")) { recorder.begin(5,GetTickCount64());recorder_feedback.clear(); }
+            ImGui::EndDisabled();ImGui::SameLine();
+            ImGui::BeginDisabled(recorder.recording || !config.board.modifier);
+            if(ImGui::Button("Clear modifier")) { Command command;command.kind=CommandKind::binding;command.action=5;submit_command(command); }
+            ImGui::EndDisabled();
+        }
+        help_marker("Hold the recorded button or combo while looking. Other actions assigned to the modifier still work. Release the modifier and centre the stick before starting a new look.");
+        const auto board_slider=[&](const char* label,float& value,float low,float high,const char* format) {
+            fit_control(label);
+            if(ImGui::SliderFloat(label,&value,low,high,format,ImGuiSliderFlags_AlwaysClamp)) board_change();
+        };
+        board_slider("Horizontal sensitivity",config.board.yaw_speed,1,720,"%.0f deg/s");
+        board_slider("Vertical sensitivity",config.board.pitch_speed,1,720,"%.0f deg/s");
+        float board_deadzone=config.board.deadzone*100;
+        fit_control("Stick deadzone",true);
+        if(ImGui::SliderFloat("Stick deadzone",&board_deadzone,1,50,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) { config.board.deadzone=board_deadzone*.01f;board_change(); }
+        if(readable_checkbox("Invert Y",&config.board.invert_y)) board_change();
+        board_slider("Horizontal look limit",config.board.yaw_limit,0,180,"%.0f degrees");
+        board_slider("Vertical look limit",config.board.pitch_limit,0,85,"%.0f degrees");
+        help_marker("Limits free look left/right of forward and up/down from your centre pitch. Button glance angles stay independent.");
+        board_slider("On Board Free Look Smoothing",config.board.look_smoothing,0,100,"%.0f%%");
+        help_marker("Smooths the camera while looking, like a dolly camera. Zero responds immediately; higher values add more lag. Native skating input is never smoothed by this setting.");
+        if(readable_checkbox("Modifier Key Keeps Right Stick Input Held",&config.board.keep_native_input)) board_change();
+        help_marker("Keeps the native skating stick position from when the modifier was pressed. Centre the stick to start looking, then look freely while that skating input stays held. Releasing the modifier restores the current physical stick immediately.");
+        if(readable_checkbox("Auto Center On Right Stick Let Go",&config.board.center_on_stick)) board_change();
+        help_marker("Return to forward and your centre pitch when the stick enters its deadzone while you keep holding the modifier.");
+        if(readable_checkbox("Auto Center On Modifier Key Let Go",&config.board.center_on_modifier)) board_change();
+        help_marker("Releasing the modifier returns the camera even when the stick is still deflected. This takes priority over the right-stick auto-center option.");
+        if(readable_checkbox("Continue Auto Center Until New Look Input",&config.board.continue_auto_center)) board_change();
+        help_marker("After modifier release starts auto-centering, pressing the modifier again keeps the return moving. Only new right-stick camera movement interrupts it; the native held-stick neutral requirement still applies. Turn off for the previous behavior.");
+        ImGui::BeginDisabled(!config.board.center_on_modifier && !config.board.center_on_stick);
+        board_slider("Auto-center smoothing",config.board.center_smoothing,0,100,"%.0f%%");
+        help_marker("Uses the same damping as other look controls. Higher values return more slowly.");
+        ImGui::EndDisabled();
+        board_slider("Center pitch angle",config.board.center_pitch,-85,85,"%.0f degrees");
+        help_marker("The resting on-board view while this feature is enabled. Zero looks forward, positive looks up and negative looks down. Auto-center returns to this angle.");
+        if(recorder.recording && recorder.action==5) ImGui::TextWrapped("%s",recorder.capture.ready ? "Hold the buttons together, then release them to save.":"Release all controller buttons first.");
+        if(!recorder_feedback.empty()) ImGui::TextWrapped("%s",recorder_feedback.c_str());
+        ImGui::EndDisabled();ImGui::PopID();
+
         }
         ImGui::EndChild();
         model=menu_snapshot();
@@ -485,6 +575,7 @@ void draw_panel_frame(const PanelFrame& frame) {
     ImGui::End(); ImGui::PopStyleVar(3); ImGui::PopFont(); ImGui::PopStyleColor(colours);
     io.MouseDrawCursor=bounds.contains(static_cast<int>(io.MousePos.x),static_cast<int>(io.MousePos.y)) || (io.WantCaptureMouse && ImGui::IsMouseDown(0));
     set_panel_bounds(bounds,true,ImGui::IsMouseDown(0)&&io.WantCaptureMouse,keyboard,io.WantTextInput);
+    panel_binding_recording(recorder.recording || menu_key_recording());
     ImGui::Render();
 }
 void draw_panel(HWND window,bool visible) {
@@ -498,7 +589,7 @@ void draw_panel(HWND window,bool visible) {
     QueryPerformanceCounter(&now);
     frame.delta_time=last.QuadPart ? std::clamp(static_cast<float>(double(now.QuadPart-last.QuadPart)/double(frequency.QuadPart)),.001f,.1f):1.0f/60;
     last=now;
-    if(frame.visible && frame.focused) frame.controller=recording_controller();
+    if(frame.visible && frame.focused) {frame.controller=recording_controller();frame.navigation=panel_controller_snapshot();}
     draw_panel_frame(frame);
 }
 }

@@ -9,6 +9,7 @@ class GlanceControlsState {
     unsigned device_{};
     bool initialized_{},toggle_{},armed_{};
     int selected_=-1;
+    std::uint32_t shared_modifier_{};
     std::uint32_t emote_release_{};
 public:
     void reset() { *this={}; }
@@ -16,21 +17,31 @@ public:
         selected_=-1;held_={};previous_={};emote_release_=directions&15;
     }
     std::array<float,2> update(const dingosdk::FirstPersonLookControls& controls,
-        dingosdk::ControllerInput input,bool inhibited,bool toggle) noexcept {
-        bool changed=!initialized_ || toggle!=toggle_ || input.device!=device_;
+        dingosdk::ControllerInput input,bool inhibited,bool toggle,std::uint32_t shared_modifier=0) noexcept {
+        bool changed=!initialized_ || toggle!=toggle_ || input.device!=device_ || shared_modifier!=shared_modifier_;
         for(unsigned i=0;i<4;++i) changed=changed || controls[i].combo!=controls_[i].combo || controls[i].angle!=controls_[i].angle;
-        if(changed) { reset();initialized_=true;controls_=controls;device_=input.device;toggle_=toggle; }
+        if(changed) { reset();initialized_=true;controls_=controls;device_=input.device;toggle_=toggle;shared_modifier_=shared_modifier; }
         if(emote_release_) {
             if(inhibited || !input.available) { reset();return {}; }
             if(input.buttons&emote_release_) return {};
             emote_release_=0;armed_=true;previous_={};
             auto neutral=input;neutral.buttons=0;held_.update(controls,neutral,false);
         }
-        if(!toggle) return held_.update(controls,input,inhibited);
+        if(!toggle) {
+            if(!inhibited && input.available && shared_modifier) for(unsigned i=0;i<4;++i) {
+                const auto chord=controls[i].combo;
+                const auto direction=chord&~shared_modifier;
+                if((chord&shared_modifier)==shared_modifier && direction && !(input.buttons&direction)) {
+                    auto neutral=input;neutral.buttons&=~shared_modifier;
+                    held_.held[i].update(controls[i],neutral,false);
+                }
+            }
+            return held_.update(controls,input,inhibited);
+        }
         if(inhibited || !input.available) { selected_=-1;armed_=false;previous_={};return {}; }
         std::uint32_t bound{};for(const auto& binding:controls) bound|=binding.combo;
         if(!armed_) {
-            armed_=(input.buttons&bound)==0;previous_={};return {};
+            armed_=(input.buttons&(bound&~shared_modifier))==0;previous_={};return {};
         }
         int pressed=-1;unsigned count{};
         for(unsigned i=0;i<4;++i) {

@@ -48,7 +48,7 @@ ULONGLONG glance_published{};
 std::atomic<bool> emote_ready{};
 std::atomic<ULONGLONG> direct_epoch{};
 bool live_glances() {
-    if(!emote_ready || raw_controller_read) return false;
+    if(panel_gameplay_blocked() || !emote_ready || raw_controller_read) return false;
     DWORD pid{};const auto window=GetForegroundWindow();bool visible{};
     const auto comfort=comfort_snapshot();
     return window && GetWindowThreadProcessId(window,&pid) && pid==GetCurrentProcessId() &&
@@ -87,13 +87,17 @@ GlanceEmotePolicy::Result classify(unsigned path,std::uintptr_t source,std::uint
 #include "direct_input_filter.inl"
 using StockHid=void(*)(const StockHidRead&,DWORD);
 StockHid original_hid{};
-void filter_sony_report(unsigned path,std::uintptr_t source,dingosdk::PlayStationPad kind,std::span<std::uint8_t> report,bool eligibility_checked=false) {
+void filter_sony_report(unsigned path,std::uintptr_t source,dingosdk::PlayStationPad kind,std::span<std::uint8_t> report,bool eligibility_checked=false,StickInputPolicy policy={},bool menu_capture=false) {
+    if(!eligibility_checked) menu_capture=panel_gameplay_blocked();
+    if(menu_capture) {neutral_sony_pad(kind,report);return;}
     if(!eligibility_checked && !live_glances()) { clear_glance_filter();return; }
     const auto parsed=dingosdk::parse_playstation_report(kind,report.size()>64,report.data(),report.size());
     if(!parsed) return;
     std::uint32_t buttons=parsed->buttons;
     if(parsed->left_trigger>30) buttons|=0x10000;
     if(parsed->right_trigger>30) buttons|=0x20000;
+    if(!eligibility_checked) policy=stick_input_policy();
+    if(policy.captures(buttons)) set_sony_stick(kind,report,policy.axes);
     std::lock_guard lock(glance_mutex);
     auto& state=glance_sources[{path,source}];
     // Stock may send one completed read through the shared handler twice.
@@ -119,10 +123,20 @@ void filtered_stock_hid(const StockHidRead& read,DWORD size) {
     SetLastError(error);
 }
 #include "native_hid_filter.inl"
+struct FilteredPacket { bool ready{};DWORD physical{},packet{};XINPUT_GAMEPAD pad{}; };
+std::mutex packet_mutex;
+std::array<std::array<FilteredPacket,4>,10> filtered_packets;
 template<unsigned Index> DWORD WINAPI filtered_state(DWORD slot,XINPUT_STATE* output) {
     const auto result=originals[Index](slot,output);const auto error=GetLastError();
-    if(result==ERROR_SUCCESS && output && !raw_controller_read && stick_captures_input(slot))
-        output->Gamepad.sThumbRX=output->Gamepad.sThumbRY=0;
+    if(result==ERROR_SUCCESS && output && !raw_controller_read) {
+        std::uint32_t buttons=output->Gamepad.wButtons;
+        if(output->Gamepad.bLeftTrigger>30) buttons|=0x10000;
+        if(output->Gamepad.bRightTrigger>30) buttons|=0x20000;
+        const auto policy=stick_input_policy(slot);
+        if(policy.captures(buttons)) {
+            output->Gamepad.sThumbRX=stick_short(policy.axes.x);output->Gamepad.sThumbRY=stick_short(policy.axes.y);
+        } // Release passes the current physical axes verbatim, with no blend.
+    }
     if(result==ERROR_SUCCESS && output && !raw_controller_read) {
         if(live_glances()) {
             std::uint32_t buttons=output->Gamepad.wButtons;
@@ -133,6 +147,15 @@ template<unsigned Index> DWORD WINAPI filtered_state(DWORD slot,XINPUT_STATE* ou
             output->Gamepad.wButtons&=static_cast<WORD>(~decision.consume);
         } else clear_glance_filter();
     } else if(result!=ERROR_SUCCESS) { std::lock_guard lock(glance_mutex);glance_sources.erase({1,slot}); }
+    if(result==ERROR_SUCCESS && output && !raw_controller_read && panel_gameplay_blocked()) output->Gamepad={};
+    if(slot<4 && !raw_controller_read) {
+        std::lock_guard lock(packet_mutex);auto& packet=filtered_packets[Index][slot];
+        if(result==ERROR_SUCCESS && output) {
+            if(!packet.ready) { packet.ready=true;packet.packet=output->dwPacketNumber; }
+            else if(packet.physical!=output->dwPacketNumber || std::memcmp(&packet.pad,&output->Gamepad,sizeof(packet.pad))) ++packet.packet;
+            packet.physical=output->dwPacketNumber;packet.pad=output->Gamepad;output->dwPacketNumber=packet.packet;
+        } else packet={};
+    }
     SetLastError(error);return result;
 }
 using RawData=UINT(WINAPI*)(HRAWINPUT,UINT,LPVOID,PUINT,UINT);
@@ -161,13 +184,7 @@ void filter_record(RAWINPUT* record,UINT bytes) {
     for(UINT i=0;i<hid.dwCount;++i) {
         const std::span<std::uint8_t> report{hid.bRawData+i*hid.dwSizeHid,hid.dwSizeHid};
         filter_sony_report(3,reinterpret_cast<std::uintptr_t>(record->header.hDevice),kind,report);
-        if(stick_captures_input()) {
-            neutral_sony_stick(kind,report);
-            std::lock_guard lock(glance_mutex);
-            const auto found=glance_sources.find({3,reinterpret_cast<std::uintptr_t>(record->header.hDevice)});
-            if(found!=glance_sources.end() && found->second.buffer==report.data())
-                found->second.edited.assign(report.begin(),report.end());
-        }
+
     }
 }
 UINT WINAPI filtered_data(HRAWINPUT raw,UINT command,LPVOID data,PUINT size,UINT header) {

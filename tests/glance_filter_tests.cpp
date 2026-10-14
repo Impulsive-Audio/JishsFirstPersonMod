@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <future>
-ULONGLONG qa_now=10;bool qa_focus=true,qa_menu=false,qa_active=true,qa_spectator=false;bool qa_capture=false;
+ULONGLONG qa_now=10;bool qa_focus=true,qa_menu=false,qa_active=true,qa_spectator=false;bool qa_capture=false;bool qa_panel=false;std::uint32_t qa_board_modifier{};jishsfirstpersonmod::StickAxes qa_native_axes{};
 void (*qa_overlay_probe)(){};
 HWND qa_window(){return qa_focus?reinterpret_cast<HWND>(1):nullptr;}
 DWORD qa_pid(HWND,DWORD* pid){*pid=GetCurrentProcessId();return 1;}
@@ -22,12 +22,15 @@ thread_local bool raw_controller_read{};
 void log(const std::string& text) noexcept {
     write_diagnostic_log(std::filesystem::temp_directory_path()/ (L"jish-startup-log-"+std::to_wstring(GetCurrentProcessId())),text);
 }
+bool panel_gameplay_blocked(){return qa_panel;}
 bool stock_first_person_active(){return qa_active;}
 bool stock_first_person_requested(){return qa_active;}
 bool game_camera_suspended(){return qa_spectator;}
 ComfortSnapshot comfort_snapshot(){ComfortSnapshot value;value.core=1;value.entity=2;value.context=3;value.rig=4;return value;}
 bool overlay_available(bool& visible) noexcept{if(qa_overlay_probe)qa_overlay_probe();visible=qa_menu;return true;}
-bool stick_captures_input(unsigned){return qa_capture;}
+bool stick_captures_input(unsigned,std::uint32_t buttons){return qa_capture && (!qa_board_modifier || (buttons&qa_board_modifier)==qa_board_modifier);}
+std::uint32_t stick_capture_mask(unsigned){return qa_capture ? (qa_board_modifier ? qa_board_modifier:~0u):0;}
+StickInputPolicy stick_input_policy(unsigned slot){return {stick_capture_mask(slot),qa_native_axes};}
 std::uintptr_t resolve_stock_handler(std::uintptr_t){return 0;}
 }
 using namespace jishsfirstpersonmod;
@@ -38,6 +41,7 @@ unsigned hid_calls{};
 void hid(const StockHidRead& read,DWORD n){++hid_calls;if(qa_menu&&read.buffer&&n)static_cast<unsigned char*>(read.buffer)[0]=0;}
 #include "direct_input_adapter_tests.inl"
 #include "native_hid_adapter_tests.inl"
+#include "board_input_adapter_tests.inl"
 int main(){
  emote_ready=true;originals[0]=input;original_hid=hid;
  dingosdk::FirstPersonLookControls bindings;for(unsigned i=0;i<4;++i)bindings[i].combo=0x100|(1u<<i);
@@ -168,7 +172,7 @@ int main(){
  publish_toggle_filter(0x108,true,1,101);qa_now+=10;
  check(classify(1,0,0x101).emote,"Early toggle publication erased glance double-tap state");
  clear_glance_filter();
- test_direct_input_adapters();
+ test_board_input_adapters();test_direct_input_adapters();
  test_native_hid_adapters();
  std::cout<<"Actual XInput/shared HID adapters, private reads, interruptions and duplicated reports passed\n";
 }

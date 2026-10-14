@@ -82,7 +82,7 @@ StockHidRead native_read_info(HANDLE file,void* buffer,DWORD capacity,const void
     auto& device=native_hid_devices[file];device.kind=read.kind;device.report_length=report_length;
     SetLastError(error);return read;
 }
-void native_filter_read(const StockHidRead& read,DWORD bytes,NativeDiagnostics& diagnostics) {
+void native_filter_read(const StockHidRead& read,DWORD bytes,NativeDiagnostics& diagnostics,StickInputPolicy policy,bool menu_capture) {
     if(read.kind==dingosdk::PlayStationPad::none || !read.buffer || bytes<10 || bytes>read.capacity) return;
     auto& device=native_hid_devices[read.file];
     device.kind=read.kind;
@@ -98,7 +98,7 @@ void native_filter_read(const StockHidRead& read,DWORD bytes,NativeDiagnostics& 
         auto* report=static_cast<unsigned char*>(read.buffer)+offset;
         const auto physical=dingosdk::parse_playstation_report(read.kind,stride>64,report,stride);
         if(!physical) continue;
-        observed=true;filter_sony_report(2,reinterpret_cast<std::uintptr_t>(read.file),read.kind,{report,stride},true);
+        observed=true;filter_sony_report(2,reinterpret_cast<std::uintptr_t>(read.file),read.kind,{report,stride},true,policy,menu_capture);
         const auto edited=dingosdk::parse_playstation_report(read.kind,stride>64,report,stride);
         if(edited && (physical->buttons&15)!=(edited->buttons&15) && !device.consumption_reported) {
             device.consumption_reported=true;
@@ -121,8 +121,10 @@ void filter_native_sony_read(const StockHidRead& read,DWORD size) {
     // OverlayGetStatus takes stock's render mutex. Rendering polls independent
     // Sony completions through our API hooks, which take native_hid_mutex.
     // Query eligibility BEFORE taking that mutex, never from a locked report.
-    if(!live_glances()) {clear_glance_filter();return;}
-    NativeDiagnostics diagnostics;NativeHidInternal internal;std::lock_guard lock(native_hid_mutex);native_filter_read(read,size,diagnostics);
+    const bool menu_capture=panel_gameplay_blocked();
+    if(!menu_capture && !live_glances()) {clear_glance_filter();return;}
+    const auto policy=stick_input_policy();
+    NativeDiagnostics diagnostics;NativeHidInternal internal;std::lock_guard lock(native_hid_mutex);native_filter_read(read,size,diagnostics,policy,menu_capture);
 }
 void capture_stock_sony_read(const StockHidRead& read,DWORD size) {
     // Stock neutral_hid infers Bluetooth from its size argument. A USB read

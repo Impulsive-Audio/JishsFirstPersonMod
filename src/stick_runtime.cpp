@@ -1,4 +1,5 @@
 #include "stick_runtime.h"
+#include "menu.h"
 #include "stock_bridge.h"
 #include "native.h"
 #include "game_camera_ownership.h"
@@ -35,19 +36,21 @@ std::atomic<bool> recovery_contract{};
 std::atomic<bool> getup_verified{};
 std::mutex mutex;
 StickLookState look;
-struct Request { ComfortSnapshot owner;StickAim aim;bool turn{};unsigned device{};double time{};float body_heading{};bool head_valid{},recovery{}; } request;
+BoardLookState board_look;
+struct Request { ComfortSnapshot owner;StickAim aim;bool turn{};unsigned device{};double time{};float body_heading{};bool head_valid{},recovery{},board{};StickAxes native_axes{}; } request;
 float native_heading{},displayed_pitch{};double heading_time{};
 double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 bool live_foot(const Request& value) {
-    if(game_camera_suspended()) return false;
+    if(game_camera_suspended() || panel_gameplay_blocked()) return false;
     if(!compatibility::enabled()) return false;
-    if(!value.aim.capture || !value.head_valid || now()-value.time>.1 || !stock_first_person_active() || !stock_first_person_requested()) return false;
+    if(!(value.board ? value.aim.active:value.aim.capture) || !value.head_valid || now()-value.time>.1 || !stock_first_person_active() || !stock_first_person_requested()) return false;
     bool visible{};if(!overlay_available(visible) || visible) return false;
     const auto foreground=GetForegroundWindow();DWORD pid{};
     if(!foreground || !GetWindowThreadProcessId(foreground,&pid) || pid!=GetCurrentProcessId()) return false;
     const auto current=comfort_snapshot();const auto movement=live_camera_movement();
     return current.core==value.owner.core && current.entity==value.owner.entity && current.context==value.owner.context &&
-        current.rig==value.owner.rig && movement.mode==1 &&
+        current.rig==value.owner.rig && movement.mode==(value.board ? 2:1) &&
+        (!value.board || board_free_look_allowed(menu_snapshot().config,current,movement)) &&
         (!value.recovery || !movement.view_hold) &&
         value.recovery==(!menu_snapshot().config.look_only && bail_camera_locked(current,movement)) &&
         camera_look_allowed(menu_snapshot().config,current,movement);
@@ -170,7 +173,7 @@ void tick_hippy_jump(const Config& config,const ComfortSnapshot& owner,CameraMov
     movement.hippy=hippy_detector.update(evidence,time);
 }
 int live_camera_movement_mode() { return live_camera_movement().custom_mode; }
-void stop_stick_look() { std::lock_guard lock(mutex);look.reset();request={}; }
+void stop_stick_look() { std::lock_guard lock(mutex);look.reset();board_look.reset();request={}; }
 void suspend_custom_camera() { stop_stick_look();camera_suspended=true; }
 bool take_camera_suspension() { return camera_suspended.exchange(false); }
 void note_camera_view(const dingosdk::first_person::Matrix& pose,dingosdk::first_person::Quat glance) {
@@ -183,10 +186,18 @@ void note_camera_view(const dingosdk::first_person::Matrix& pose,dingosdk::first
 }
 void note_native_camera_heading(const dingosdk::first_person::Matrix& pose) { note_camera_view(pose,{0,0,0,1}); }
 StickAim stick_camera_aim() { const auto value=snapshot();return live_foot(value) ? value.aim:StickAim{}; }
-bool stick_captures_input(unsigned slot) {
+StickInputPolicy stick_input_policy(unsigned slot) {
     const auto value=snapshot();
-    if(slot!=~0u && (slot>=4 || value.device>15 || !(value.device&(1u<<slot)))) return false;
-    return live_foot(value);
+    if(slot!=~0u && (slot>=4 || value.device>15 || !(value.device&(1u<<slot)))) return {};
+    if(!value.aim.capture || !live_foot(value)) return {};
+    if(!value.board) return {~0u,{}};
+    const auto settings=menu_snapshot().config.board;
+    return settings.enabled ? StickInputPolicy{settings.modifier,value.native_axes}:StickInputPolicy{};
+}
+std::uint32_t stick_capture_mask(unsigned slot) { return stick_input_policy(slot).mask; }
+bool stick_captures_input(unsigned slot,std::uint32_t buttons) {
+    const auto mask=stick_capture_mask(slot);
+    return mask && (mask==~0u || (buttons&mask)==mask);
 }
 void tick_stick_look(const Config& config,const GameplayInput& input,const ComfortSnapshot& owner,bool inhibited) {
     const double time=now();const auto movement=live_camera_movement();
@@ -196,10 +207,21 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
     const bool eligible=ready && !inhibited && movement.mode==1 && camera_look_allowed(config,owner,movement) &&
         (!bail_camera_locked(owner,movement) || !movement.view_hold) && head.valid && body_valid;
     std::lock_guard lock(mutex);
-    if(inhibited || !config.stick.enabled || !input.available || !input.device) {
-        look.reset();request={};return;
+    if(movement.mode==2) {
+        look.reset();
+        const bool board_eligible=ready && !inhibited && board_free_look_allowed(config,owner,movement) && head.valid && body_valid;
+        if(request.owner.core && (!request.board || request.owner.core!=owner.core || request.owner.entity!=owner.entity ||
+            request.owner.context!=owner.context || request.owner.rig!=owner.rig)) board_look.reset();
+        const auto aim=board_look.update(config.board,{input.right_x,input.right_y},board_eligible,input,time);
+        request={owner,aim,false,input.device,time,0,head.valid,false,true,board_look.native_axes(config.board)};
+        return;
     }
-    if(!eligible || time-heading_time>=.5) { look.reset();request={};return; }
+    board_look.reset();
+    if(request.board) look.reset();
+    if(inhibited || !config.stick.enabled || !input.available || !input.device) {
+        look.reset();board_look.reset();request={};return;
+    }
+    if(!eligible || time-heading_time>=.5) { look.reset();board_look.reset();request={};return; }
     const float body_heading=matrix_heading(body);
     if(request.owner.core && std::array<std::uintptr_t,4>{request.owner.core,request.owner.entity,request.owner.context,request.owner.rig}!=std::array<std::uintptr_t,4>{owner.core,owner.entity,owner.context,owner.rig}) { look.reset(); }
     const bool turn=!config.look_only && config.stick.turn_character && character_facing_allowed(owner,movement);
@@ -227,7 +249,7 @@ bool attach_stick_runtime(std::uintptr_t base) {
     if(status!=HookOk) { log("ERROR: native facing hook attach failed: "+std::to_string(status));return false; }
     if(!install_stick_input_filter()) { log("ERROR: stick input filters unavailable; stick look remains disabled.");return false; }
     ready=true;
-    log("On-foot stick look ready: native motion/facing chained; board input forwarded unchanged.");return true;
+    log("On-foot stick look ready: native motion/facing chained; on-board stick input captured only while the configured modifier is held.");return true;
 }
 bool install_stick_runtime(std::uintptr_t base) {
     getup_verified=getup_contract::verified([](std::uintptr_t address,void* data,std::size_t size) {

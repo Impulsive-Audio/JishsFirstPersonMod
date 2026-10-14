@@ -30,18 +30,21 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
             next.look_only=command.enabled;enabled_.reset();model_.requested_enabled.reset();immediate=true;break;
         case CommandKind::spring_on_foot: next.disable_spring_on_foot=command.enabled;immediate=true;break;
         case CommandKind::menu_key:
-            if(native_key_overlap(command.action,next.native)) throw std::runtime_error("That panel key is already used by ReSkate.");
+            if(command.action!=VK_INSERT && native_key_overlap(command.action,next.native)) throw std::runtime_error("That panel key is already used by ReSkate.");
             next.menu_key=command.action;immediate=true;break;
         case CommandKind::apply_preset:
-            next=command.preset; initialize_stick_smoothing(next);next.cycle_restore_pending=model_.config.cycle_restore_pending;next.cycle_restore_enabled=model_.config.cycle_restore_enabled;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.look_only=model_.config.look_only;
+            next=command.preset; initialize_stick_smoothing(next);next.cycle_restore_pending=model_.config.cycle_restore_pending;next.cycle_restore_enabled=model_.config.cycle_restore_enabled;next.native=model_.config.native;next.reserved=model_.config.reserved;next.menu_key=model_.config.menu_key;next.menu_combo=model_.config.menu_combo;next.look_only=model_.config.look_only;
             validate_config(next);
             immediate=true;break;
+        case CommandKind::board_settings: next.board=command.board;break;
         case CommandKind::stick_settings: next.stick=command.stick;break;
         case CommandKind::toggle_glances: next.toggle_glances=command.enabled;immediate=true;break;
         case CommandKind::bail_collision: next.bail_camera_collision=command.enabled;immediate=true;break;
         case CommandKind::binding:
-            if(command.action>4) throw std::runtime_error("Unknown controller action.");
-            if(command.action==0) next.toggle=command.mask; else next.look[command.action-1].combo=command.mask;
+            if(command.action>6) throw std::runtime_error("Unknown controller action.");
+            if(command.action==6) next.menu_combo=command.mask;
+            else if(command.action==5) next.board.modifier=command.mask;
+            else if(command.action==0) next.toggle=command.mask; else next.look[command.action-1].combo=command.mask;
             immediate=true; break;
         case CommandKind::angle:
             if(command.action<1 || command.action>4) throw std::runtime_error("Unknown look direction.");
@@ -352,7 +355,7 @@ std::filesystem::path preset_name(const std::string& text) {
     auto base=lower.substr(0,lower.find(L'.'));
     while(!base.empty() && base.back()==L' ') base.pop_back();
     if(lower==L"jish's recommended" || lower==L"recommended" || base==L"con" || base==L"prn" || base==L"aux" || base==L"nul" ||
-       (base.size()==4 && (base.starts_with(L"com") || base.starts_with(L"lpt")) && ((base[3]>=L'1' && base[3]<=L'9') || base[3]==L'Â¹' || base[3]==L'Â²' || base[3]==L'Â³')))
+       (base.size()==4 && (base.starts_with(L"com") || base.starts_with(L"lpt")) && ((base[3]>=L'1' && base[3]<=L'9') || base[3]==L'\u00b9' || base[3]==L'\u00b2' || base[3]==L'\u00b3')))
         throw std::runtime_error("That preset name is reserved.");
     return path;
 }
@@ -388,7 +391,7 @@ std::string PresetLibrary::save(const std::string& text,const Config& config,boo
     const auto existing=existing_preset(directory_,name);
     if(!existing.empty() && !overwrite) throw std::runtime_error("That name already exists. Choose another name or Overwrite.");
     if(existing.empty() && overwrite) throw std::runtime_error("Preset no longer exists. Use Save as.");
-    auto saved=config;saved.native={};saved.reserved={};saved.menu_key=VK_F9;saved.look_only=false;
+    auto saved=config;saved.native={};saved.reserved={};saved.menu_key=VK_INSERT;saved.look_only=false;
     saved.cycle_restore_pending=false;saved.cycle_restore_enabled=false;
     std::filesystem::create_directories(directory_);
     write_config(existing.empty() ? directory_/(name.wstring()+L".ini"):existing,saved);

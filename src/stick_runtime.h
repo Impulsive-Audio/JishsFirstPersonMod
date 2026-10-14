@@ -10,7 +10,9 @@ void stop_stick_look();
 void note_native_camera_heading(const dingosdk::first_person::Matrix& pose);
 void note_camera_view(const dingosdk::first_person::Matrix&,dingosdk::first_person::Quat glance);
 StickAim stick_camera_aim();
-bool stick_captures_input(unsigned slot=~0u);
+bool stick_captures_input(unsigned slot=~0u,std::uint32_t buttons=~0u);
+std::uint32_t stick_capture_mask(unsigned slot=~0u);
+StickInputPolicy stick_input_policy(unsigned slot=~0u);
 bool stick_runtime_ready();
 struct CameraMovementSample {
     int mode{}, custom_mode{};

@@ -7,6 +7,7 @@
 
 namespace jishsfirstpersonmod {
 void log(const std::string&) noexcept {}
+GameplayInput menu_controller(){return {};}
 std::filesystem::path module_directory() { return std::filesystem::current_path(); }
 std::filesystem::path data_directory() { return module_directory()/"settings-integration"; }
 }
@@ -90,7 +91,11 @@ int main(int argc,char** argv) {
     Command menu_binding;menu_binding.kind=CommandKind::menu_key;menu_binding.action=VK_F10;
     require(store.submit(menu_binding,0),"menu binding rejected");store.flush_due(0);
     require(read_config(file).menu_key==VK_F10,"menu key did not persist");
-    menu_binding.action=VK_INSERT;require(!store.submit(menu_binding,1),"reserved Insert binding accepted");
+    MenuHotkey shared_key;
+    require(shared_key.toggle(WM_KEYDOWN,VK_INSERT,VK_INSERT,false),"default Insert did not toggle panel");
+    shared_key.recording=true;shared_key.key(WM_KEYDOWN,VK_INSERT,false);
+    require(shared_key.recorded==VK_INSERT,"Insert could not be rebound");
+    menu_binding.action=VK_INSERT;require(store.submit(menu_binding,1),"shared Insert binding rejected");
     menu_binding.action=0;require(store.submit(menu_binding,2),"clear menu key rejected");store.flush_due(2);
     require(read_config(file).menu_key==0,"clear menu key did not persist");
     Command bind; bind.kind=CommandKind::binding; bind.action=0; bind.mask=0x30;

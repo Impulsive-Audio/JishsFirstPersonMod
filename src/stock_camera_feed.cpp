@@ -103,7 +103,8 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                     if(camera_look_allowed(config,state,movement)) {
                         const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                         glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(config),{look_pitch.load(),look_yaw.load()},look_frame.load(),config.link_smoothing));
-                        matrix=aim_camera(native,movement.mode==1 ? stick_camera_aim():StickAim{});
+                        const auto stick_aim=stick_camera_aim();
+                        matrix=movement.mode==2 ? aim_head_relative(native,stick_aim):aim_camera(native,stick_aim);
                         dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{native[12],native[13],native[14]});
                     } else { smoothing.reset();stop_stick_look(); }
                 }
@@ -186,8 +187,8 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             const auto effective=effective_camera_config(config,stock_first_person_requested(),state,movement);
                             const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                             glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(effective),{pitch,yaw},frame,config.link_smoothing));
-                            aim=movement.mode==1 ? stick_camera_aim():StickAim{};
-                            matrix=aim_camera(matrix,aim);
+                            aim=stick_camera_aim();
+                            matrix=movement.mode==2 ? aim_head_relative(matrix,aim):aim_camera(matrix,aim);
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
                         if(attached && !flip_owned) matrix=bail_view.attach(matrix,head);
