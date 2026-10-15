@@ -197,9 +197,21 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             (movement.mode==1 ? config.stick.lean_look_down:config.board.lean_look_down);
                         if(lean) {
                             const bool foot=movement.mode==1;
-                            const auto shift=look_down_lean(matrix,aim.pitch,foot ? config.stick.lean_forward:config.board.lean_forward,
-                                foot ? config.stick.lean_down:config.board.lean_down);
-                            matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2];
+                            const auto info=bail_view.info();
+                            if(foot && head.valid && info.calibrated) {
+                                // Steep look-down pitches the head, which swings the
+                                // calibrated attachment offset around the head and drags
+                                // the camera back into the body past ~70 degrees. During
+                                // on-foot look, anchor the position with the head's yaw
+                                // only and add the measured pitch-dependent lean.
+                                const auto anchored=yaw_anchored_position(head.head,info.offset);
+                                const auto shift=look_down_lean(matrix,aim.pitch,config.stick.lean_forward,config.stick.lean_down);
+                                matrix[12]=anchored[0]+shift[0];matrix[13]=anchored[1]+shift[1];matrix[14]=anchored[2]+shift[2];
+                            } else {
+                                const auto shift=look_down_lean(matrix,aim.pitch,foot ? config.stick.lean_forward:config.board.lean_forward,
+                                    foot ? config.stick.lean_down:config.board.lean_down);
+                                matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2];
+                            }
                         }
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
                         const bool mount_handoff=config.stick.enabled && movement.mounting;

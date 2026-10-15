@@ -202,6 +202,12 @@ int main() {
     const auto lean_mid=look_down_lean(pose,-42.5f,.086f,.077f);
     check(std::abs(lean_mid[1]+0.0385f)<1e-6f && std::abs(lean_mid[2]+0.043f)<1e-6f,
         "look-down lean did not scale with pitch");
+    // The yaw-anchored head position keeps the calibrated offset level-relative.
+    const Matrix pitched_head=board_pose(0,-80,0);
+    const dingosdk::first_person::Vec3 anchor_offset{0.f,0.05f,-0.084f};
+    const auto anchored=yaw_anchored_position(pitched_head,anchor_offset);
+    check(std::abs(anchored[0]-pitched_head[12])<1e-6f && std::abs(anchored[1]-(pitched_head[13]+0.05f))<1e-6f &&
+        std::abs(anchored[2]-(pitched_head[14]-0.084f))<1e-6f,"yaw anchor rotated the offset with head pitch");
     auto body=face_heading(pose,90);check(body[12]==3 && body[13]==4 && body[14]==5 && body[3]==7 && body[7]==8 && body[11]==9,"native motion position/metadata changed");
     CameraTransition handoff;
     Settings transition_settings;transition_settings.enabled=true;

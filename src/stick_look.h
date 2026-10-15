@@ -35,6 +35,17 @@ inline dingosdk::first_person::Vec3 look_down_lean(const dingosdk::first_person:
     const float forward=forward_max*fraction/length,down=down_max*fraction;
     return {-x*forward,-down,-z*forward};
 }
+inline dingosdk::first_person::Vec3 yaw_anchored_position(const dingosdk::first_person::Matrix& head,
+    const dingosdk::first_person::Vec3& offset) {
+    // Camera position anchored to the head with the offset rotated by the
+    // head's yaw only: head pitch and roll must not swing the calibrated
+    // offset around the head during steep looks.
+    const auto rotation=dingosdk::first_person::orientation(head);
+    const float yaw=std::atan2(rotation[8],rotation[10]);
+    const float half=yaw*0.5f;
+    return dingosdk::first_person::add({head[12],head[13],head[14]},
+        dingosdk::first_person::rotate(dingosdk::first_person::Quat{0,std::sin(half),0,std::cos(half)},offset));
+}
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {
     bool ready_{},seen_{},mode_{},center_facing_{};
