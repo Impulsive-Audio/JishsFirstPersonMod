@@ -62,6 +62,6 @@ With **Third person while bailing** or **Third person while getting up** enabled
 
 This 1.32 fork includes the working 1.29.1 Sony HID menu fixes. See [local integration notes](docs/updates/LOCAL_1_30_INTEGRATION.md).
 
-Local test update: bald mode and outgoing cosmetic hooks removed; button glances and on-foot right-stick smoothing are independent. Radial-menu input changes are deferred.
+Local test update: button glances and on-foot right-stick smoothing are independent. Radial-menu input changes are deferred.
 
 Version 1.32 fixes spectator startup hook ordering and keeps the spectator preference selectable. Tested working on both affected machines; all 34 automated tests pass. See [spectator validation notes](docs/testing/TEST_SPECTATOR_HOOK_1_32.md).

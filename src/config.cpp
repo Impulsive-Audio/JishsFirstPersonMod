@@ -92,8 +92,7 @@ Config read_config(const std::filesystem::path& path) {
     cfg.bail_camera_collision=boolean("bail_camera_collision",true);
     cfg.lock_body_flips=boolean("lock_body_flips",false);
     cfg.spectator_first_person=boolean("spectator_first_person",false);
-    cfg.settings_migrated=values.contains("bald_first_person");
-    values.erase("bald_first_person"); // Retired option: ignore legacy values.
+    cfg.bald_first_person=boolean("bald_first_person",true);
     cfg.cycle_restore_pending=boolean("cycle_restore_pending",false);
     cfg.cycle_restore_enabled=boolean("cycle_restore_enabled",false);
     cfg.on_board_only=boolean("on_board_only",false);
@@ -219,6 +218,7 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
             <<"\nthird_person_recovery="<<cfg.third_person_recovery
             <<"\nlock_body_flips="<<cfg.lock_body_flips
             <<"\nspectator_first_person="<<cfg.spectator_first_person
+            <<"\nbald_first_person="<<cfg.bald_first_person
             <<"\ndisable_spring_on_foot="<<cfg.disable_spring_on_foot<<'\n';
         auto normalized=cfg; initialize_stick_smoothing(normalized);
         const auto& stick_spring=normalized.stick_spring;

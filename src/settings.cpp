@@ -42,6 +42,7 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         case CommandKind::toggle_glances: next.toggle_glances=command.enabled;immediate=true;break;
         case CommandKind::remember_marker_glance: next.remember_marker_glance=command.enabled;immediate=true;break;
         case CommandKind::bail_collision: next.bail_camera_collision=command.enabled;immediate=true;break;
+        case CommandKind::bald_hair: next.bald_first_person=command.enabled;immediate=true;break;
         case CommandKind::binding:
             if(command.action>6) throw std::runtime_error("Unknown controller action.");
             if(command.action==6) next.menu_combo=command.mask;

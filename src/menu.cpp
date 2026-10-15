@@ -1,6 +1,7 @@
 #include "menu.h"
 #include <imgui_internal.h>
 #include "bail_collision.h"
+#include "first_person_hair.h"
 #include "comfort_policy.h"
 #include "player_state_contract.h"
 #include "stick_runtime.h"
@@ -293,6 +294,13 @@ void draw_panel_frame(const PanelFrame& frame) {
         else if(config.third_person_bailing) ImGui::TextWrapped("Turn off Third person while bailing to use bail camera collision.");
         else if(!bail_collision_available()) ImGui::TextWrapped("Bail camera collision is unavailable. See the mod log.");
         if(!comfort.bail_available) ImGui::TextWrapped("Automatic bail switching is unavailable. See the mod log.");
+        ImGui::BeginDisabled(!first_person_hair_available());
+        if(readable_checkbox("Bald in first person",&config.bald_first_person)) {
+            Command command;command.kind=CommandKind::bald_hair;command.enabled=config.bald_first_person;submit_command(command);
+        }
+        help_marker("Temporarily uses the smooth bald hairstyle on your screen. Other players see your original hair. Your hair returns in third person and when this is turned off. Hair colour and saved outfits are kept.");
+        ImGui::EndDisabled();
+        if(!first_person_hair_available()) ImGui::TextWrapped("Temporary bald hairstyle is unavailable. See the mod log.");
         ImGui::BeginDisabled(!comfort.board_available);
         if(readable_checkbox("First person on board only",&config.on_board_only)) comfort_change();
         help_marker("Uses third person while walking. First person returns when you get on the board.");

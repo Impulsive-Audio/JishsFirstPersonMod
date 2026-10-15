@@ -259,7 +259,7 @@ int main() {
     const auto migration_path=module_directory()/"migration.ini";
     for(bool linked:{false,true}) for(bool foot_off:{false,true}) {
         { std::ofstream old(migration_path); old<<"[JishsFirstPersonMod]\nspring=1\nstrength_up=12\nstrength_down=23\nstrength_left=34\nstrength_right=45\nlink_smoothing="<<linked
-            <<"\nlook_smoothing_initialized=1\nlook_spring=1\nlook_strength_up=21\nlook_strength_down=32\nlook_strength_left=43\nlook_strength_right=54\ndisable_spring_on_foot="<<foot_off<<"\nbald_first_person=obsolete\n"; }
+            <<"\nlook_smoothing_initialized=1\nlook_spring=1\nlook_strength_up=21\nlook_strength_down=32\nlook_strength_left=43\nlook_strength_right=54\ndisable_spring_on_foot="<<foot_off<<"\nbald_first_person=1\n"; }
         auto migrated=read_config(migration_path);
         check(migrated.settings_migrated && migrated.stick_smoothing_initialized,"legacy migration not detected");
         check(migrated.stick_spring.enabled==!(linked && foot_off),"legacy on-foot switch changed");
@@ -268,7 +268,7 @@ int main() {
         auto roundtrip=read_config(migration_path);
         check(!roundtrip.settings_migrated && roundtrip.stick_spring.up==migrated.stick_spring.up,"migration repeated or lost");
         std::ifstream saved(migration_path);std::stringstream text;text<<saved.rdbuf();
-        check(text.str().find("bald_first_person")==std::string::npos,"retired option saved");
+        check(text.str().find("bald_first_person")!=std::string::npos,"restored option not saved");
         roundtrip.look_spring.up=99;roundtrip.spring.up=98;
         check(roundtrip.stick_spring.up==migrated.stick_spring.up,"stick strengths linked after migration");
     }

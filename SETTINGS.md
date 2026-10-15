@@ -48,6 +48,7 @@ Enable First Person is the master switch in either menu and for the controller t
 
 - Camera collision during bails: enabled by default on the supported build. This is work in progress; the camera can still stick near surfaces.
 
+- Bald in first person: enabled by default on the supported build. Uses bald hair locally, restores your original hairstyle in third person, and retains your original hair in multiplayer updates.
 
 - First person on board only: walking or bailing selects third person; riding selects first person. With both options enabled, first person requires riding and no active bail/recovery.
 

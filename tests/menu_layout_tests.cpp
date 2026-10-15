@@ -25,6 +25,7 @@ ComfortSnapshot comfort_snapshot() { ComfortSnapshot s;s.initialized=true;s.boar
 bool stick_runtime_ready() { return true; }
 bool glance_emote_filter_ready() { return true; }
 bool bail_collision_available() noexcept { return true; }
+bool first_person_hair_available() noexcept { return true; }
 bool game_camera_suspended() { return false; }
 const char* game_camera_status() { return ""; }
 bool spectator_ready=true;

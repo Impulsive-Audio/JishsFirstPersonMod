@@ -30,6 +30,7 @@ struct Config {
     bool third_person_recovery=false;
     bool third_person_camera_switching() const { return third_person_bailing || (!look_only && third_person_recovery); }
     bool bail_camera_collision=true;
+    bool bald_first_person=true;
     bool lock_body_flips=false;
     bool spectator_first_person=false;
     bool cycle_restore_pending=false,cycle_restore_enabled=false; // Native preference retained during comfort override.
