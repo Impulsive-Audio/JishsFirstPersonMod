@@ -36,3 +36,9 @@ movement before the stick is centered. Turning this option off restores the
 previous re-press behavior. Lifecycle/camera ownership resets still take priority.
 The toggle and all board settings save/load with personal camera presets;
 menu keyboard/controller shortcuts remain global.
+
+While on-board free look is held, horizontal stick look rotates about the
+world vertical axis, so it stays horizontal through crouches, pumps, ramps
+and carve banking. Vertical stick look stays relative to the current view,
+and the camera keeps following the head's own pitch and roll. Bail and
+recovery look remain head-relative as before.

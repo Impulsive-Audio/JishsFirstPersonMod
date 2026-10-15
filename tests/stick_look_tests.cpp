@@ -105,6 +105,42 @@ int main() {
         check(level[12]==3 && level[13]==4 && level[14]==5 && level[3]==7 && level[7]==8 && level[11]==9,"stick look changed native position/metadata");
         for(unsigned axis:{0u,4u,8u}) check(std::abs(length({level[axis],level[axis+1],level[axis+2]})-1)<.00001f,"camera basis lost normalization");
     }
+
+    // On-board look yaws about world up and pitches about the view.
+    const auto board_pose=[&](float heading,float pitch,float roll) {
+        constexpr float half=std::numbers::pi_v<float>/360.f;
+        Matrix result=pose;
+        write(result,multiply(multiply({0,std::sin(heading*half),0,std::cos(heading*half)},
+            {std::sin(pitch*half),0,0,std::cos(pitch*half)}),{0,0,std::sin(roll*half),std::cos(roll*half)}),{3,4,5});
+        return result;
+    };
+    const auto spec_board=[&](const Matrix& base,float heading,float pitch) {
+        const float yaw=heading*std::numbers::pi_v<float>/360.f;
+        const float clamped=std::clamp(pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
+        Matrix result=base;
+        write(result,normalized(multiply(multiply({0,std::sin(yaw),0,std::cos(yaw)},orientation(base)),
+            {std::sin(clamped),0,0,std::cos(clamped)})),{base[12],base[13],base[14]});
+        return result;
+    };
+    const auto crouch=board_pose(25,30,20);
+    for(float pitch:{-85.f,0.f,35.f,85.f}) for(float heading:{-170.f,-90.f,0.f,70.f,170.f}) {
+        check(aim_board_world_yaw(crouch,{true,true,heading,pitch,0})==
+            spec_board(crouch,heading,pitch),"board look composition changed");
+    }
+    for(float pitch:{-120.f,120.f}) {
+        check(aim_board_world_yaw(crouch,{true,true,0,pitch,0})==
+            spec_board(crouch,0,pitch),"board pitch did not clamp");
+    }
+    const auto carve=aim_board_world_yaw(crouch,{true,true,-15,0,0});
+    check(std::abs(carve[9]-crouch[9])<.000001f,"board look gained vertical travel from riding tilt");
+    check(carve[12]==3 && carve[13]==4 && carve[14]==5 && carve[3]==7 && carve[7]==8 && carve[11]==9,"board look changed native position/metadata");
+    const auto ramp30=aim_board_world_yaw(board_pose(25,30,0),{true,true,-15,0,0});
+    const auto ramp20=aim_board_world_yaw(board_pose(25,20,0),{true,true,-15,0,0});
+    check(std::abs((ramp20[9]-ramp30[9])-(std::sin(30*std::numbers::pi_v<float>/180.f)-std::sin(20*std::numbers::pi_v<float>/180.f)))<.001f,
+        "board look stopped following the head's pitch");
+    const auto upward=aim_board_world_yaw(pose,{true,true,0,35,0});
+    check(std::abs(upward[9]+std::sin(35*std::numbers::pi_v<float>/180.f))<.00001f,"board pitch did not look up with the stick");
+    check(aim_board_world_yaw(crouch,{})==crouch,"inactive board look changed the camera");
     auto body=face_heading(pose,90);check(body[12]==3 && body[13]==4 && body[14]==5 && body[3]==7 && body[7]==8 && body[11]==9,"native motion position/metadata changed");
     CameraTransition handoff;
     Settings transition_settings;transition_settings.enabled=true;

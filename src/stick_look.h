@@ -75,6 +75,18 @@ inline dingosdk::first_person::Matrix aim_head_relative(dingosdk::first_person::
     // StickAim heading uses mathematical yaw; LookAngles uses its inverse.
     return aim.active ? dingosdk::first_person::target(pose,{}, {aim.pitch,-aim.heading}):pose;
 }
+inline dingosdk::first_person::Matrix aim_board_world_yaw(dingosdk::first_person::Matrix pose,const StickAim& aim) {
+    if(!aim.active) return pose;
+    using namespace dingosdk::first_person;
+    // Stick yaw rotates about world up, so horizontal look never gains vertical
+    // travel from riding tilt; stick pitch stays local to the view. The native
+    // camera keeps following the head's own pitch and roll.
+    const float yaw=aim.heading*std::numbers::pi_v<float>/360.f;
+    const float pitch=std::clamp(aim.pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
+    write(pose,normalized(multiply(multiply({0,std::sin(yaw),0,std::cos(yaw)},orientation(pose)),
+        {std::sin(pitch),0,0,std::cos(pitch)})),{pose[12],pose[13],pose[14]});
+    return pose;
+}
 inline dingosdk::first_person::Matrix aim_camera(dingosdk::first_person::Matrix pose,const StickAim& aim) {
     if(!aim.active) return pose;
     using namespace dingosdk::first_person;
