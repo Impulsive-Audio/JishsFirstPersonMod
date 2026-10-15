@@ -15,6 +15,8 @@ struct Command {
     bool enabled{};
     bool third_person_bailing{},on_board_only{};
     dingosdk::first_person::Settings spring;
+    bool per_mode_offsets{}; // camera_settings: also apply the per-mode offset memories.
+    dingosdk::first_person::Vec3 board_offset{},foot_offset{};
     StickSettings stick;
     BoardLookSettings board;
     Config preset;

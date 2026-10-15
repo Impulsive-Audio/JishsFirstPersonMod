@@ -74,6 +74,12 @@ Config read_config(const std::filesystem::path& path) {
         cfg.spring.offset[i] = number(offsets[i],0);
         cfg.spring.rotation[i] = number(rotations[i],0);
     }
+    cfg.board_offset[0]=number("board_offset_x",cfg.spring.offset[0]);
+    cfg.board_offset[1]=number("board_offset_y",cfg.spring.offset[1]);
+    cfg.board_offset[2]=number("board_offset_z",cfg.spring.offset[2]);
+    cfg.foot_offset[0]=number("foot_offset_x",cfg.spring.offset[0]);
+    cfg.foot_offset[1]=number("foot_offset_y",cfg.spring.offset[1]);
+    cfg.foot_offset[2]=number("foot_offset_z",cfg.spring.offset[2]);
     cfg.spring.up = number("strength_up",50); cfg.spring.down = number("strength_down",50);
     cfg.spring.left = number("strength_left",50); cfg.spring.right = number("strength_right",50);
     const auto boolean=[&](const char* key,bool fallback) {
@@ -153,6 +159,10 @@ Config read_config(const std::filesystem::path& path) {
         cfg.look_spring=cfg.spring; cfg.look_spring.offset={}; cfg.look_spring.rotation={}; cfg.look_smoothing_initialized=true;
     }
     if (!dingosdk::first_person::valid(cfg.spring)) throw std::runtime_error("spring settings outside custom build's supported ranges");
+    for(const auto& mode_offset:{cfg.board_offset,cfg.foot_offset})
+        for(unsigned i=0;i<3;++i)
+            if(!std::isfinite(mode_offset[i]) || std::abs(mode_offset[i])>3.f)
+                throw std::runtime_error("Per-mode camera offsets must be within \u00b13 metres.");
     cfg.stick_smoothing_initialized=boolean("stick_smoothing_initialized",false);
     cfg.stick_spring.enabled=boolean("stick_spring",false);
     cfg.stick_spring.up=number("stick_strength_up",50); cfg.stick_spring.down=number("stick_strength_down",50);
@@ -217,6 +227,9 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
             <<"\nfov="<<cfg.fov<<"\nspring="<<cfg.spring.enabled;
         const char* offset[]{"offset_x","offset_y","offset_z"}; const char* rotation[]{"pitch","yaw","roll"};
         for(unsigned i=0;i<3;++i) out<<'\n'<<offset[i]<<'='<<cfg.spring.offset[i]<<'\n'<<rotation[i]<<'='<<cfg.spring.rotation[i];
+        const char* mode_axis[]{"_x","_y","_z"};
+        for(unsigned i=0;i<3;++i) out<<'\n'<<"board_offset"<<mode_axis[i]<<'='<<cfg.board_offset[i];
+        for(unsigned i=0;i<3;++i) out<<'\n'<<"foot_offset"<<mode_axis[i]<<'='<<cfg.foot_offset[i];
         out<<"\nstrength_up="<<cfg.spring.up<<"\nstrength_down="<<cfg.spring.down
             <<"\nstrength_left="<<cfg.spring.left<<"\nstrength_right="<<cfg.spring.right<<'\n';
         out<<"look_only="<<cfg.look_only<<"\ntoggle_glances="<<cfg.toggle_glances<<"\nremember_marker_glance="<<cfg.remember_marker_glance<<'\n';

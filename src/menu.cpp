@@ -442,7 +442,8 @@ void draw_panel_frame(const PanelFrame& frame) {
                 if(ImGui::SliderFloat(label,&value,low,high,format,ImGuiSliderFlags_AlwaysClamp)) settings_change(config);
             };
             ImGui::TextUnformatted("Position offset (metres)");
-            slider("Right",config.spring.offset[0],-3,3,"%.3f"); slider("Up",config.spring.offset[1],-3,3,"%.3f"); slider("Forward",config.spring.offset[2],-3,3,"%.3f");
+        slider("Right",config.spring.offset[0],-3,3,"%.3f"); slider("Up",config.spring.offset[1],-3,3,"%.3f"); slider("Forward",config.spring.offset[2],-3,3,"%.3f");
+        ImGui::TextWrapped("On-foot and on-board offsets are remembered separately; they swap automatically when you change camera.");
             ImGui::TextUnformatted("Rotation offset (degrees)");
             slider("Pitch",config.spring.rotation[0],-180,180,"%.1f"); slider("Yaw",config.spring.rotation[1],-180,180,"%.1f"); slider("Roll",config.spring.rotation[2],-180,180,"%.1f");
             ImGui::TextUnformatted("Smoothing strength");

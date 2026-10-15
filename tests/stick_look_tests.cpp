@@ -272,8 +272,20 @@ int main() {
     }
     Config config;config.stick=settings;config.stick.deadzone=.22f;
     config.stick.mount_smoothing=82;config.stick.dismount_smoothing=35;config.stick.smooth_transitions=false;
+    config.board_offset[0]=.11f;config.board_offset[2]=-.13f;config.foot_offset[1]=.22f;
     auto path=data_directory()/"settings.ini";write_config(path,config);const auto reloaded=read_config(path);
     check(reloaded.stick.enabled && reloaded.stick.deadzone==.22f,"stick preferences did not persist");
+    check(reloaded.board_offset[0]==.11f && reloaded.board_offset[2]==-.13f && reloaded.foot_offset[1]==.22f,
+        "per-mode camera offsets did not persist");
+    // Per-mode camera offsets swap between on-foot and on-board memories.
+    Config modes;modes.spring.offset={.1f,.2f,.3f};modes.board_offset={.4f,.5f,.6f};modes.foot_offset={.7f,.8f,.9f};
+    adopt_mode_offsets(modes,1,2);
+    check(modes.spring.offset[0]==.7f && modes.board_offset[2]==.3f,"foot mode did not adopt its stored offsets");
+    adopt_mode_offsets(modes,2,1);
+    check(modes.spring.offset[0]==.1f && modes.foot_offset[0]==.7f,"board mode did not restore its stored offsets");
+    Config fresh;fresh.spring.offset={.1f,.2f,.3f};fresh.board_offset={.4f,.5f,.6f};fresh.foot_offset={.1f,.2f,.3f};
+    adopt_mode_offsets(fresh,1,0);
+    check(fresh.spring.offset[0]==.1f && fresh.board_offset[0]==.4f,"first mode overwrote the other mode's offsets");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");
