@@ -510,6 +510,17 @@ void draw_panel_frame(const PanelFrame& frame) {
         }
         help_marker("Ignore small stick movements to prevent camera drift. Increase this if the camera moves by itself.");
         if(readable_checkbox("Invert Y",&config.stick.invert_y)) stick_change();
+        if(readable_checkbox("Lean camera forward when looking down",&config.stick.lean_look_down)) stick_change();
+        help_marker("Moves the camera slightly forward and down as you look down, so your body stays out of the view.");
+        ImGui::BeginDisabled(!config.stick.lean_look_down);
+        float lean_cm=config.stick.lean_forward*100;
+        fit_control("Look-down lean forward");
+        if(ImGui::SliderFloat("Look-down lean forward",&lean_cm,0,30,"%.1f cm",ImGuiSliderFlags_AlwaysClamp)) { config.stick.lean_forward=lean_cm*.01f;stick_change(); }
+        lean_cm=config.stick.lean_down*100;
+        fit_control("Look-down lean down");
+        if(ImGui::SliderFloat("Look-down lean down",&lean_cm,0,30,"%.1f cm",ImGuiSliderFlags_AlwaysClamp)) { config.stick.lean_down=lean_cm*.01f;stick_change(); }
+        help_marker("Camera shift at full look-down, scaled by how far down you look. Tune these so your body stays out of the view at your usual camera settings.");
+        ImGui::EndDisabled();
         if(readable_checkbox("Allow looking during jumps and climbing",&config.stick.look_during_parkour)) stick_change();
         help_marker("Enables right-stick look and button glances during climbing and supported jumps. Leave this off to keep ReSkate's normal view during climbing and attached jumps. These actions turn only the camera. This does not change head attachment, and look still pauses while getting on the board.");
         ImGui::EndDisabled();

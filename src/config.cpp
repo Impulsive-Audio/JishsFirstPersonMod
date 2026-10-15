@@ -128,6 +128,9 @@ Config read_config(const std::filesystem::path& path) {
     cfg.stick.lock_mount_jump=boolean("lock_camera_mount_jump",true);
     cfg.stick.lock_hippy_jump=boolean("lock_camera_hippy_jump",false);
     cfg.stick.look_during_parkour=boolean("look_during_parkour",false);
+    cfg.stick.lean_look_down=boolean("stick_lean_look_down",true);
+    cfg.stick.lean_forward=number("stick_lean_forward",.086f);
+    cfg.stick.lean_down=number("stick_lean_down",.077f);
     cfg.stick.mount_smoothing=number("mount_smoothing",70);
     cfg.stick.dismount_smoothing=number("dismount_smoothing",35);
     for(float strength:{cfg.stick.mount_smoothing,cfg.stick.dismount_smoothing})
@@ -136,6 +139,9 @@ Config read_config(const std::filesystem::path& path) {
        !std::isfinite(cfg.stick.pitch_speed) || cfg.stick.pitch_speed<1 || cfg.stick.pitch_speed>720 ||
        !std::isfinite(cfg.stick.deadzone) || cfg.stick.deadzone<.01f || cfg.stick.deadzone>.5f)
         throw std::runtime_error("Stick look settings outside supported ranges");
+    if(!std::isfinite(cfg.stick.lean_forward) || cfg.stick.lean_forward<0 || cfg.stick.lean_forward>.3f ||
+       !std::isfinite(cfg.stick.lean_down) || cfg.stick.lean_down<0 || cfg.stick.lean_down>.3f)
+        throw std::runtime_error("Look-down lean must be 0–30 centimetres.");
     if(!dingosdk::first_person::valid(cfg.look_spring)) throw std::runtime_error("Look smoothing outside supported ranges");
     if(!cfg.link_smoothing && !cfg.look_smoothing_initialized) {
         cfg.look_spring=cfg.spring; cfg.look_spring.offset={}; cfg.look_spring.rotation={}; cfg.look_smoothing_initialized=true;
@@ -230,7 +236,7 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
             <<"\nstick_pitch_speed="<<cfg.stick.pitch_speed<<"\nstick_deadzone="<<cfg.stick.deadzone<<'\n';
         out<<"smooth_transitions="<<cfg.stick.smooth_transitions<<"\nmount_smoothing="<<cfg.stick.mount_smoothing
             <<"\ndismount_smoothing="<<cfg.stick.dismount_smoothing<<'\n';
-        out<<"lock_camera_mount_jump="<<cfg.stick.lock_mount_jump<<"\nlock_camera_hippy_jump="<<cfg.stick.lock_hippy_jump<<"\nlook_during_parkour="<<cfg.stick.look_during_parkour<<'\n';
+        out<<"lock_camera_mount_jump="<<cfg.stick.lock_mount_jump<<"\nlock_camera_hippy_jump="<<cfg.stick.lock_hippy_jump<<"\nlook_during_parkour="<<cfg.stick.look_during_parkour<<"\nstick_lean_look_down="<<cfg.stick.lean_look_down<<"\nstick_lean_forward="<<cfg.stick.lean_forward<<"\nstick_lean_down="<<cfg.stick.lean_down<<'\n';
         out<<"board_look="<<cfg.board.enabled<<"\nboard_modifier="<<cfg.board.modifier
             <<"\nboard_center_on_modifier="<<cfg.board.center_on_modifier
             <<"\nboard_center_on_stick="<<cfg.board.center_on_stick

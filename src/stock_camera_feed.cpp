@@ -114,7 +114,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                 original_transform(camera,&matrix);return;
             }
             const auto head=read_animation_head(state);const auto pitch=look_pitch.load(),yaw=look_yaw.load();
-            bool suspended{},changed{};StickAim aim{};BailViewInfo view;
+            bool suspended{},changed{};StickAim aim{};bool lean{};BailViewInfo view;
             dingosdk::first_person::Quat glance{0,0,0,1};
             const double frame=look_frame.load();
             {
@@ -193,6 +193,8 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
                         if(attached && !flip_owned) matrix=bail_view.attach(matrix,head);
+                        lean=movement.mode==1 && aim.active && config.stick.lean_look_down;
+                        if(lean) { const auto shift=look_down_lean(matrix,aim.pitch,config.stick.lean_forward,config.stick.lean_down);matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2]; }
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
                         const bool mount_handoff=config.stick.enabled && movement.mounting;
                         handoff.up=handoff.down=handoff.left=handoff.right=(mount_handoff || movement.mode==2) ? config.stick.mount_smoothing:config.stick.dismount_smoothing;
@@ -236,7 +238,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             bail_view.accept_displayed_position(corrected);
                         } else { collision.reset();collision_world=0; }
                         collision_seed={matrix[12],matrix[13],matrix[14]};collision_seed_ready=true;
-                        if(!bail && valid) bail_view.remember(matrix,native,head,normal && !flip_owned);
+                        if(!bail && valid) bail_view.remember(matrix,native,head,normal && !flip_owned && !lean);
                     }
                 }
             }

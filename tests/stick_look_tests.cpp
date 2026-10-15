@@ -193,6 +193,15 @@ int main() {
     check(aim_board_body_local(head_view,{true,true,-15,0,0},crouch,false,0.75f,true,mirror_state,10.0)==head_view,
         "invalid body frame changed the camera");
     check(aim_board_body_local(head_view,{},{},false,0.f,false,mirror_state,10.0)==head_view,"inactive board look changed the camera");
+    // On-foot look-down lean: user-calibrated 0.086 m forward and 0.077 m down at full look-down.
+    check(look_down_lean(pose,30.f,.086f,.077f)[0]==0 && look_down_lean(pose,30.f,.086f,.077f)[1]==0 && look_down_lean(pose,30.f,.086f,.077f)[2]==0,
+        "look-down lean applied while looking up");
+    const auto lean_full=look_down_lean(pose,-85.f,.086f,.077f);
+    check(std::abs(lean_full[0])<1e-6f && std::abs(lean_full[1]+0.077f)<1e-6f && std::abs(lean_full[2]+0.086f)<1e-6f,
+        "look-down lean offsets wrong at full down");
+    const auto lean_mid=look_down_lean(pose,-42.5f,.086f,.077f);
+    check(std::abs(lean_mid[1]+0.0385f)<1e-6f && std::abs(lean_mid[2]+0.043f)<1e-6f,
+        "look-down lean did not scale with pitch");
     auto body=face_heading(pose,90);check(body[12]==3 && body[13]==4 && body[14]==5 && body[3]==7 && body[7]==8 && body[11]==9,"native motion position/metadata changed");
     CameraTransition handoff;
     Settings transition_settings;transition_settings.enabled=true;

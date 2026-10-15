@@ -10,6 +10,8 @@ struct StickSettings {
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
     bool look_during_parkour=false;
+    bool lean_look_down=true;
+    float lean_forward=0.086f,lean_down=0.077f;
     float mount_smoothing=70,dismount_smoothing=35;
 };
 struct StickAxes { float x{},y{}; };
@@ -21,6 +23,17 @@ inline StickAxes radial_stick(StickAxes input,float deadzone) {
     if(length<=deadzone) return {};
     const float scale=(std::min(length,1.f)-deadzone)/((1-deadzone)*length);
     return {input.x*scale,input.y*scale};
+}
+inline dingosdk::first_person::Vec3 look_down_lean(const dingosdk::first_person::Matrix& pose,float pitch,float forward_max,float down_max) {
+    // Lean at full look-down: forward_max metres ahead, down_max metres down,
+    // scaled linearly from zero at level view. Position-only, orientation untouched.
+    const float fraction=std::max(0.f,-pitch)/85.f;
+    if(fraction<=0.f) return {};
+    const float x=pose[8],z=pose[10];
+    const float length=std::hypot(x,z);
+    if(length<1e-4f) return {};
+    const float forward=forward_max*fraction/length,down=down_max*fraction;
+    return {-x*forward,-down,-z*forward};
 }
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {
