@@ -80,18 +80,8 @@ inline bool right_handed(const dingosdk::first_person::Matrix& m) {
     const float determinant=m[0]*(m[5]*m[10]-m[6]*m[9])+m[1]*(m[6]*m[8]-m[4]*m[10])+m[2]*(m[4]*m[9]-m[5]*m[8]);
     return determinant>0.f;
 }
-inline float vector_heading(const dingosdk::first_person::Vec3& v) {
-    return std::atan2(v[0],v[2])*180.f/std::numbers::pi_v<float>;
-}
-inline bool stance_flipped(float nose_to_view_degrees,bool flipped) {
-    // The body forward is the board's nose: it sits opposite the view in fakie
-    // stance. Hysteresis flips past 120 degrees, restores below 60 and holds
-    // between, so the pitch axis never snaps mid-spin.
-    const float lean=std::abs(nose_to_view_degrees);
-    return lean>120.f ? true:lean<60.f ? false:flipped;
-}
 inline dingosdk::first_person::Matrix aim_board_body_local(dingosdk::first_person::Matrix pose,
-    const StickAim& aim,const dingosdk::first_person::Matrix& body,bool body_valid,bool& fakie) {
+    const StickAim& aim,const dingosdk::first_person::Matrix& body,bool body_valid) {
     if(!aim.active || !body_valid) return pose;
     using namespace dingosdk::first_person;
     // Stick look rotates in the skater body's own axes while the native
@@ -100,16 +90,12 @@ inline dingosdk::first_person::Matrix aim_board_body_local(dingosdk::first_perso
     // The body matrix is a facing frame (Z row forward, X row left); the half
     // turn re-bases it to the camera's right/up/backward axes so positive
     // stick pitch looks up. Yaw shares the up axis and keeps its sense.
-    const auto base=orientation(body);
-    const auto view=orientation(pose);
-    fakie=stance_flipped(wrap_heading(vector_heading(rotate(base,{0,0,1}))-
-        vector_heading(rotate(view,{0,0,-1.f}))),fakie);
+    const auto base=multiply(orientation(body),Quat{0,1,0,0});
     const float yaw=aim.heading*std::numbers::pi_v<float>/360.f;
-    const float pitch=(fakie ? -1.f:1.f)*std::clamp(aim.pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
-    const auto rebased=multiply(base,Quat{0,1,0,0});
+    const float pitch=std::clamp(aim.pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
     const auto look=multiply({0,std::sin(yaw),0,std::cos(yaw)},
                              {std::sin(pitch),0,0,std::cos(pitch)});
-    write(pose,normalized(multiply(multiply(multiply(rebased,look),conjugate(rebased)),view)),
+    write(pose,normalized(multiply(multiply(multiply(base,look),conjugate(base)),orientation(pose))),
         {pose[12],pose[13],pose[14]});
     return pose;
 }

@@ -42,7 +42,5 @@ layered over the untouched native head-driven camera. The controls anchor to
 the player as a whole, so carving banks, ramp pitch and trajectory turns
 carry the look, while the head's animation keeps its native feel and no
 longer shifts what the stick means. Capture and release are seamless: the
-look starts and ends exactly on the native view. The body forward follows
-the board's nose, so fakie stance mirrors the pitch axis automatically;
-hysteresis holds the axis through spins instead of snapping. Bail and
-recovery look remain head-relative as before.
+look starts and ends exactly on the native view. Bail and recovery look
+remain head-relative as before.
