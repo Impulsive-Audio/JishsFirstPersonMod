@@ -75,7 +75,7 @@ inline dingosdk::first_person::Quat track_head_wobble(HeadWobbleState& state,
     };
     state.average_delta=blend(state.average_delta,delta,std::clamp(dt/0.4f,0.f,1.f));
     state.wobble=blend(state.wobble,{0,0,0,1},std::clamp(dt/0.3f,0.f,1.f));
-    if(rotation_angle(delta)<0.7f*dt) {
+    if(rotation_angle(delta)<1.2f*dt) {
         state.wobble=normalized(multiply(state.wobble,multiply(conjugate(state.average_delta),delta)));
         if(const float angle=rotation_angle(state.wobble);angle>0.07f) state.wobble=scale_rotation(state.wobble,0.07f/angle);
     }

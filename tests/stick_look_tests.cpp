@@ -305,12 +305,12 @@ int main() {
     HeadWobbleState bob_wobble;float bob_peak{};
     track_head_wobble(bob_wobble,level,0);
     for(int i=1;i<=180;++i) {
-        const float angle=.03f*std::sin(i*.21f);
+        const float angle=.03f*std::sin(i*.5f);
         const dingosdk::first_person::Quat tilt{std::sin(angle*.5f),0,0,std::cos(angle*.5f)};
         const auto wobble=track_head_wobble(bob_wobble,dingosdk::first_person::multiply(tilt,level),i*.016);
         if(std::abs(wobble[0])>bob_peak) bob_peak=std::abs(wobble[0]);
     }
-    check(bob_peak>.0005f && bob_peak<.1f,"head bob did not pass through the wobble filter");
+    check(bob_peak>.006f && bob_peak<.05f,"head bob did not pass through the wobble filter");
     // Body-referenced extraction returns only the head's deviation from the torso.
     // Quaternion sign is not meaningful for a rotation, so compare via angles.
     const auto facing_body=board_pose(30,0,0);

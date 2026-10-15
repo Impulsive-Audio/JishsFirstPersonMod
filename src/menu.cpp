@@ -444,12 +444,14 @@ void draw_panel_frame(const PanelFrame& frame) {
             const int camera_mode=active_camera_mode.load();
             const auto mode_slider=[&](const char* label,float& value,unsigned axis,int mode) {
                 fit_control(label);
+                ImGui::PushID(mode);
                 if(ImGui::SliderFloat(label,&value,-3,3,"%.3f",ImGuiSliderFlags_AlwaysClamp)) {
                     if(camera_mode==mode) config.spring.offset[axis]=value;
                     Command cmd;cmd.kind=CommandKind::camera_settings;cmd.spring=config.spring;cmd.value=config.fov;
                     cmd.per_mode_offsets=true;cmd.board_offset=config.board_offset;cmd.foot_offset=config.foot_offset;
                     submit_command(cmd);
                 }
+                ImGui::PopID();
             };
             ImGui::TextUnformatted(camera_mode==1 ? "On-foot offset (metres) - current":"On-foot offset (metres)");
             mode_slider("Right",config.foot_offset[0],0,1); mode_slider("Up",config.foot_offset[1],1,1); mode_slider("Forward",config.foot_offset[2],2,1);
