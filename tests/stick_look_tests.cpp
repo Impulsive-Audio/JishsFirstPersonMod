@@ -98,7 +98,16 @@ int main() {
     releaser.update(settings,{},true,1,0,45,-115,spring,0,{0,1});
     releaser.update(settings,{0,.3f},true,1,.016,45,-115,spring,0,{0,1});
     const auto released=releaser.update(settings,{},true,1,.032,45,-115,spring,0,{0,1});
-    check(std::abs(wrap_heading(released.body_heading+135.f))<.001f,"released look did not hand alignment back");
+    releaser.update(settings,{},true,1,.2,45,-115,spring,0,{0,1});
+    const auto settled=releaser.update(settings,{},true,1,.36,45,-115,spring,0,{0,1});
+    check(std::abs(wrap_heading(settled.body_heading+135.f))<.001f,"released look did not hand alignment back");
+    // A held movement stick keeps authority while it sweeps, even slowly.
+    StickLookState sweeper;
+    sweeper.update(settings,{},true,1,0,45,-115,spring,0,{-1,0});
+    sweeper.update(settings,{0,.3f},true,1,.016,45,-115,spring,0,{-1,0});
+    sweeper.update(settings,{},true,1,.032,45,-115,spring,0,{-1,0});
+    const auto swept=sweeper.update(settings,{},true,1,.048,45,-115,spring,0,{-0.9f,0.2f});
+    check(std::abs(swept.heading-45.f)>1.f,"idle look stick did not return movement authority");
     check(!state.update(settings,{},true,2,2.164,0,0,spring).capture ||
         state.update(settings,{},true,2,2.164,0,0,spring).heading==0,"device change retained old view");
     settings.invert_y=true;state.reset();state.update(settings,{},true,1,0,0,0,spring);

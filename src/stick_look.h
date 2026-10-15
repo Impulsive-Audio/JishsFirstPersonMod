@@ -53,6 +53,7 @@ class StickLookState {
     float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},body_bias_{},center_offset_{};
     StickAxes prev_right_{},prev_move_{};
     bool move_authority_{},align_request_{};
+    double look_engaged_{},move_engaged_{},align_start_{};
 public:
     void reset() { *this={}; }
     void recenter_facing(float camera_offset=180.f) { reset();center_facing_=true;center_offset_=camera_offset; }
@@ -87,22 +88,30 @@ public:
         // the other stick delivers new input.
         const auto move_stick=radial_stick(move,settings.deadzone);
         const bool right_was=prev_right_.x!=0 || prev_right_.y!=0;
-        // Authority: the newest stick to change its input steers the follow;
-        // steady holds never re-claim, so analog noise cannot flap control.
-        if(std::hypot(input.x-prev_right_.x,input.y-prev_right_.y)>.15f) move_authority_=false;
-        if(std::hypot(move_stick.x-prev_move_.x,move_stick.y-prev_move_.y)>.15f) move_authority_=true;
-        prev_right_=input;prev_move_=move_stick;
+        // Authority: the stick engaged most recently steers the follow. A held
+        // stick stays engaged while it sweeps, so continuous turning keeps
+        // control; only a new idle-to-active edge re-stamps ownership.
+        const bool looking=input.x!=0 || input.y!=0;
         const bool moving=move_stick.x!=0 || move_stick.y!=0;
+        if(looking && !right_was) look_engaged_=now;
+        if(moving && !(prev_move_.x || prev_move_.y)) move_engaged_=now;
+        if(looking || moving) move_authority_=moving && (!looking || move_engaged_>=look_engaged_);
+        prev_right_=input;prev_move_=move_stick;
         const float stick_angle=moving ? -std::atan2(move_stick.x,move_stick.y)*(180.f/std::numbers::pi_v<float>):0.f;
         // Releasing the look stick while moving hands control to the movement
         // with a full alignment request; a new look input cancels it.
-        if(right_was && !input.x && !input.y && moving) align_request_=true;
+        if(right_was && !input.x && !input.y && moving) { align_request_=true;align_start_=now; }
         if(input.x || input.y) align_request_=false;
         float limit=settings.follow_tolerance;
         bool engaged{};
         if(align_request_ && moving) {
-            limit=0.f;engaged=true;
-        } else if(move_authority_ && moving) {
+            engaged=true;
+            // The alignment eases in over 250 ms so the character swings to
+            // the view instead of snapping.
+            const double t=std::clamp((now-align_start_)/0.25,0.0,1.0);
+            limit=settings.follow_tolerance*(1.f-static_cast<float>(t*t*(3.0-2.0*t)));
+        }
+        if(move_authority_ && moving) {
             if(std::abs(wrap_heading(stick_angle))<30.f) { limit=0.f;engaged=true; }
             else {
                 const float move_vs_view=wrap_heading(body_heading+stick_angle-yaw_-180.f);
