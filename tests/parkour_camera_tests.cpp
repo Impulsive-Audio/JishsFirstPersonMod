@@ -118,7 +118,7 @@ int main() {
     auto climb=stick.update(settings,{1,0},true,1,.032,40,140,immediate);
     check(before.active && climb.active && climb.heading!=before.heading,"parkour transition required neutral or reset aim");
     auto grounded=stick.update(settings,{},true,1,.032,40,170,immediate);
-    check(std::abs(std::abs(wrap_heading(grounded.body_heading-grounded.heading))-145.f)<.01f,"ground re-entry did not cap the follow at tolerance");
+    check(std::abs(std::abs(wrap_heading(grounded.body_heading-grounded.heading))-180.f)<.01f,"ground re-entry did not follow the view");
     stick.seed(settings,1,.048,80,20,170);
     auto resumed=stick.update(settings,{1,0},true,1,.048,0,0,immediate);
     check(resumed.active && resumed.manual && resumed.heading==80 && resumed.pitch==20,"held input could not resume from shown view");

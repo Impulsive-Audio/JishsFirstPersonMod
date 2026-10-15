@@ -38,7 +38,7 @@ int main() {
     check(centered.active && centered.heading==-90 && centered.body_heading==90 && centered.pitch==0,
         "dismount/recovery recenter faces into the body");
     const auto facing=recentered.update(settings,{1,0},true,1,.116,45,90,spring);
-    check(std::abs(wrap_heading(facing.body_heading-90))<.001f,"look within tolerance kept the character facing");
+    check(std::abs(wrap_heading(facing.body_heading-facing.heading-180.f))<.001f,"looking did not turn the character with the view");
     recentered.recenter_facing();
     const auto camera_only=recentered.update(settings,{},true,1,.132,45,90,spring,20);
     check(camera_only.heading==-90 && camera_only.pitch==0,"recenter applied without the mode selector");
@@ -58,8 +58,8 @@ int main() {
     check(bail_centered.active && bail_centered.heading==-90 && bail_centered.body_heading==90 && bail_centered.pitch==0,
         "bail recenter did not reverse camera while preserving character facing");
     const auto bail_turned=bail_center.update(settings,{1,0},true,1,.116,45,90,spring);
-    check(std::abs(wrap_heading(bail_turned.body_heading-90))<.001f,
-        "character lock preserved facing within tolerance");
+    check(std::abs(wrap_heading(bail_turned.body_heading-bail_turned.heading-180.f))<.001f,
+        "bail recenter did not follow the view");
     check(!state.update(settings,{1,0},true,1,0,0,0,spring).active,"held stick armed without neutral");
     check(state.update(settings,{},true,1,.016,0,0,spring).active,"neutral did not arm");
     auto aim=state.update(settings,{1,0},true,1,.116,0,0,spring);
@@ -77,37 +77,17 @@ int main() {
     auto held=state.update(settings,{},true,1,2.016,0,0,spring);check(held.pitch==85,"release recentered analog view");
     state.reset();state.update(settings,{},true,1,2.048,30,10,spring);
     aim=state.update(settings,{1,0},true,1,2.148,30,10,spring);
-    check(std::abs(aim.heading-18)<.001f && std::abs(std::abs(wrap_heading(aim.body_heading-aim.heading))-145.f)<.001f,
-        "follow servo targeted the tolerance boundary");
-    // Movement authority: straight-forward walking aligns the character with the view.
+    check(std::abs(aim.heading-18)<.001f && std::abs(wrap_heading(aim.body_heading-aim.heading-180.f))<.001f,
+        "character did not follow the view while looking");
+    // The left stick is walk input only: moving follows the view, and no stick
+    // direction can steer the character.
     StickLookState walker;
-    const auto aligned=walker.update(settings,{},true,1,0,45,-115,spring,0,{0,1});
-    check(aligned.active && std::abs(wrap_heading(aligned.body_heading+135.f))<.001f,
-        "forward walking did not align the character with the view");
-    // Movement beyond tolerance drags the view toward the movement.
-    const auto dragged=walker.update(settings,{},true,1,.016,45,-115,spring,0,{-1,0});
-    check(std::abs(dragged.heading-46.92f)<.01f,"movement beyond tolerance did not drag the view");
-    // A newer look input takes authority back and suppresses the drag.
-    StickLookState looker;
-    looker.update(settings,{},true,1,0,45,-115,spring,0,{-1,0});
-    const auto look_hold=looker.update(settings,{0,.3f},true,1,.016,45,-115,spring,0,{-1,0});
-    check(std::abs(look_hold.heading-45.f)<.001f && std::abs(wrap_heading(look_hold.body_heading+115.f))<.001f,
-        "newer look input did not take authority from the movement");
-    // Releasing the look stick while moving aligns the character with the left view.
-    StickLookState releaser;
-    releaser.update(settings,{},true,1,0,45,-115,spring,0,{0,1});
-    releaser.update(settings,{0,.3f},true,1,.016,45,-115,spring,0,{0,1});
-    const auto released=releaser.update(settings,{},true,1,.032,45,-115,spring,0,{0,1});
-    releaser.update(settings,{},true,1,.2,45,-115,spring,0,{0,1});
-    const auto settled=releaser.update(settings,{},true,1,.36,45,-115,spring,0,{0,1});
-    check(std::abs(wrap_heading(settled.body_heading+135.f))<.001f,"released look did not hand alignment back");
-    // A held movement stick keeps authority while it sweeps, even slowly.
-    StickLookState sweeper;
-    sweeper.update(settings,{},true,1,0,45,-115,spring,0,{-1,0});
-    sweeper.update(settings,{0,.3f},true,1,.016,45,-115,spring,0,{-1,0});
-    sweeper.update(settings,{},true,1,.032,45,-115,spring,0,{-1,0});
-    const auto swept=sweeper.update(settings,{},true,1,.048,45,-115,spring,0,{-0.9f,0.2f});
-    check(std::abs(swept.heading-45.f)>1.f,"idle look stick did not return movement authority");
+    const auto walk=walker.update(settings,{},true,1,0,45,10,spring,0,{0,1});
+    check(walk.active && walk.manual && std::abs(wrap_heading(walk.body_heading-225.f))<.001f,
+        "walking did not follow the view");
+    const auto sidestep=walker.update(settings,{},true,1,.016,45,10,spring,0,{-1,0});
+    check(std::abs(wrap_heading(sidestep.body_heading-225.f))<.001f,
+        "left stick direction changed the character facing");
     check(!state.update(settings,{},true,2,2.164,0,0,spring).capture ||
         state.update(settings,{},true,2,2.164,0,0,spring).heading==0,"device change retained old view");
     settings.invert_y=true;state.reset();state.update(settings,{},true,1,0,0,0,spring);
@@ -292,9 +272,8 @@ int main() {
     }
     Config config;config.stick=settings;config.stick.deadzone=.22f;
     config.stick.mount_smoothing=82;config.stick.dismount_smoothing=35;config.stick.smooth_transitions=false;
-    config.stick.follow_tolerance=140;
     auto path=data_directory()/"settings.ini";write_config(path,config);const auto reloaded=read_config(path);
-    check(reloaded.stick.enabled && reloaded.stick.follow_tolerance==140 && reloaded.stick.deadzone==.22f,"stick preferences did not persist");
+    check(reloaded.stick.enabled && reloaded.stick.deadzone==.22f,"stick preferences did not persist");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");

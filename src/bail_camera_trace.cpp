@@ -21,7 +21,6 @@ struct Sample {
     Matrix native_pose{},final_pose{},facing{},root{},head{};
     bool lock_hippy_jump{},facing_valid{},head_valid{},saved_spring{},effective_spring{},requested{},active{},
         stick_enabled{},stick_active{},disable_foot{},lock_mount_jump{};
-        float follow_tolerance{};
     float pitch{},yaw{};BailViewInfo view;
     bool settings_changed{},attachment_requested{},camera_eligible{};
     const char* action="none";const char* attachment_reason="none";const char* attachment_status="disabled";
@@ -89,7 +88,7 @@ void record_bail_camera(const Matrix& native_pose,const Matrix& final_pose,const
         sample.saved_spring=config.spring.enabled;sample.requested=stock_first_person_requested();sample.active=stock_first_person_active();
         sample.effective_spring=effective_camera_config(config,sample.requested,state,movement).spring.enabled;
         sample.native_spring=stock_camera_spring_enabled();sample.pitch=pitch;sample.yaw=yaw;
-        sample.stick_enabled=config.stick.enabled;sample.stick_active=aim.active;sample.follow_tolerance=config.stick.follow_tolerance;
+        sample.stick_enabled=config.stick.enabled;sample.stick_active=aim.active;
         sample.lock_hippy_jump=config.stick.lock_hippy_jump;sample.disable_foot=config.disable_spring_on_foot;sample.lock_mount_jump=config.stick.lock_mount_jump;
         if(state.state_valid && state.rig) {
             sample.facing_valid=dingosdk::memory::read(state.rig+0x4720,sample.facing) && dingosdk::valid_flight_transform(sample.facing);
@@ -106,7 +105,7 @@ void flush_bail_camera_trace() noexcept {
         if(batch.empty()) return;
         const auto path=data_directory()/"logs/bail-camera-trace-v11.csv";
         std::filesystem::create_directories(path.parent_path());
-        const std::string_view header="time_ms,event,phase,mode,custom_mode,physics,active_child,child_vtable,state_valid,animation_valid,wipeout_request,animation_wipeout,recovery,bail_latched,selector_valid,selector_current,selector_next,requested,active,saved_spring,effective_spring,native_spring,disable_foot,lock_mount_jump,mounting,jumping,stick_enabled,stick_active,follow_tolerance,look_pitch,look_yaw,native_x,native_y,native_z,native_qx,native_qy,native_qz,native_qw,final_x,final_y,final_z,final_qx,final_qy,final_qz,final_qw,facing_valid,facing_x,facing_y,facing_z,facing_qx,facing_qy,facing_qz,facing_qw,head_valid,root_x,root_y,root_z,root_qx,root_qy,root_qz,root_qw,head_x,head_y,head_z,head_qx,head_qy,head_qz,head_qw,camera_head_distance_m,custom_position_delta_m,custom_angle_delta_deg,dropped,hold_phase,view_blocked,head_attached,offset_calibrated,offset_x,offset_y,offset_z,lock_hippy_jump,hippy_candidate,hippy_active,hippy_rising_samples,hippy_up_speed,reconciling,reconcile_remaining_deg,manual_takeover,facing_eligible\n";
+        const std::string_view header="time_ms,event,phase,mode,custom_mode,physics,active_child,child_vtable,state_valid,animation_valid,wipeout_request,animation_wipeout,recovery,bail_latched,selector_valid,selector_current,selector_next,requested,active,saved_spring,effective_spring,native_spring,disable_foot,lock_mount_jump,mounting,jumping,stick_enabled,stick_active,look_pitch,look_yaw,native_x,native_y,native_z,native_qx,native_qy,native_qz,native_qw,final_x,final_y,final_z,final_qx,final_qy,final_qz,final_qw,facing_valid,facing_x,facing_y,facing_z,facing_qx,facing_qy,facing_qz,facing_qw,head_valid,root_x,root_y,root_z,root_qx,root_qy,root_qz,root_qw,head_x,head_y,head_z,head_qx,head_qy,head_qz,head_qw,camera_head_distance_m,custom_position_delta_m,custom_angle_delta_deg,dropped,hold_phase,view_blocked,head_attached,offset_calibrated,offset_x,offset_y,offset_z,lock_hippy_jump,hippy_candidate,hippy_active,hippy_rising_samples,hippy_up_speed,reconciling,reconcile_remaining_deg,manual_takeover,facing_eligible\n";
         std::string extended_header(header);extended_header.pop_back();
         extended_header+=",settings_revision,settings_changed,detected_action,attachment_reason,attachment_requested,camera_eligible,attachment_status,native_child,episode_type,episode_reset_reason,bail_view_phase,recovery_verified,recovery_controllable,recovery_flags,recovery_motion_override,head_target_qx,head_target_qy,head_target_qz,head_target_qw,recovery_look_yaw,recovery_look_pitch,getup_requested,getup_locked,getup_camera_phase,getup_blend_progress,head_target_x,head_target_y,head_target_z,body_flip_tilt,body_flip_rate,body_flip_phase,body_flip_head_lock\n";
         std::ostringstream out;
@@ -117,7 +116,7 @@ void flush_bail_camera_trace() noexcept {
                 <<','<<o.state_valid<<','<<o.animation_valid<<','<<o.wipeout_request<<','<<o.animation_wipeout<<','<<o.recovery<<','<<o.bailing
                 <<','<<o.selector_valid<<','<<o.selector_current<<','<<o.selector_next<<','<<s.requested<<','<<s.active
                 <<','<<s.saved_spring<<','<<s.effective_spring<<','<<s.native_spring<<','<<s.disable_foot<<','<<s.lock_mount_jump
-                <<','<<m.mounting<<','<<m.jumping<<','<<s.stick_enabled<<','<<s.stick_active<<','<<s.follow_tolerance<<','<<s.pitch<<','<<s.yaw;
+                <<','<<m.mounting<<','<<m.jumping<<','<<s.stick_enabled<<','<<s.stick_active<<','<<s.pitch<<','<<s.yaw;
             matrix_fields(out,s.native_pose);matrix_fields(out,s.final_pose);
             out<<','<<s.facing_valid;matrix_fields(out,s.facing);
             out<<','<<s.head_valid;matrix_fields(out,s.root);matrix_fields(out,s.head);

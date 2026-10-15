@@ -5,7 +5,7 @@
 namespace jishsfirstpersonmod {
 struct StickSettings {
     bool enabled{},invert_y{};
-    float yaw_speed=120,pitch_speed=90,deadzone=.15f,follow_tolerance=35;
+    float yaw_speed=120,pitch_speed=90,deadzone=.15f;
     bool smooth_transitions=true;
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
@@ -50,10 +50,7 @@ class StickLookState {
     bool ready_{},seen_{},center_facing_{};
     unsigned device_{};
     double time_{};
-    float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},body_bias_{},center_offset_{};
-    StickAxes prev_right_{},prev_move_{};
-    bool move_authority_{},align_request_{};
-    double look_engaged_{},move_engaged_{},align_start_{};
+    float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},center_offset_{};
 public:
     void reset() { *this={}; }
     void recenter_facing(float camera_offset=180.f) { reset();center_facing_=true;center_offset_=camera_offset; }
@@ -81,51 +78,11 @@ public:
         // Match the proven glance conventions: +Y looks up, +X looks right.
         yaw_=wrap_heading(yaw_-input.x*settings.yaw_speed*dt);
         pitch_=std::clamp(pitch_+input.y*settings.pitch_speed*dt*(settings.invert_y ? -1.f:1.f),-85.f,85.f);
-        // The newest active input steers the follow servo. Look authority runs
-        // the plain tolerance; move authority aligns the character with the
-        // view on straight-forward walking and drags the view toward movement
-        // that leaves the tolerance. Held sticks keep their authority until
-        // the other stick delivers new input.
+        // The left stick is walk input only: moving follows the view, so the
+        // character always faces the camera heading and the native drive
+        // supplies the speed. The look stick owns the camera.
         const auto move_stick=radial_stick(move,settings.deadzone);
-        const bool right_was=prev_right_.x!=0 || prev_right_.y!=0;
-        // Authority: the stick engaged most recently steers the follow. A held
-        // stick stays engaged while it sweeps, so continuous turning keeps
-        // control; only a new idle-to-active edge re-stamps ownership.
-        const bool looking=input.x!=0 || input.y!=0;
         const bool moving=move_stick.x!=0 || move_stick.y!=0;
-        if(looking && !right_was) look_engaged_=now;
-        if(moving && !(prev_move_.x || prev_move_.y)) move_engaged_=now;
-        if(looking || moving) move_authority_=moving && (!looking || move_engaged_>=look_engaged_);
-        prev_right_=input;prev_move_=move_stick;
-        const float stick_angle=moving ? -std::atan2(move_stick.x,move_stick.y)*(180.f/std::numbers::pi_v<float>):0.f;
-        // Releasing the look stick while moving hands control to the movement
-        // with a full alignment request; a new look input cancels it.
-        if(right_was && !input.x && !input.y && moving) { align_request_=true;align_start_=now; }
-        if(input.x || input.y) align_request_=false;
-        float limit=settings.follow_tolerance;
-        bool engaged{};
-        if(align_request_ && moving) {
-            engaged=true;
-            // The alignment eases in over 250 ms so the character swings to
-            // the view instead of snapping.
-            const double t=std::clamp((now-align_start_)/0.25,0.0,1.0);
-            limit=settings.follow_tolerance*(1.f-static_cast<float>(t*t*(3.0-2.0*t)));
-        }
-        if(move_authority_ && moving) {
-            if(std::abs(wrap_heading(stick_angle))<30.f) { limit=0.f;engaged=true; }
-            else {
-                const float move_vs_view=wrap_heading(body_heading+stick_angle-yaw_-180.f);
-                const float excess=std::abs(move_vs_view)-limit;
-                if(excess>0.f) {
-                    engaged=true;
-                    // Proportional drag: the rate ramps with the excess so the
-                    // engage is smooth instead of toggling at the tolerance edge.
-                    const float rate=settings.yaw_speed*std::min(1.f,.25f+excess/45.f);
-                    const float drag=wrap_heading(body_heading+stick_angle-180.f-yaw_);
-                    yaw_=wrap_heading(yaw_+std::clamp(drag,-rate*dt,rate*dt));
-                }
-            }
-        }
         if(!spring.enabled) { smooth_yaw_=yaw_;smooth_pitch_=pitch_;yaw_velocity_=pitch_velocity_=0; }
         else {
             float yaw_error=wrap_heading(smooth_yaw_-yaw_),pitch_error=smooth_pitch_-pitch_;
@@ -133,14 +90,8 @@ public:
             dingosdk::first_person::damp(pitch_error,pitch_velocity_,pitch_error>0 ? spring.down:spring.up,dt);
             smooth_yaw_=wrap_heading(yaw_+yaw_error);smooth_pitch_=pitch_+pitch_error;
         }
-        // The follow servo keeps the character's facing within the tolerance of
-        // the view direction; the native turn animation provides the rate. Zero
-        // deviation keeps the current facing, past it the body target rides the
-        // tolerance boundary until the look re-centers or the tolerance expands.
-        const float deviation=wrap_heading(body_heading-smooth_yaw_-180.f);
-        if(align_request_ && moving && std::abs(deviation)<3.f) align_request_=false;
-        body_bias_=wrap_heading(180.f+std::clamp(deviation,-limit,limit));
-        return {true,true,smooth_yaw_,smooth_pitch_,wrap_heading(smooth_yaw_+body_bias_),input.x!=0 || input.y!=0 || engaged};
+        // The character faces the view; the left stick only supplies movement.
+        return {true,true,smooth_yaw_,smooth_pitch_,wrap_heading(smooth_yaw_+180.f),input.x!=0 || input.y!=0 || moving};
     }
 };
 inline float matrix_heading(const dingosdk::first_person::Matrix& matrix) {

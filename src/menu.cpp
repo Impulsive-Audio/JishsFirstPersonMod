@@ -491,11 +491,6 @@ void draw_panel_frame(const PanelFrame& frame) {
         ImGui::EndDisabled();
         if(!stick_runtime_ready()) ImGui::TextWrapped("Right-stick look is unavailable. See the mod log.");
         ImGui::BeginDisabled(!config.stick.enabled);
-        ImGui::BeginDisabled(config.look_only);
-        fit_control("Character follow tolerance");
-        if(ImGui::SliderFloat("Character follow tolerance",&config.stick.follow_tolerance,0,180,"%.0f degrees",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        help_marker("How far you can look away from where your skater faces before the skater turns along with the camera. 180 always turns the skater with the view.");
-        ImGui::EndDisabled();
         fit_control("Horizontal sensitivity");
         if(ImGui::SliderFloat("Horizontal sensitivity",&config.stick.yaw_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         fit_control("Vertical sensitivity");
