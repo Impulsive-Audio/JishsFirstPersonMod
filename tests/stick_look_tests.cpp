@@ -106,7 +106,7 @@ int main() {
         for(unsigned axis:{0u,4u,8u}) check(std::abs(length({level[axis],level[axis+1],level[axis+2]})-1)<.00001f,"camera basis lost normalization");
     }
 
-    // On-board look yaws about world up and pitches about the view.
+    // On-board look rotates in the skater body's axes over the native camera.
     const auto board_pose=[&](float heading,float pitch,float roll) {
         constexpr float half=std::numbers::pi_v<float>/360.f;
         Matrix result=pose;
@@ -114,33 +114,54 @@ int main() {
             {std::sin(pitch*half),0,0,std::cos(pitch*half)}),{0,0,std::sin(roll*half),std::cos(roll*half)}),{3,4,5});
         return result;
     };
-    const auto spec_board=[&](const Matrix& base,float heading,float pitch) {
+    const auto close=[](const dingosdk::first_person::Matrix& a,const dingosdk::first_person::Matrix& b) {
+        for(unsigned i=0;i<16;++i) if(std::abs(a[i]-b[i])>=.00001f) return false;
+        return true;
+    };
+    const auto spec_board=[&](const Matrix& view,const Matrix& body,float heading,float pitch) {
         const float yaw=heading*std::numbers::pi_v<float>/360.f;
         const float clamped=std::clamp(pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
-        Matrix result=base;
-        write(result,normalized(multiply(multiply({0,std::sin(yaw),0,std::cos(yaw)},orientation(base)),
-            {std::sin(clamped),0,0,std::cos(clamped)})),{base[12],base[13],base[14]});
+        const auto base=orientation(body);
+        const auto look=multiply({0,std::sin(yaw),0,std::cos(yaw)},{std::sin(clamped),0,0,std::cos(clamped)});
+        Matrix result=view;
+        write(result,normalized(multiply(multiply(multiply(base,look),conjugate(base)),orientation(view))),
+            {view[12],view[13],view[14]});
         return result;
     };
     const auto crouch=board_pose(25,30,20);
-    for(float pitch:{-85.f,0.f,35.f,85.f}) for(float heading:{-170.f,-90.f,0.f,70.f,170.f}) {
-        check(aim_board_world_yaw(crouch,{true,true,heading,pitch,0})==
-            spec_board(crouch,heading,pitch),"board look composition changed");
-    }
-    for(float pitch:{-120.f,120.f}) {
-        check(aim_board_world_yaw(crouch,{true,true,0,pitch,0})==
-            spec_board(crouch,0,pitch),"board pitch did not clamp");
-    }
-    const auto carve=aim_board_world_yaw(crouch,{true,true,-15,0,0});
-    check(std::abs(carve[9]-crouch[9])<.000001f,"board look gained vertical travel from riding tilt");
-    check(carve[12]==3 && carve[13]==4 && carve[14]==5 && carve[3]==7 && carve[7]==8 && carve[11]==9,"board look changed native position/metadata");
-    const auto ramp30=aim_board_world_yaw(board_pose(25,30,0),{true,true,-15,0,0});
-    const auto ramp20=aim_board_world_yaw(board_pose(25,20,0),{true,true,-15,0,0});
-    check(std::abs((ramp20[9]-ramp30[9])-(std::sin(30*std::numbers::pi_v<float>/180.f)-std::sin(20*std::numbers::pi_v<float>/180.f)))<.001f,
-        "board look stopped following the head's pitch");
-    const auto upward=aim_board_world_yaw(pose,{true,true,0,35,0});
-    check(std::abs(upward[9]+std::sin(35*std::numbers::pi_v<float>/180.f))<.00001f,"board pitch did not look up with the stick");
-    check(aim_board_world_yaw(crouch,{})==crouch,"inactive board look changed the camera");
+    const auto head_view=board_pose(-40,15,-5);
+    check(right_handed(pose) && right_handed(crouch),"proper frame reported mirrored");
+    Matrix mirrored=pose;mirrored[0]=-mirrored[0];mirrored[1]=-mirrored[1];mirrored[2]=-mirrored[2];
+    check(!right_handed(mirrored),"mirrored frame passed the handedness check");
+    const std::array<dingosdk::first_person::Matrix,2> bodies{pose,crouch};
+    for(const auto& body:bodies) for(float pitch:{-85.f,0.f,35.f,85.f})
+        for(float heading:{-170.f,-90.f,0.f,70.f,170.f})
+            check(aim_board_body_local(head_view,{true,true,heading,pitch,0},body,true)==
+                spec_board(head_view,body,heading,pitch),"board look composition changed");
+    const auto wall=board_pose(0,80,10);
+    check(aim_board_body_local(head_view,{true,true,70,35,0},wall,true)==
+        spec_board(head_view,wall,70,35),"steep body look composition changed");
+    for(float pitch:{-120.f,120.f})
+        check(aim_board_body_local(head_view,{true,true,0,pitch,0},crouch,true)==
+            spec_board(head_view,crouch,0,pitch),"board pitch did not clamp");
+    const auto capture=aim_board_body_local(head_view,{true,true,0,0,0},crouch,true);
+    check(close(capture,head_view),"body look moved the camera at capture");
+    check(capture[12]==3 && capture[13]==4 && capture[14]==5 && capture[3]==7 && capture[7]==8 && capture[11]==9,
+        "body look changed native position/metadata");
+    const auto body25=aim_board_body_local(head_view,{true,true,-15,0,0},board_pose(25,30,20),true);
+    constexpr float half_turn=40.f*std::numbers::pi_v<float>/360.f;
+    Matrix moved_view=head_view;
+    write(moved_view,multiply({0,std::sin(half_turn),0,std::cos(half_turn)},orientation(head_view)),
+        {head_view[12],head_view[13],head_view[14]});
+    const auto body65=aim_board_body_local(moved_view,{true,true,-15,0,0},board_pose(65,30,20),true);
+    check(std::abs(wrap_heading(matrix_heading(body65)-matrix_heading(body25))-40)<.001f,
+        "body look did not follow the body's heading");
+    const auto rolled=aim_board_body_local(pose,{true,true,0,35,0},board_pose(0,0,90),true);
+    check(std::abs(wrap_heading(matrix_heading(rolled))-35)<.001f && std::abs(rolled[9])<.00001f,
+        "board pitch ignored the body's rolled right axis");
+    check(aim_board_body_local(head_view,{true,true,-15,0,0},crouch,false)==head_view,
+        "invalid body frame changed the camera");
+    check(aim_board_body_local(head_view,{},{},false)==head_view,"inactive board look changed the camera");
     auto body=face_heading(pose,90);check(body[12]==3 && body[13]==4 && body[14]==5 && body[3]==7 && body[7]==8 && body[11]==9,"native motion position/metadata changed");
     CameraTransition handoff;
     Settings transition_settings;transition_settings.enabled=true;

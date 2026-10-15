@@ -126,6 +126,7 @@ CameraMovementSample live_camera_movement() {
         CameraMovementSample result;
         result.mode=offboard ? 1:2;result.custom_mode=camera_movement_mode(true,offboard,parent,active,vtable,game_base,physics);
         result.position_valid=body_valid;result.position={body[12],body[13],body[14]};
+        result.body=body;result.body_matrix_valid=body_valid&&right_handed(body);
         result.non_bail=non_bail;result.bail_recovery=bail_recovery;result.mounting=mounting;
         result.recovery_verified=verified_control;result.recovery_flags=control_flags;result.recovery_override=motion_override!=0;
         result.recovery_controllable=verified_control && bail_recovery_contract::controllable(ground_child,control_flags,

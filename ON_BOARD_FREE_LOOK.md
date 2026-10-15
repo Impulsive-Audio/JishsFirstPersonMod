@@ -37,8 +37,10 @@ previous re-press behavior. Lifecycle/camera ownership resets still take priorit
 The toggle and all board settings save/load with personal camera presets;
 menu keyboard/controller shortcuts remain global.
 
-While on-board free look is held, horizontal stick look rotates about the
-world vertical axis, so it stays horizontal through crouches, pumps, ramps
-and carve banking. Vertical stick look stays relative to the current view,
-and the camera keeps following the head's own pitch and roll. Bail and
-recovery look remain head-relative as before.
+On-board free look now rotates the stick look in the skater body's own axes,
+layered over the untouched native head-driven camera. The controls anchor to
+the player as a whole, so carving banks, ramp pitch and trajectory turns
+carry the look, while the head's animation keeps its native feel and no
+longer shifts what the stick means. Capture and release are seamless: the
+look starts and ends exactly on the native view. Bail and recovery look
+remain head-relative as before.
