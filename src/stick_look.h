@@ -40,8 +40,7 @@ inline dingosdk::first_person::Vec3 yaw_anchored_position(const dingosdk::first_
     // Camera position anchored to the head with the offset rotated by the
     // head's yaw only: head pitch and roll must not swing the calibrated
     // offset around the head during steep looks.
-    const auto rotation=dingosdk::first_person::orientation(head);
-    const float yaw=std::atan2(rotation[8],rotation[10]);
+    const float yaw=std::atan2(head[8],head[10]);
     const float half=yaw*0.5f;
     return dingosdk::first_person::add({head[12],head[13],head[14]},
         dingosdk::first_person::rotate(dingosdk::first_person::Quat{0,std::sin(half),0,std::cos(half)},offset));
@@ -52,6 +51,8 @@ class StickLookState {
     unsigned device_{};
     double time_{};
     float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},body_bias_{},center_offset_{};
+    StickAxes prev_right_{},prev_move_{};
+    bool move_authority_{};
 public:
     void reset() { *this={}; }
     void recenter_facing(float camera_offset=180.f) { reset();center_facing_=true;center_offset_=camera_offset; }
@@ -61,7 +62,7 @@ public:
     }
     StickAim update(const StickSettings& settings,StickAxes axes,bool eligible,unsigned device,
                     double now,float camera_heading,float body_heading,
-                    const dingosdk::first_person::Settings& spring,float camera_pitch=0) {
+                    const dingosdk::first_person::Settings& spring,float camera_pitch=0,StickAxes move={}) {
         if(!settings.enabled || !eligible || !device || !std::isfinite(now)) { reset();return {}; }
         if(!seen_ || device_!=device || now<time_ || now-time_>.25) {
             const bool center=center_facing_;const float offset=center_offset_;
@@ -79,6 +80,27 @@ public:
         // Match the proven glance conventions: +Y looks up, +X looks right.
         yaw_=wrap_heading(yaw_-input.x*settings.yaw_speed*dt);
         pitch_=std::clamp(pitch_+input.y*settings.pitch_speed*dt*(settings.invert_y ? -1.f:1.f),-85.f,85.f);
+        // The newest active input steers the follow servo. Look authority runs
+        // the plain tolerance; move authority aligns the character with the
+        // view on straight-forward walking and drags the view toward movement
+        // that leaves the tolerance. Held sticks keep their authority until
+        // the other stick delivers new input.
+        const auto move_stick=radial_stick(move,settings.deadzone);
+        if(std::hypot(input.x-prev_right_.x,input.y-prev_right_.y)>.08f) move_authority_=false;
+        if(std::hypot(move_stick.x-prev_move_.x,move_stick.y-prev_move_.y)>.08f) move_authority_=true;
+        prev_right_=input;prev_move_=move_stick;
+        const bool moving=move_stick.x!=0 || move_stick.y!=0;
+        const float stick_angle=moving ? -std::atan2(move_stick.x,move_stick.y)*(180.f/std::numbers::pi_v<float>):0.f;
+        float limit=settings.follow_tolerance;
+        bool engaged{};
+        if(move_authority_ && moving) {
+            if(std::abs(wrap_heading(stick_angle))<30.f) { limit=0.f;engaged=true; }
+            else if(const float move_vs_view=wrap_heading(body_heading+stick_angle-yaw_-180.f);std::abs(move_vs_view)>limit) {
+                engaged=true;
+                const float drag=wrap_heading(body_heading+stick_angle-180.f-yaw_);
+                yaw_=wrap_heading(yaw_+std::clamp(drag,-settings.yaw_speed*dt,settings.yaw_speed*dt));
+            }
+        }
         if(!spring.enabled) { smooth_yaw_=yaw_;smooth_pitch_=pitch_;yaw_velocity_=pitch_velocity_=0; }
         else {
             float yaw_error=wrap_heading(smooth_yaw_-yaw_),pitch_error=smooth_pitch_-pitch_;
@@ -91,8 +113,8 @@ public:
         // deviation keeps the current facing, past it the body target rides the
         // tolerance boundary until the look re-centers or the tolerance expands.
         const float deviation=wrap_heading(body_heading-smooth_yaw_-180.f);
-        body_bias_=wrap_heading(180.f+std::clamp(deviation,-settings.follow_tolerance,settings.follow_tolerance));
-        return {true,true,smooth_yaw_,smooth_pitch_,wrap_heading(smooth_yaw_+body_bias_),input.x!=0 || input.y!=0};
+        body_bias_=wrap_heading(180.f+std::clamp(deviation,-limit,limit));
+        return {true,true,smooth_yaw_,smooth_pitch_,wrap_heading(smooth_yaw_+body_bias_),input.x!=0 || input.y!=0 || engaged};
     }
 };
 inline float matrix_heading(const dingosdk::first_person::Matrix& matrix) {

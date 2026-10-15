@@ -79,6 +79,20 @@ int main() {
     aim=state.update(settings,{1,0},true,1,2.148,30,10,spring);
     check(std::abs(aim.heading-18)<.001f && std::abs(std::abs(wrap_heading(aim.body_heading-aim.heading))-145.f)<.001f,
         "follow servo targeted the tolerance boundary");
+    // Movement authority: straight-forward walking aligns the character with the view.
+    StickLookState walker;
+    const auto aligned=walker.update(settings,{},true,1,0,45,-115,spring,0,{0,1});
+    check(aligned.active && std::abs(wrap_heading(aligned.body_heading+135.f))<.001f,
+        "forward walking did not align the character with the view");
+    // Movement beyond tolerance drags the view toward the movement.
+    const auto dragged=walker.update(settings,{},true,1,.016,45,-115,spring,0,{-1,0});
+    check(std::abs(dragged.heading-46.92f)<.01f,"movement beyond tolerance did not drag the view");
+    // A newer look input takes authority back and suppresses the drag.
+    StickLookState looker;
+    looker.update(settings,{},true,1,0,45,-115,spring,0,{-1,0});
+    const auto look_hold=looker.update(settings,{0,.3f},true,1,.016,45,-115,spring,0,{-1,0});
+    check(std::abs(look_hold.heading-45.f)<.001f && std::abs(wrap_heading(look_hold.body_heading+115.f))<.001f,
+        "newer look input did not take authority from the movement");
     check(!state.update(settings,{},true,2,2.164,0,0,spring).capture ||
         state.update(settings,{},true,2,2.164,0,0,spring).heading==0,"device change retained old view");
     settings.invert_y=true;state.reset();state.update(settings,{},true,1,0,0,0,spring);
@@ -200,12 +214,13 @@ int main() {
     const auto lean_mid=look_down_lean(pose,-42.5f,.086f,.077f);
     check(std::abs(lean_mid[1]+0.0385f)<1e-6f && std::abs(lean_mid[2]+0.043f)<1e-6f,
         "look-down lean did not scale with pitch");
-    // The yaw-anchored head position keeps the calibrated offset level-relative.
+    // The yaw-anchored head position keeps the calibrated offset level-relative:
+    // a pitched head and a level head with the same yaw must anchor identically.
     const Matrix pitched_head=board_pose(0,-80,0);
+    const Matrix level_head=board_pose(0,0,0);
     const dingosdk::first_person::Vec3 anchor_offset{0.f,0.05f,-0.084f};
-    const auto anchored=yaw_anchored_position(pitched_head,anchor_offset);
-    check(std::abs(anchored[0]-pitched_head[12])<1e-6f && std::abs(anchored[1]-(pitched_head[13]+0.05f))<1e-6f &&
-        std::abs(anchored[2]-(pitched_head[14]-0.084f))<1e-6f,"yaw anchor rotated the offset with head pitch");
+    check(yaw_anchored_position(pitched_head,anchor_offset)==yaw_anchored_position(level_head,anchor_offset),
+        "yaw anchor swung the offset with head pitch");
     auto body=face_heading(pose,90);check(body[12]==3 && body[13]==4 && body[14]==5 && body[3]==7 && body[7]==8 && body[11]==9,"native motion position/metadata changed");
     CameraTransition handoff;
     Settings transition_settings;transition_settings.enabled=true;

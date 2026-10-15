@@ -240,7 +240,7 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
         log("On-foot look: recentering after board/bail handoff; waiting for neutral stick.");
     }
     auto aim=look.update(config.stick,{input.right_x,input.right_y},true,input.device,time,recovery ? 0:native_heading,
-        recovery ? 0:body_heading,effective.stick_spring,recovery ? 0:displayed_pitch);
+        recovery ? 0:body_heading,effective.stick_spring,recovery ? 0:displayed_pitch,{input.left_x,input.left_y});
     request={owner,aim,turn,input.device,time,body_heading,head.valid,recovery};
 }
 bool attach_stick_runtime(std::uintptr_t base) {
