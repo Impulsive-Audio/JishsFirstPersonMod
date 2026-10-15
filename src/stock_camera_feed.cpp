@@ -202,7 +202,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         if(owns_return || flip_owned) transition.reset();
                         else matrix=transition.apply(matrix,handoff,state.core,movement.mode,aim.active,frame,movement.state,
                             &config.spring,&look_settings,attached,eligible,!eligible,mount_handoff,
-                            !config.look_only && config.stick.enabled && config.stick.turn_character);
+                            camera_handoff_direction_only(config));
                         const auto flip_target=body_flip::head_target(head.head,config.spring);
                         matrix=flip_camera.apply(matrix,flip_target,flip,frame);
                         view=bail_view.info();

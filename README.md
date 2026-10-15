@@ -1,4 +1,4 @@
-# Jish's First Person Mod 1.33
+# Jish's First Person Mod 1.33.2
 
 Includes modifier-held on-board right-stick free look and a controller-navigable settings panel. Insert opens both settings menus. F9 hides or shows the first-person panel inside Insert. Standalone opening is disabled. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
 

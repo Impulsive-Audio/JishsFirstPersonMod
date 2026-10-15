@@ -4,6 +4,11 @@
 #include "player_state_contract.h"
 #include <string_view>
 namespace jishsfirstpersonmod {
+inline bool camera_handoff_direction_only(const Config& config) {
+    // Both look modes retain the composed head position; turning the character
+    // changes facing ownership, never positional attachment.
+    return !config.look_only && config.stick.enabled;
+}
 inline bool bail_camera_locked(const ComfortSnapshot& state,const CameraMovementSample& movement) {
     return movement.bail_recovery || (state.state_valid && (state.bailing || state.recovery ||
         state.wipeout_request || state.animation_wipeout || state.physics==player_state_contract::wipeout));

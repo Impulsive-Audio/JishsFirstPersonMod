@@ -1,4 +1,6 @@
 #include "camera_transition.h"
+#include "camera_policy.h"
+#undef near
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -177,16 +179,19 @@ int main() {
     const auto before_rearm=rearming.apply(locked,transition_settings,1,1,false,.016,special,&no_look,&no_look);
     check(near(rearming.apply(resumed,transition_settings,1,1,true,.016,normal_foot,&no_look,&no_look),before_rearm),
         "new character-lock target snapped during dismount smoothing");
-    // Character-lock smoothing must not add a positional residual to the
+    // Both look modes must keep the composed head position. Turning the
+    // character changes facing ownership, never positional attachment.
+    // Camera smoothing must not add a positional residual to the
     // already configured camera/head target, including during mount locks.
-    for(const float strength:{10.f,90.f}) {
+    for(const bool turn_character:{false,true}) for(const float strength:{10.f,90.f}) {
         CameraTransition head_locked;Settings cfg=handoff;cfg.enabled=true;
+        Config camera;camera.stick.enabled=true;camera.stick.turn_character=turn_character;
         cfg.up=cfg.down=cfg.left=cfg.right=strength;
         auto apply_head=[&](Matrix pose,int mode,double time,bool mounting,bool stick,auto state) {
             const auto result=head_locked.apply(pose,cfg,1,mode,stick,time,state,&spring,&look,
-                mounting,true,false,mounting,true);
+                mounting,true,false,mounting,camera_handoff_direction_only(camera));
             for(unsigned axis=12;axis<=14;++axis)
-                check(std::abs(result[axis]-pose[axis])<.00001f,"character-lock smoothing displaced configured head position");
+                check(std::abs(result[axis]-pose[axis])<.00001f,"look-mode smoothing displaced configured head position");
             return result;
         };
         apply_head(base,1,0,false,true,normal_foot);
