@@ -52,7 +52,7 @@ class StickLookState {
     double time_{};
     float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},body_bias_{},center_offset_{};
     StickAxes prev_right_{},prev_move_{};
-    bool move_authority_{};
+    bool move_authority_{},align_request_{};
 public:
     void reset() { *this={}; }
     void recenter_facing(float camera_offset=180.f) { reset();center_facing_=true;center_offset_=camera_offset; }
@@ -86,19 +86,35 @@ public:
         // that leaves the tolerance. Held sticks keep their authority until
         // the other stick delivers new input.
         const auto move_stick=radial_stick(move,settings.deadzone);
-        if(std::hypot(input.x-prev_right_.x,input.y-prev_right_.y)>.08f) move_authority_=false;
-        if(std::hypot(move_stick.x-prev_move_.x,move_stick.y-prev_move_.y)>.08f) move_authority_=true;
+        const bool right_was=prev_right_.x!=0 || prev_right_.y!=0;
+        // Authority: the newest stick to change its input steers the follow;
+        // steady holds never re-claim, so analog noise cannot flap control.
+        if(std::hypot(input.x-prev_right_.x,input.y-prev_right_.y)>.15f) move_authority_=false;
+        if(std::hypot(move_stick.x-prev_move_.x,move_stick.y-prev_move_.y)>.15f) move_authority_=true;
         prev_right_=input;prev_move_=move_stick;
         const bool moving=move_stick.x!=0 || move_stick.y!=0;
         const float stick_angle=moving ? -std::atan2(move_stick.x,move_stick.y)*(180.f/std::numbers::pi_v<float>):0.f;
+        // Releasing the look stick while moving hands control to the movement
+        // with a full alignment request; a new look input cancels it.
+        if(right_was && !input.x && !input.y && moving) align_request_=true;
+        if(input.x || input.y) align_request_=false;
         float limit=settings.follow_tolerance;
         bool engaged{};
-        if(move_authority_ && moving) {
+        if(align_request_ && moving) {
+            limit=0.f;engaged=true;
+        } else if(move_authority_ && moving) {
             if(std::abs(wrap_heading(stick_angle))<30.f) { limit=0.f;engaged=true; }
-            else if(const float move_vs_view=wrap_heading(body_heading+stick_angle-yaw_-180.f);std::abs(move_vs_view)>limit) {
-                engaged=true;
-                const float drag=wrap_heading(body_heading+stick_angle-180.f-yaw_);
-                yaw_=wrap_heading(yaw_+std::clamp(drag,-settings.yaw_speed*dt,settings.yaw_speed*dt));
+            else {
+                const float move_vs_view=wrap_heading(body_heading+stick_angle-yaw_-180.f);
+                const float excess=std::abs(move_vs_view)-limit;
+                if(excess>0.f) {
+                    engaged=true;
+                    // Proportional drag: the rate ramps with the excess so the
+                    // engage is smooth instead of toggling at the tolerance edge.
+                    const float rate=settings.yaw_speed*std::min(1.f,.25f+excess/45.f);
+                    const float drag=wrap_heading(body_heading+stick_angle-180.f-yaw_);
+                    yaw_=wrap_heading(yaw_+std::clamp(drag,-rate*dt,rate*dt));
+                }
             }
         }
         if(!spring.enabled) { smooth_yaw_=yaw_;smooth_pitch_=pitch_;yaw_velocity_=pitch_velocity_=0; }
@@ -113,6 +129,7 @@ public:
         // deviation keeps the current facing, past it the body target rides the
         // tolerance boundary until the look re-centers or the tolerance expands.
         const float deviation=wrap_heading(body_heading-smooth_yaw_-180.f);
+        if(align_request_ && moving && std::abs(deviation)<3.f) align_request_=false;
         body_bias_=wrap_heading(180.f+std::clamp(deviation,-limit,limit));
         return {true,true,smooth_yaw_,smooth_pitch_,wrap_heading(smooth_yaw_+body_bias_),input.x!=0 || input.y!=0 || engaged};
     }

@@ -93,6 +93,12 @@ int main() {
     const auto look_hold=looker.update(settings,{0,.3f},true,1,.016,45,-115,spring,0,{-1,0});
     check(std::abs(look_hold.heading-45.f)<.001f && std::abs(wrap_heading(look_hold.body_heading+115.f))<.001f,
         "newer look input did not take authority from the movement");
+    // Releasing the look stick while moving aligns the character with the left view.
+    StickLookState releaser;
+    releaser.update(settings,{},true,1,0,45,-115,spring,0,{0,1});
+    releaser.update(settings,{0,.3f},true,1,.016,45,-115,spring,0,{0,1});
+    const auto released=releaser.update(settings,{},true,1,.032,45,-115,spring,0,{0,1});
+    check(std::abs(wrap_heading(released.body_heading+135.f))<.001f,"released look did not hand alignment back");
     check(!state.update(settings,{},true,2,2.164,0,0,spring).capture ||
         state.update(settings,{},true,2,2.164,0,0,spring).heading==0,"device change retained old view");
     settings.invert_y=true;state.reset();state.update(settings,{},true,1,0,0,0,spring);
