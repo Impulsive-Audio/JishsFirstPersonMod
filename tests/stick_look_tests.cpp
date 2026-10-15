@@ -107,11 +107,12 @@ int main() {
     }
 
     // On-board look rotates in the skater body's axes over the native camera.
+    // Skater body matrices are facing frames: Z row forward, X row left.
     const auto board_pose=[&](float heading,float pitch,float roll) {
         constexpr float half=std::numbers::pi_v<float>/360.f;
         Matrix result=pose;
-        write(result,multiply(multiply({0,std::sin(heading*half),0,std::cos(heading*half)},
-            {std::sin(pitch*half),0,0,std::cos(pitch*half)}),{0,0,std::sin(roll*half),std::cos(roll*half)}),{3,4,5});
+        write(result,multiply(multiply(multiply({0,std::sin(heading*half),0,std::cos(heading*half)},
+            {std::sin(pitch*half),0,0,std::cos(pitch*half)}),{0,0,std::sin(roll*half),std::cos(roll*half)}),{0,1,0,0}),{3,4,5});
         return result;
     };
     const auto close=[](const dingosdk::first_person::Matrix& a,const dingosdk::first_person::Matrix& b) {
@@ -121,7 +122,7 @@ int main() {
     const auto spec_board=[&](const Matrix& view,const Matrix& body,float heading,float pitch) {
         const float yaw=heading*std::numbers::pi_v<float>/360.f;
         const float clamped=std::clamp(pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
-        const auto base=orientation(body);
+        const auto base=multiply(orientation(body),Quat{0,1,0,0});
         const auto look=multiply({0,std::sin(yaw),0,std::cos(yaw)},{std::sin(clamped),0,0,std::cos(clamped)});
         Matrix result=view;
         write(result,normalized(multiply(multiply(multiply(base,look),conjugate(base)),orientation(view))),
@@ -129,7 +130,14 @@ int main() {
         return result;
     };
     const auto crouch=board_pose(25,30,20);
-    const auto head_view=board_pose(-40,15,-5);
+    const auto view_pose=[&](float heading,float pitch,float roll) {
+        constexpr float half=std::numbers::pi_v<float>/360.f;
+        Matrix result=pose;
+        write(result,multiply(multiply({0,std::sin(heading*half),0,std::cos(heading*half)},
+            {std::sin(pitch*half),0,0,std::cos(pitch*half)}),{0,0,std::sin(roll*half),std::cos(roll*half)}),{3,4,5});
+        return result;
+    };
+    const auto head_view=view_pose(-40,15,-5);
     check(right_handed(pose) && right_handed(crouch),"proper frame reported mirrored");
     Matrix mirrored=pose;mirrored[0]=-mirrored[0];mirrored[1]=-mirrored[1];mirrored[2]=-mirrored[2];
     check(!right_handed(mirrored),"mirrored frame passed the handedness check");
@@ -159,6 +167,14 @@ int main() {
     const auto rolled=aim_board_body_local(pose,{true,true,0,35,0},board_pose(0,0,90),true);
     check(std::abs(wrap_heading(matrix_heading(rolled))-35)<.001f && std::abs(rolled[9])<.00001f,
         "board pitch ignored the body's rolled right axis");
+    const auto aligned_view=view_pose(0,0,0);
+    const auto pitch_up=aim_board_body_local(aligned_view,{true,true,0,35,0},board_pose(0,0,0),true);
+    check(std::abs(pitch_up[9]+std::sin(35*std::numbers::pi_v<float>/180.f))<.00001f,
+        "board pitch looked down with the stick");
+    const auto yaw_center=aim_board_body_local(aligned_view,{true,true,0,0,0},board_pose(0,0,0),true);
+    const auto yaw_right=aim_board_body_local(aligned_view,{true,true,-15,0,0},board_pose(0,0,0),true);
+    check(std::abs(wrap_heading(matrix_heading(yaw_right)-matrix_heading(yaw_center))+15)<.001f,
+        "board yaw turned the wrong way");
     check(aim_board_body_local(head_view,{true,true,-15,0,0},crouch,false)==head_view,
         "invalid body frame changed the camera");
     check(aim_board_body_local(head_view,{},{},false)==head_view,"inactive board look changed the camera");

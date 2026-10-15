@@ -87,7 +87,10 @@ inline dingosdk::first_person::Matrix aim_board_body_local(dingosdk::first_perso
     // Stick look rotates in the skater body's own axes while the native
     // head-driven camera passes through untouched: the controls anchor to the
     // player as a whole instead of the animated head, and capture stays seamless.
-    const auto base=orientation(body);
+    // The body matrix is a facing frame (Z row forward, X row left); the half
+    // turn re-bases it to the camera's right/up/backward axes so positive
+    // stick pitch looks up. Yaw shares the up axis and keeps its sense.
+    const auto base=multiply(orientation(body),Quat{0,1,0,0});
     const float yaw=aim.heading*std::numbers::pi_v<float>/360.f;
     const float pitch=std::clamp(aim.pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
     const auto look=multiply({0,std::sin(yaw),0,std::cos(yaw)},
