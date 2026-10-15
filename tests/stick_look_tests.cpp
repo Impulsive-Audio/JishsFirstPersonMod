@@ -119,9 +119,9 @@ int main() {
         for(unsigned i=0;i<16;++i) if(std::abs(a[i]-b[i])>=.00001f) return false;
         return true;
     };
-    const auto spec_board=[&](const Matrix& view,const Matrix& body,float heading,float pitch) {
+    const auto spec_board=[&](const Matrix& view,const Matrix& body,float heading,float pitch,bool flipped) {
         const float yaw=heading*std::numbers::pi_v<float>/360.f;
-        const float clamped=std::clamp(pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
+        const float clamped=(flipped ? -1.f:1.f)*std::clamp(pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
         const auto base=multiply(orientation(body),Quat{0,1,0,0});
         const auto look=multiply({0,std::sin(yaw),0,std::cos(yaw)},{std::sin(clamped),0,0,std::cos(clamped)});
         Matrix result=view;
@@ -141,43 +141,52 @@ int main() {
     check(right_handed(pose) && right_handed(crouch),"proper frame reported mirrored");
     Matrix mirrored=pose;mirrored[0]=-mirrored[0];mirrored[1]=-mirrored[1];mirrored[2]=-mirrored[2];
     check(!right_handed(mirrored),"mirrored frame passed the handedness check");
+    bool fakie{};
     const std::array<dingosdk::first_person::Matrix,2> bodies{pose,crouch};
     for(const auto& body:bodies) for(float pitch:{-85.f,0.f,35.f,85.f})
         for(float heading:{-170.f,-90.f,0.f,70.f,170.f})
-            check(aim_board_body_local(head_view,{true,true,heading,pitch,0},body,true)==
-                spec_board(head_view,body,heading,pitch),"board look composition changed");
+            check(aim_board_body_local(head_view,{true,true,heading,pitch,0},body,true,0.75f,true,fakie)==
+                spec_board(head_view,body,heading,pitch,false),"board look composition changed");
     const auto wall=board_pose(0,80,10);
-    check(aim_board_body_local(head_view,{true,true,70,35,0},wall,true)==
-        spec_board(head_view,wall,70,35),"steep body look composition changed");
+    check(aim_board_body_local(head_view,{true,true,70,35,0},wall,true,0.75f,true,fakie)==
+        spec_board(head_view,wall,70,35,false),"steep body look composition changed");
     for(float pitch:{-120.f,120.f})
-        check(aim_board_body_local(head_view,{true,true,0,pitch,0},crouch,true)==
-            spec_board(head_view,crouch,0,pitch),"board pitch did not clamp");
-    const auto capture=aim_board_body_local(head_view,{true,true,0,0,0},crouch,true);
+        check(aim_board_body_local(head_view,{true,true,0,pitch,0},crouch,true,0.75f,true,fakie)==
+            spec_board(head_view,crouch,0,pitch,false),"board pitch did not clamp");
+    const auto capture=aim_board_body_local(head_view,{true,true,0,0,0},crouch,true,0.75f,true,fakie);
     check(close(capture,head_view),"body look moved the camera at capture");
     check(capture[12]==3 && capture[13]==4 && capture[14]==5 && capture[3]==7 && capture[7]==8 && capture[11]==9,
         "body look changed native position/metadata");
-    const auto body25=aim_board_body_local(head_view,{true,true,-15,0,0},board_pose(25,30,20),true);
+    const auto body25=aim_board_body_local(head_view,{true,true,-15,0,0},board_pose(25,30,20),true,0.75f,true,fakie);
     constexpr float half_turn=40.f*std::numbers::pi_v<float>/360.f;
     Matrix moved_view=head_view;
     write(moved_view,multiply({0,std::sin(half_turn),0,std::cos(half_turn)},orientation(head_view)),
         {head_view[12],head_view[13],head_view[14]});
-    const auto body65=aim_board_body_local(moved_view,{true,true,-15,0,0},board_pose(65,30,20),true);
+    const auto body65=aim_board_body_local(moved_view,{true,true,-15,0,0},board_pose(65,30,20),true,0.75f,true,fakie);
     check(std::abs(wrap_heading(matrix_heading(body65)-matrix_heading(body25))-40)<.001f,
         "body look did not follow the body's heading");
-    const auto rolled=aim_board_body_local(pose,{true,true,0,35,0},board_pose(0,0,90),true);
+    const auto rolled=aim_board_body_local(pose,{true,true,0,35,0},board_pose(0,0,90),true,0.75f,true,fakie);
     check(std::abs(wrap_heading(matrix_heading(rolled))-35)<.001f && std::abs(rolled[9])<.00001f,
         "board pitch ignored the body's rolled right axis");
     const auto aligned_view=view_pose(0,0,0);
-    const auto pitch_up=aim_board_body_local(aligned_view,{true,true,0,35,0},board_pose(0,0,0),true);
-    check(std::abs(pitch_up[9]+std::sin(35*std::numbers::pi_v<float>/180.f))<.00001f,
-        "board pitch looked down with the stick");
-    const auto yaw_center=aim_board_body_local(aligned_view,{true,true,0,0,0},board_pose(0,0,0),true);
-    const auto yaw_right=aim_board_body_local(aligned_view,{true,true,-15,0,0},board_pose(0,0,0),true);
+    const auto pitch_up=aim_board_body_local(aligned_view,{true,true,0,35,0},board_pose(0,0,0),true,0.75f,true,fakie);
+    check(!fakie && std::abs(pitch_up[9]+std::sin(35*std::numbers::pi_v<float>/180.f))<.00001f,
+        "regular stance pitch inverted");
+    const auto fakie_pitch=aim_board_body_local(aligned_view,{true,true,0,35,0},board_pose(180,0,0),true,-0.6f,true,fakie);
+    check(fakie && std::abs(fakie_pitch[9]+std::sin(35*std::numbers::pi_v<float>/180.f))<.00001f,
+        "fakie pitch stayed inverted");
+    const auto hold_state=aim_board_body_local(aligned_view,{true,true,0,35,0},board_pose(0,0,0),true,0.f,false,fakie);
+    check(fakie && hold_state==spec_board(aligned_view,board_pose(0,0,0),0,35,true),
+        "unreadable stance snapped the pitch axis");
+    aim_board_body_local(aligned_view,{true,true,0,0,0},board_pose(0,0,0),true,0.75f,true,fakie);
+    check(!fakie,"stance did not restore to regular");
+    const auto yaw_center=aim_board_body_local(aligned_view,{true,true,0,0,0},board_pose(0,0,0),true,0.75f,true,fakie);
+    const auto yaw_right=aim_board_body_local(aligned_view,{true,true,-15,0,0},board_pose(0,0,0),true,0.75f,true,fakie);
     check(std::abs(wrap_heading(matrix_heading(yaw_right)-matrix_heading(yaw_center))+15)<.001f,
         "board yaw turned the wrong way");
-    check(aim_board_body_local(head_view,{true,true,-15,0,0},crouch,false)==head_view,
+    check(aim_board_body_local(head_view,{true,true,-15,0,0},crouch,false,0.75f,true,fakie)==head_view,
         "invalid body frame changed the camera");
-    check(aim_board_body_local(head_view,{},{},false)==head_view,"inactive board look changed the camera");
+    check(aim_board_body_local(head_view,{},{},false,0.f,false,fakie)==head_view,"inactive board look changed the camera");
     auto body=face_heading(pose,90);check(body[12]==3 && body[13]==4 && body[14]==5 && body[3]==7 && body[7]==8 && body[11]==9,"native motion position/metadata changed");
     CameraTransition handoff;
     Settings transition_settings;transition_settings.enabled=true;

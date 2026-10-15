@@ -24,6 +24,7 @@ struct CameraMovementSample {
     float body_flip_tilt{},body_flip_rate{};unsigned body_flip_phase{};
     bool position_valid{};dingosdk::first_person::Vec3 position{};
     bool body_matrix_valid{};dingosdk::first_person::Matrix body{};
+    bool stance_valid{};float stance_blend{};
     HippyJumpState hippy;
     JumpEpisodeState jump_episode;
     std::array<std::uintptr_t,4> state{};

@@ -206,6 +206,10 @@ CameraMovementSample live_camera_movement() {
         result.mode=offboard ? 1:2;result.custom_mode=camera_movement_mode(true,offboard,parent,active,vtable,game_base,physics);
         result.position_valid=body_valid;result.position={body[12],body[13],body[14]};
         result.body=body;result.body_matrix_valid=body_valid&&right_handed(body);
+        // rig+0x4a38 holds a stance-signed blend: positive regular, negative fakie.
+        float stance{};
+        result.stance_valid=memory::read(o.rig+0x4a38,stance) && std::isfinite(stance) && std::abs(stance)<=1.001f;
+        result.stance_blend=result.stance_valid ? stance:0.f;
         result.non_bail=non_bail;result.bail_recovery=bail_recovery;result.mounting=mounting;
         result.recovery_verified=verified_control;result.recovery_flags=control_flags;result.recovery_override=motion_override!=0;
         result.recovery_controllable=verified_control && bail_recovery_contract::controllable(ground_child,control_flags,

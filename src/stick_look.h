@@ -81,7 +81,8 @@ inline bool right_handed(const dingosdk::first_person::Matrix& m) {
     return determinant>0.f;
 }
 inline dingosdk::first_person::Matrix aim_board_body_local(dingosdk::first_person::Matrix pose,
-    const StickAim& aim,const dingosdk::first_person::Matrix& body,bool body_valid) {
+    const StickAim& aim,const dingosdk::first_person::Matrix& body,bool body_valid,
+    float stance_blend,bool stance_valid,bool& fakie) {
     if(!aim.active || !body_valid) return pose;
     using namespace dingosdk::first_person;
     // Stick look rotates in the skater body's own axes while the native
@@ -90,9 +91,13 @@ inline dingosdk::first_person::Matrix aim_board_body_local(dingosdk::first_perso
     // The body matrix is a facing frame (Z row forward, X row left); the half
     // turn re-bases it to the camera's right/up/backward axes so positive
     // stick pitch looks up. Yaw shares the up axis and keeps its sense.
+    // The skater state carries a stance-signed blend (positive regular,
+    // negative fakie); in fakie the body's nose opposes the view, so the
+    // pitch axis mirrors. An unreadable blend holds the last known stance.
+    if(stance_valid) fakie=stance_blend<0.f;
     const auto base=multiply(orientation(body),Quat{0,1,0,0});
     const float yaw=aim.heading*std::numbers::pi_v<float>/360.f;
-    const float pitch=std::clamp(aim.pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
+    const float pitch=(fakie ? -1.f:1.f)*std::clamp(aim.pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
     const auto look=multiply({0,std::sin(yaw),0,std::cos(yaw)},
                              {std::sin(pitch),0,0,std::cos(pitch)});
     write(pose,normalized(multiply(multiply(multiply(base,look),conjugate(base)),orientation(pose))),
