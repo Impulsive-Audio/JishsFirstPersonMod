@@ -81,6 +81,15 @@ inline dingosdk::first_person::Quat track_head_wobble(HeadWobbleState& state,
     }
     return state.wobble;
 }
+// The native camera rotation expressed in the skater body's frame: the real
+// head deviation from the torso (bob and sway), bounded by the neck, so a
+// turn or look sweep cannot leak into the wobble.
+inline dingosdk::first_person::Quat body_referenced(const dingosdk::first_person::Matrix& body,
+    const dingosdk::first_person::Matrix& camera) {
+    using namespace dingosdk::first_person;
+    const auto base=multiply(orientation(body),Quat{0,1,0,0});
+    return normalized(multiply(conjugate(base),orientation(camera)));
+}
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {
     bool ready_{},seen_{},center_facing_{};

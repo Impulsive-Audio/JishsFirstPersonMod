@@ -2,6 +2,7 @@
 #include <Windows.h>
 #include <filesystem>
 #include <string>
+#include <atomic>
 #include "Engine/Game/Input/controller_bindings.h"
 #include "Engine/Game/Skater/first_person_spring.h"
 #include "stick_look.h"
@@ -10,6 +11,7 @@
 
 namespace jishsfirstpersonmod {
 bool panel_gameplay_blocked();
+inline std::atomic<int> active_camera_mode{}; // Current live camera mode, foot (1) or board (2).
 struct Config {
     bool toggle_glances=false;
     bool remember_marker_glance=false;

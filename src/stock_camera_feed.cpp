@@ -92,7 +92,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
     if(compatibility::enabled() && input && (!watched || camera==watched) && stock_first_person_requested() && from_stock(_ReturnAddress())) {
         watched_camera=camera;Matrix native{};
         if(dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(input),native) && dingosdk::valid_flight_transform(native)) {
-            auto matrix=native;auto movement=live_camera_movement();
+            auto matrix=native;auto movement=live_camera_movement();active_camera_mode=movement.mode;
             const auto state=comfort_snapshot();const auto settings=menu_snapshot();const auto& config=settings.config;
             if(config.look_only) {
                 dingosdk::first_person::Quat glance{0,0,0,1};
@@ -108,7 +108,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         const auto stick_aim=stick_camera_aim();
                         dingosdk::first_person::Quat wobble{0,0,0,1};
                         if(movement.mode==1) {
-                            const auto head_orientation=dingosdk::first_person::orientation(native);
+                            const auto head_orientation=movement.body_matrix_valid ? body_referenced(movement.body,native):dingosdk::first_person::orientation(native);
                             matrix=aim_camera(native,stick_aim);
                             if(config.stick.head_motion>0.f)
                                 wobble=scale_rotation(track_head_wobble(head_wobble,head_orientation,look_frame.load()),config.stick.head_motion/100.f);
@@ -198,7 +198,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             aim=stick_camera_aim();
                             dingosdk::first_person::Quat wobble{0,0,0,1};
                             if(movement.mode==1) {
-                                const auto head_orientation=dingosdk::first_person::orientation(matrix);
+                                const auto head_orientation=movement.body_matrix_valid ? body_referenced(movement.body,matrix):dingosdk::first_person::orientation(matrix);
                                 matrix=aim_camera(matrix,aim);
                                 if(config.stick.head_motion>0.f)
                                     wobble=scale_rotation(track_head_wobble(head_wobble,head_orientation,frame),config.stick.head_motion/100.f);

@@ -311,6 +311,18 @@ int main() {
         if(std::abs(wobble[0])>bob_peak) bob_peak=std::abs(wobble[0]);
     }
     check(bob_peak>.0005f && bob_peak<.1f,"head bob did not pass through the wobble filter");
+    // Body-referenced extraction returns only the head's deviation from the torso.
+    // Quaternion sign is not meaningful for a rotation, so compare via angles.
+    const auto facing_body=board_pose(30,0,0);
+    Matrix aligned_camera=pose;
+    write(aligned_camera,multiply(orientation(facing_body),Quat{0,1,0,0}),{3,4,5});
+    const auto clean=body_referenced(facing_body,aligned_camera);
+    check(rotation_angle(clean)<.001f,"aligned camera produced a body-referenced deviation");
+    Matrix nodding_camera=pose;
+    write(nodding_camera,multiply(multiply(orientation(facing_body),Quat{0,1,0,0}),Quat{std::sin(.025f),0,0,std::cos(.025f)}),{3,4,5});
+    auto nod=body_referenced(facing_body,nodding_camera);
+    if(nod[3]<0.f) nod={-nod[0],-nod[1],-nod[2],-nod[3]};
+    check(std::abs(rotation_angle(nod)-.05f)<.001f && std::abs(nod[0]-std::sin(.025f))<.001f,"head nod missing from body-referenced extraction");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");

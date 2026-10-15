@@ -441,9 +441,21 @@ void draw_panel_frame(const PanelFrame& frame) {
                 fit_control(label);
                 if(ImGui::SliderFloat(label,&value,low,high,format,ImGuiSliderFlags_AlwaysClamp)) settings_change(config);
             };
-            ImGui::TextUnformatted("Position offset (metres)");
-        slider("Right",config.spring.offset[0],-3,3,"%.3f"); slider("Up",config.spring.offset[1],-3,3,"%.3f"); slider("Forward",config.spring.offset[2],-3,3,"%.3f");
-        ImGui::TextWrapped("On-foot and on-board offsets are remembered separately; they swap automatically when you change camera.");
+            const int camera_mode=active_camera_mode.load();
+            const auto mode_slider=[&](const char* label,float& value,unsigned axis,int mode) {
+                fit_control(label);
+                if(ImGui::SliderFloat(label,&value,-3,3,"%.3f",ImGuiSliderFlags_AlwaysClamp)) {
+                    if(camera_mode==mode) config.spring.offset[axis]=value;
+                    Command cmd;cmd.kind=CommandKind::camera_settings;cmd.spring=config.spring;cmd.value=config.fov;
+                    cmd.per_mode_offsets=true;cmd.board_offset=config.board_offset;cmd.foot_offset=config.foot_offset;
+                    submit_command(cmd);
+                }
+            };
+            ImGui::TextUnformatted(camera_mode==1 ? "On-foot offset (metres) - current":"On-foot offset (metres)");
+            mode_slider("Right",config.foot_offset[0],0,1); mode_slider("Up",config.foot_offset[1],1,1); mode_slider("Forward",config.foot_offset[2],2,1);
+            ImGui::TextUnformatted(camera_mode==2 ? "On-board offset (metres) - current":"On-board offset (metres)");
+            mode_slider("Right",config.board_offset[0],0,2); mode_slider("Up",config.board_offset[1],1,2); mode_slider("Forward",config.board_offset[2],2,2);
+            ImGui::TextWrapped("Each camera keeps its own offsets; the set marked current applies live when you move a slider.");
             ImGui::TextUnformatted("Rotation offset (degrees)");
             slider("Pitch",config.spring.rotation[0],-180,180,"%.1f"); slider("Yaw",config.spring.rotation[1],-180,180,"%.1f"); slider("Roll",config.spring.rotation[2],-180,180,"%.1f");
             ImGui::TextUnformatted("Smoothing strength");
