@@ -80,11 +80,12 @@ inline bool right_handed(const dingosdk::first_person::Matrix& m) {
     const float determinant=m[0]*(m[5]*m[10]-m[6]*m[9])+m[1]*(m[6]*m[8]-m[4]*m[10])+m[2]*(m[4]*m[9]-m[5]*m[8]);
     return determinant>0.f;
 }
+struct FakieMirror {
+    bool fakie{};float mirror{1.f};double start{};float from{1.f};bool easing{};
+};
 inline dingosdk::first_person::Matrix aim_board_body_local(dingosdk::first_person::Matrix pose,
     const StickAim& aim,const dingosdk::first_person::Matrix& body,bool body_valid,
-    float stance_blend,bool stance_valid,bool& fakie) {
-    if(!aim.active || !body_valid) return pose;
-    using namespace dingosdk::first_person;
+    float stance_blend,bool stance_valid,FakieMirror& stance,double frame) {
     // Stick look rotates in the skater body's own axes while the native
     // head-driven camera passes through untouched: the controls anchor to the
     // player as a whole instead of the animated head, and capture stays seamless.
@@ -93,11 +94,23 @@ inline dingosdk::first_person::Matrix aim_board_body_local(dingosdk::first_perso
     // stick pitch looks up. Yaw shares the up axis and keeps its sense.
     // The skater state carries a stance-signed blend (positive regular,
     // negative fakie); in fakie the body's nose opposes the view, so the
-    // pitch axis mirrors. An unreadable blend holds the last known stance.
-    if(stance_valid) fakie=stance_blend<0.f;
+    // pitch axis mirrors. Stance is tracked even while the aim is idle so
+    // the mirror settles before the next capture, and while looking the
+    // mirror eases over 200 ms so a stance flip swings through level
+    // instead of snapping. An unreadable blend holds the last known stance.
+    using namespace dingosdk::first_person;
+    if(stance_valid) stance.fakie=stance_blend<0.f;
+    const float target=stance.fakie ? -1.f:1.f;
+    if(!aim.active || !body_valid) { stance.mirror=target;stance.easing=false;return pose; }
+    if(!stance.easing && stance.mirror!=target) { stance.from=stance.mirror;stance.start=frame;stance.easing=true; }
+    if(stance.easing) {
+        const double t=std::clamp((frame-stance.start)/0.2,0.0,1.0);
+        stance.mirror=stance.from+(target-stance.from)*static_cast<float>(t*t*(3.0-2.0*t));
+        if(frame-stance.start>=0.2) { stance.mirror=target;stance.easing=false; }
+    }
     const auto base=multiply(orientation(body),Quat{0,1,0,0});
     const float yaw=aim.heading*std::numbers::pi_v<float>/360.f;
-    const float pitch=(fakie ? -1.f:1.f)*std::clamp(aim.pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
+    const float pitch=stance.mirror*std::clamp(aim.pitch,-85.f,85.f)*std::numbers::pi_v<float>/360.f;
     const auto look=multiply({0,std::sin(yaw),0,std::cos(yaw)},
                              {std::sin(pitch),0,0,std::cos(pitch)});
     write(pose,normalized(multiply(multiply(multiply(base,look),conjugate(base)),orientation(pose))),

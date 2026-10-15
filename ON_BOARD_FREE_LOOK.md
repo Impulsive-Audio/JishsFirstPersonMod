@@ -45,4 +45,6 @@ longer shifts what the stick means. Capture and release are seamless: the
 look starts and ends exactly on the native view. Fakie stance is read from
 the skater state's stance-signed blend (positive regular, negative fakie)
 and mirrors the pitch axis there, since the body's nose opposes the view
-in fakie. Bail and recovery look remain head-relative as before.
+in fakie. The mirror itself eases over 200 ms while looking, so a stance
+flip during an active look swings through level instead of snapping.
+Bail and recovery look remain head-relative as before.
