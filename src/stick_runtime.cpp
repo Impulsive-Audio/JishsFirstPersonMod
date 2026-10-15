@@ -18,6 +18,8 @@
 #include <chrono>
 #include <mutex>
 #include <atomic>
+#include <fstream>
+#include <cstdio>
 namespace jishsfirstpersonmod {
 namespace {
 using Matrix=dingosdk::first_person::Matrix;
@@ -41,6 +43,83 @@ bool recenter_handoff{};
 struct Request { ComfortSnapshot owner;StickAim aim;bool turn{};unsigned device{};double time{};float body_heading{};bool head_valid{},recovery{},board{};StickAxes native_axes{}; } request;
 float native_heading{},displayed_pitch{};double heading_time{};
 double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+// Temporary stance discovery probe: dumps candidate u32 words around the rig
+// body matrix and the physics context at ~10 Hz so a stance field can be found
+// by differential analysis against the nose-vs-view angle. Log-only; remove
+// once the stance offset is found and audited.
+void stance_scan_tick(const ComfortSnapshot& owner) {
+    static double last_scan{};
+    static std::ofstream scan_file;
+    static bool scan_header{};
+    const double time=now();
+    if(time-last_scan<.2) return;
+    last_scan=time;
+    if(!owner.state_valid || !owner.rig || !owner.context || !owner.core) return;
+    try {
+        Matrix body{};
+        const bool body_ok=dingosdk::memory::read(owner.rig+0x4720,body) && dingosdk::valid_flight_transform(body);
+        std::uint32_t physics{};
+        const bool physics_ok=dingosdk::memory::read(owner.context+player_state_contract::physics_state_offset,physics);
+        std::array<unsigned char,0x800> rig_low{};
+        std::array<unsigned char,0x1000> rig_main{};
+        std::array<unsigned char,0x800> rig_high{};
+        std::array<unsigned char,0x800> context_mid{};
+        std::array<unsigned char,0x800> context_high{};
+        std::array<unsigned char,0x400> selector_window{};
+        std::array<unsigned char,0x100> animation_window{};
+        const bool rig_low_ok=dingosdk::memory::read_bytes(owner.rig+0x3800,rig_low.data(),rig_low.size());
+        const bool rig_ok=dingosdk::memory::read_bytes(owner.rig+0x4000,rig_main.data(),rig_main.size());
+        const bool rig_high_ok=dingosdk::memory::read_bytes(owner.rig+0x5000,rig_high.data(),rig_high.size());
+        const bool context_ok=dingosdk::memory::read_bytes(owner.context+0x1000,context_mid.data(),context_mid.size());
+        const bool context_high_ok=dingosdk::memory::read_bytes(owner.context+0x1800,context_high.data(),context_high.size());
+        std::uintptr_t selector{};
+        const bool selector_ptr_ok=dingosdk::memory::read(owner.core+player_state_contract::selector_offset,selector) && selector;
+        const bool selector_ok=selector_ptr_ok && dingosdk::memory::read_bytes(selector,selector_window.data(),selector_window.size());
+        std::uintptr_t animation_owner_obj{},animation_out{};
+        const bool animation_ptr_ok=dingosdk::memory::read(owner.core+player_state_contract::animation_owner,animation_owner_obj) && animation_owner_obj
+            && dingosdk::memory::read(animation_owner_obj+player_state_contract::animation_output,animation_out) && animation_out;
+        const bool animation_ok=animation_ptr_ok && dingosdk::memory::read_bytes(animation_out,animation_window.data(),animation_window.size());
+        if(!scan_file.is_open()) {
+            scan_file.open(data_directory()/"logs/stance-scan.csv",std::ios::app);
+            if(!scan_file.is_open()) return;
+        }
+        if(!scan_header) {
+            scan_header=true;
+            scan_file<<"time_ms,nose_ok,nose_heading,native_heading,native_age,physics"
+                <<",rd_ok,r_ok,ru_ok,c1_ok,c2_ok,s_ok,a_ok";
+            const auto labels=[&](const char* prefix,std::size_t bytes,std::uintptr_t base) {
+                char label[24];
+                for(std::size_t i=0;i<bytes/4;++i) { std::snprintf(label,sizeof(label),",%s%x",prefix,base+i*4);scan_file<<label; }
+            };
+            labels("RD",rig_low.size(),0x3800);labels("R",rig_main.size(),0x4000);labels("RU",rig_high.size(),0x5000);
+            labels("C1",context_mid.size(),0x1000);labels("C2",context_high.size(),0x1800);
+            labels("S",selector_window.size(),0);labels("A",animation_window.size(),0);
+            scan_file<<"\n";
+        }
+        scan_file<<static_cast<std::uint64_t>(time*1000.0)<<','<<(body_ok?1:0)<<','
+            <<(body_ok ? matrix_heading(body):0.f)<<','<<native_heading<<','<<(time-heading_time)<<',';
+        if(physics_ok) scan_file<<physics; else scan_file<<'x';
+        scan_file<<','<<(rig_low_ok?1:0)<<','<<(rig_ok?1:0)<<','<<(rig_high_ok?1:0)
+            <<','<<(context_ok?1:0)<<','<<(context_high_ok?1:0)<<','<<(selector_ok?1:0)<<','<<(animation_ok?1:0);
+        const auto dump=[&](const unsigned char* data,bool ok,std::size_t bytes) {
+            char word[16];
+            for(std::size_t i=0;i<bytes/4;++i) {
+                if(!ok) { scan_file<<",x"; continue; }
+                std::uint32_t value{};std::memcpy(&value,data+i*4,4);
+                std::snprintf(word,sizeof(word),",%x",value);scan_file<<word;
+            }
+        };
+        dump(rig_low.data(),rig_low_ok,rig_low.size());
+        dump(rig_main.data(),rig_ok,rig_main.size());
+        dump(rig_high.data(),rig_high_ok,rig_high.size());
+        dump(context_mid.data(),context_ok,context_mid.size());
+        dump(context_high.data(),context_high_ok,context_high.size());
+        dump(selector_window.data(),selector_ok,selector_window.size());
+        dump(animation_window.data(),animation_ok,animation_window.size());
+        scan_file<<'\n';
+        scan_file.flush();
+    } catch(...) {}
+}
 bool live_foot(const Request& value) {
     if(game_camera_suspended() || panel_gameplay_blocked()) return false;
     if(!compatibility::enabled()) return false;
@@ -202,6 +281,7 @@ bool stick_captures_input(unsigned slot,std::uint32_t buttons) {
     return mask && (mask==~0u || (buttons&mask)==mask);
 }
 void tick_stick_look(const Config& config,const GameplayInput& input,const ComfortSnapshot& owner,bool inhibited) {
+    stance_scan_tick(owner);
     const double time=now();const auto movement=live_camera_movement();
     const auto head=read_animation_head(owner);
     Matrix body{};const bool body_valid=owner.rig && dingosdk::memory::read(owner.rig+0x4720,body) && dingosdk::valid_flight_transform(body);
