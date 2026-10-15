@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(JishsFirstPersonMod VERSION 1.33.2 LANGUAGES C CXX ASM_MASM)
+project(JishsFirstPersonMod VERSION 1.34.0 LANGUAGES C CXX ASM_MASM)
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "JishsFirstPersonMod requires Windows x64")
 endif()
@@ -43,6 +43,7 @@ target_include_directories(mod_menu_ui PUBLIC src vendor)
 target_link_libraries(mod_menu_ui PUBLIC mod_settings mod_imgui mod_menu_input)
 configure_file(assets/fonts.rc.in "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc" @ONLY)
 add_library(JishsFirstPersonMod SHARED
+    src/msc_presence_bridge.cpp
     src/spectator_runtime.cpp
     src/body_flip_runtime.cpp src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/bail_collision.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
     src/proven_debug.cpp src/proven_input.cpp src/stick_runtime.cpp src/stick_input_filter.cpp vendor/Extension/UI/Overlay/playstation_input.cpp
@@ -54,6 +55,9 @@ target_link_libraries(JishsFirstPersonMod PRIVATE mod_menu_ui mod_hooks mod_comp
 set_target_properties(JishsFirstPersonMod PROPERTIES PREFIX "" OUTPUT_NAME "JishsFirstPersonMod")
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(msc_presence_tests tests/msc_presence_tests.cpp)
+    target_include_directories(msc_presence_tests PRIVATE src)
+    add_test(NAME msc_presence_server_gating_and_heartbeat COMMAND msc_presence_tests)
     add_executable(user_data_tests tests/user_data_tests.cpp)
     target_include_directories(user_data_tests PRIVATE src)
     add_test(NAME scripts_data_migration_and_preservation COMMAND user_data_tests)

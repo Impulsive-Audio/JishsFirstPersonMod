@@ -1,4 +1,12 @@
-# Jish's First Person Mod 1.33.2
+# Jish's First Person Mod 1.34.0
+
+## MSC first-person nametags
+
+On the supported Midnight Skate Club server, the mod automatically reports
+whether its First Person setting is enabled so other players can see `[FP]`
+beside your multiplayer name. No toggle or chat messages are required, and
+Steam names are unchanged. Reporting remains inactive on other servers.
+See [MSC integration](docs/MSC_INTEGRATION.md) for requirements and behavior.
 
 Includes modifier-held on-board right-stick free look and a controller-navigable settings panel. Insert opens both settings menus. F9 hides or shows the first-person panel inside Insert. Standalone opening is disabled. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
 

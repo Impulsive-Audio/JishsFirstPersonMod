@@ -198,5 +198,9 @@ int main(int argc,char** argv) {
     require(load_recommended_preset() && menu_snapshot().feedback.starts_with("Mod settings applied."),"preset success hid camera synchronization failure");
     failure.set_feedback("Preset saved: Street",4000);
     require(failure.snapshot(GetTickCount64()+5000).save_failed && !failure.snapshot().save_error.empty(),"preset confirmation hid persistent save failure");
-    std::cout<<"Menu recording, routing, persistence, conflicts, typed requests and native migration passed\n";
+    std::cout<<"Menu recording, routing, persistence, conflicts, typed requests and native migration passed"<<std::endl;
+    // initialize_settings starts a process-lifetime saver. Terminate its host
+    // before CRT global destruction can race its profile_path reads. Every
+    // assertion has completed; no mod runtime teardown behavior is changed.
+    ExitProcess(0);
 }
