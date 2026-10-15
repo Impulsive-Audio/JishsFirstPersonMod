@@ -119,7 +119,8 @@ Config read_config(const std::filesystem::path& path) {
     cfg.board.lean_forward=number("board_lean_forward",.086f);
     cfg.board.lean_down=number("board_lean_down",.077f);
     cfg.stick.enabled=boolean("stick_look",false);
-    cfg.stick.turn_character=boolean("stick_turn_character",false);
+    cfg.stick.follow_tolerance=number("stick_follow_tolerance",35);
+    if(values.contains("stick_turn_character") && boolean("stick_turn_character",false)) cfg.stick.follow_tolerance=180;
     cfg.stick.invert_y=boolean("stick_invert_y",false);
     cfg.stick.yaw_speed=number("stick_yaw_speed",120);
     cfg.stick.pitch_speed=number("stick_pitch_speed",90);
@@ -147,6 +148,8 @@ Config read_config(const std::filesystem::path& path) {
        !std::isfinite(cfg.board.lean_forward) || cfg.board.lean_forward<0 || cfg.board.lean_forward>.3f ||
        !std::isfinite(cfg.board.lean_down) || cfg.board.lean_down<0 || cfg.board.lean_down>.3f)
         throw std::runtime_error("Look-down lean must be 0–30 centimetres.");
+    if(!std::isfinite(cfg.stick.follow_tolerance) || cfg.stick.follow_tolerance<0 || cfg.stick.follow_tolerance>180)
+        throw std::runtime_error("Character follow tolerance must be 0–180 degrees.");
     if(!dingosdk::first_person::valid(cfg.look_spring)) throw std::runtime_error("Look smoothing outside supported ranges");
     if(!cfg.link_smoothing && !cfg.look_smoothing_initialized) {
         cfg.look_spring=cfg.spring; cfg.look_spring.offset={}; cfg.look_spring.rotation={}; cfg.look_smoothing_initialized=true;
@@ -236,7 +239,7 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
         out<<"stick_smoothing_initialized=1\nstick_spring="<<stick_spring.enabled
             <<"\nstick_strength_up="<<stick_spring.up<<"\nstick_strength_down="<<stick_spring.down
             <<"\nstick_strength_left="<<stick_spring.left<<"\nstick_strength_right="<<stick_spring.right<<'\n';
-        out<<"stick_look="<<cfg.stick.enabled<<"\nstick_turn_character="<<cfg.stick.turn_character
+        out<<"stick_look="<<cfg.stick.enabled<<"\nstick_follow_tolerance="<<cfg.stick.follow_tolerance
             <<"\nstick_invert_y="<<cfg.stick.invert_y<<"\nstick_yaw_speed="<<cfg.stick.yaw_speed
             <<"\nstick_pitch_speed="<<cfg.stick.pitch_speed<<"\nstick_deadzone="<<cfg.stick.deadzone<<'\n';
         out<<"smooth_transitions="<<cfg.stick.smooth_transitions<<"\nmount_smoothing="<<cfg.stick.mount_smoothing

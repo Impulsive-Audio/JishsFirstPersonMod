@@ -57,7 +57,7 @@ int main() {
         cfg.look_only=true;
         check(!head_position_attached(cfg,state,action),"compatibility mode retained recovery attachment");
     }
-    Config config;config.stick.enabled=config.stick.turn_character=true;
+    Config config;config.stick.enabled=true;
     ComfortSnapshot owner;owner.state_valid=owner.animation_valid=true;owner.normal_foot=true;
     CameraMovementSample movement;movement.mode=movement.custom_mode=1;movement.non_bail=true;
     check(camera_overrides_allowed(owner,movement) && character_facing_allowed(owner,movement),"normal-ground eligibility failed");
@@ -111,15 +111,14 @@ int main() {
     check(!head_position_attached(config,owner,movement) && !camera_look_allowed(config,owner,movement),
         "compatibility mode attached bail camera or captured bail input");
     owner.bailing=false;config.look_only=false;movement.jumping=false;movement.hippy.active=false;
-    StickLookState stick;Settings immediate;StickSettings settings;settings.enabled=settings.turn_character=true;
+    StickLookState stick;Settings immediate;StickSettings settings;settings.enabled=true;
     stick.seed(settings,1,0,40,15,100);
     auto before=stick.update(settings,{1,0},true,1,.016,40,100,immediate);
     // Eligibility remains true across ground, climbing and jumping. User mode stays unchanged.
     auto climb=stick.update(settings,{1,0},true,1,.032,40,140,immediate);
     check(before.active && climb.active && climb.heading!=before.heading,"parkour transition required neutral or reset aim");
-    stick.rebase_facing(170);
     auto grounded=stick.update(settings,{},true,1,.032,40,170,immediate);
-    check(std::abs(wrap_heading(grounded.body_heading-170))<.00001f,"ground re-entry used stale character bias");
+    check(std::abs(std::abs(wrap_heading(grounded.body_heading-grounded.heading))-145.f)<.01f,"ground re-entry did not cap the follow at tolerance");
     stick.seed(settings,1,.048,80,20,170);
     auto resumed=stick.update(settings,{1,0},true,1,.048,0,0,immediate);
     check(resumed.active && resumed.manual && resumed.heading==80 && resumed.pitch==20,"held input could not resume from shown view");

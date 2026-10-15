@@ -32,20 +32,19 @@ int main() {
     auto diagonal=radial_stick({1,1},.15f);check(std::abs(std::hypot(diagonal.x,diagonal.y)-1)<.00001f,"diagonal faster than straight");
     StickSettings settings;settings.enabled=true;Settings spring;
     StickLookState state;
-    auto coupled=settings;coupled.turn_character=true;
     StickLookState recentered;recentered.recenter_facing();
-    check(!recentered.update(coupled,{1,0},true,1,0,45,90,spring,20).active,"dismount recenter skipped neutral stick");
-    const auto centered=recentered.update(coupled,{},true,1,.016,45,90,spring,20);
+    check(!recentered.update(settings,{1,0},true,1,0,45,90,spring,20).active,"dismount recenter skipped neutral stick");
+    const auto centered=recentered.update(settings,{},true,1,.016,45,90,spring,20);
     check(centered.active && centered.heading==-90 && centered.body_heading==90 && centered.pitch==0,
         "dismount/recovery recenter faces into the body");
-    const auto facing=recentered.update(coupled,{1,0},true,1,.116,45,90,spring);
-    check(std::abs(std::abs(wrap_heading(facing.body_heading-facing.heading))-180.f)<.001f,"recentered camera and character diverged");
+    const auto facing=recentered.update(settings,{1,0},true,1,.116,45,90,spring);
+    check(std::abs(wrap_heading(facing.body_heading-90))<.001f,"look within tolerance kept the character facing");
     recentered.recenter_facing();
     const auto camera_only=recentered.update(settings,{},true,1,.132,45,90,spring,20);
-    check(camera_only.heading==45 && camera_only.pitch==20,"camera-only mode was recentered");
+    check(camera_only.heading==-90 && camera_only.pitch==0,"recenter applied without the mode selector");
     for(const float heading:{-179.f,-90.f,0.f,90.f,179.f}) {
         StickLookState dismounted;dismounted.recenter_facing();
-        const auto outward=dismounted.update(coupled,{},true,1,0,heading,heading,spring);
+        const auto outward=dismounted.update(settings,{},true,1,0,heading,heading,spring);
         const auto camera=aim_camera(Matrix{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},outward);
         const auto body=face_heading(Matrix{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},heading);
         // Viewing direction is camera -Z; character facing is body +Z.
@@ -54,13 +53,13 @@ int main() {
             "dismount view did not face outward without turning the character");
     }
     StickLookState bail_center;bail_center.recenter_facing(180.f);
-    check(!bail_center.update(coupled,{1,0},true,1,0,45,90,spring,20).active,"bail recenter skipped neutral stick");
-    const auto bail_centered=bail_center.update(coupled,{},true,1,.016,45,90,spring,20);
+    check(!bail_center.update(settings,{1,0},true,1,0,45,90,spring,20).active,"bail recenter skipped neutral stick");
+    const auto bail_centered=bail_center.update(settings,{},true,1,.016,45,90,spring,20);
     check(bail_centered.active && bail_centered.heading==-90 && bail_centered.body_heading==90 && bail_centered.pitch==0,
         "bail recenter did not reverse camera while preserving character facing");
-    const auto bail_turned=bail_center.update(coupled,{1,0},true,1,.116,45,90,spring);
-    check(std::abs(std::abs(wrap_heading(bail_turned.body_heading-bail_turned.heading))-180.f)<.001f,
-        "character lock lost outward camera offset after bail");
+    const auto bail_turned=bail_center.update(settings,{1,0},true,1,.116,45,90,spring);
+    check(std::abs(wrap_heading(bail_turned.body_heading-90))<.001f,
+        "character lock preserved facing within tolerance");
     check(!state.update(settings,{1,0},true,1,0,0,0,spring).active,"held stick armed without neutral");
     check(state.update(settings,{},true,1,.016,0,0,spring).active,"neutral did not arm");
     auto aim=state.update(settings,{1,0},true,1,.116,0,0,spring);
@@ -76,11 +75,10 @@ int main() {
     for(int i=1;i<=120;++i) aim=state.update(settings,{0,1},true,1,i/60.,0,0,spring);
     check(aim.pitch==85,"pitch not clamped");
     auto held=state.update(settings,{},true,1,2.016,0,0,spring);check(held.pitch==85,"release recentered analog view");
-    settings.turn_character=true;
-    check(!state.update(settings,{1,0},true,1,2.032,0,0,spring).active,"mode switch skipped neutral");
-    state.update(settings,{},true,1,2.048,30,10,spring);
+    state.reset();state.update(settings,{},true,1,2.048,30,10,spring);
     aim=state.update(settings,{1,0},true,1,2.148,30,10,spring);
-    check(std::abs(aim.body_heading+2)<.001f && std::abs(aim.heading-18)<.001f,"camera/body heading bias doubled rotation");
+    check(std::abs(aim.heading-18)<.001f && std::abs(std::abs(wrap_heading(aim.body_heading-aim.heading))-145.f)<.001f,
+        "follow servo targeted the tolerance boundary");
     check(!state.update(settings,{},true,2,2.164,0,0,spring).capture ||
         state.update(settings,{},true,2,2.164,0,0,spring).heading==0,"device change retained old view");
     settings.invert_y=true;state.reset();state.update(settings,{},true,1,0,0,0,spring);
@@ -264,8 +262,9 @@ int main() {
     }
     Config config;config.stick=settings;config.stick.deadzone=.22f;
     config.stick.mount_smoothing=82;config.stick.dismount_smoothing=35;config.stick.smooth_transitions=false;
+    config.stick.follow_tolerance=140;
     auto path=data_directory()/"settings.ini";write_config(path,config);const auto reloaded=read_config(path);
-    check(reloaded.stick.enabled && reloaded.stick.turn_character && reloaded.stick.deadzone==.22f,"stick preferences did not persist");
+    check(reloaded.stick.enabled && reloaded.stick.follow_tolerance==140 && reloaded.stick.deadzone==.22f,"stick preferences did not persist");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");

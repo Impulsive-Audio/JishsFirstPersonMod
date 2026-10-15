@@ -231,19 +231,15 @@ void tick_stick_look(const Config& config,const GameplayInput& input,const Comfo
     if(!eligible || time-heading_time>=.5) { look.reset();board_look.reset();request={};return; }
     const float body_heading=matrix_heading(body);
     if(request.owner.core && std::array<std::uintptr_t,4>{request.owner.core,request.owner.entity,request.owner.context,request.owner.rig}!=std::array<std::uintptr_t,4>{owner.core,owner.entity,owner.context,owner.rig}) { look.reset(); }
-    const bool turn=!config.look_only && config.stick.turn_character && character_facing_allowed(owner,movement);
     const bool recovery=!config.look_only && bail_camera_locked(owner,movement);
+    const bool turn=!config.look_only && !recovery && character_facing_allowed(owner,movement);
     if(request.owner.core && request.recovery!=recovery) look.reset();
-    if(turn && !request.turn) {
-        if(recenter_handoff) {
-            // Camera +Z points backward; after dismount/bail, face away from the body.
-            look.recenter_facing();recenter_handoff=false;
-            log("On-foot Camera and character look: recentering after board/bail handoff; waiting for neutral stick.");
-        }
-        else look.rebase_facing(body_heading);
+    if(turn && !request.turn && recenter_handoff) {
+        // Camera +Z points backward; after dismount/bail, face away from the body.
+        look.recenter_facing();recenter_handoff=false;
+        log("On-foot look: recentering after board/bail handoff; waiting for neutral stick.");
     }
-    auto stick=config.stick;if(recovery) stick.turn_character=false;
-    auto aim=look.update(stick,{input.right_x,input.right_y},true,input.device,time,recovery ? 0:native_heading,
+    auto aim=look.update(config.stick,{input.right_x,input.right_y},true,input.device,time,recovery ? 0:native_heading,
         recovery ? 0:body_heading,effective.stick_spring,recovery ? 0:displayed_pitch);
     request={owner,aim,turn,input.device,time,body_heading,head.valid,recovery};
 }

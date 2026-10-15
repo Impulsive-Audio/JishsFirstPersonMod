@@ -4,8 +4,8 @@
 #include <cmath>
 namespace jishsfirstpersonmod {
 struct StickSettings {
-    bool enabled{},turn_character{},invert_y{};
-    float yaw_speed=120,pitch_speed=90,deadzone=.15f;
+    bool enabled{},invert_y{};
+    float yaw_speed=120,pitch_speed=90,deadzone=.15f,follow_tolerance=35;
     bool smooth_transitions=true;
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
@@ -48,7 +48,7 @@ inline dingosdk::first_person::Vec3 yaw_anchored_position(const dingosdk::first_
 }
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {
-    bool ready_{},seen_{},mode_{},center_facing_{};
+    bool ready_{},seen_{},center_facing_{};
     unsigned device_{};
     double time_{};
     float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},body_bias_{},center_offset_{};
@@ -56,27 +56,24 @@ public:
     void reset() { *this={}; }
     void recenter_facing(float camera_offset=180.f) { reset();center_facing_=true;center_offset_=camera_offset; }
     void seed(const StickSettings& settings,unsigned device,double now,float yaw,float pitch,float body_heading) {
-        reset();ready_=seen_=true;device_=device;mode_=settings.turn_character;time_=now;
+        reset();ready_=seen_=true;device_=device;time_=now;
         yaw_=smooth_yaw_=yaw;pitch_=smooth_pitch_=std::clamp(pitch,-85.f,85.f);
-        body_bias_=wrap_heading(body_heading-yaw);
     }
-    void rebase_facing(float body_heading) { body_bias_=wrap_heading(body_heading-smooth_yaw_); }
     StickAim update(const StickSettings& settings,StickAxes axes,bool eligible,unsigned device,
                     double now,float camera_heading,float body_heading,
                     const dingosdk::first_person::Settings& spring,float camera_pitch=0) {
         if(!settings.enabled || !eligible || !device || !std::isfinite(now)) { reset();return {}; }
-        if(!seen_ || device_!=device || mode_!=settings.turn_character || now<time_ || now-time_>.25) {
+        if(!seen_ || device_!=device || now<time_ || now-time_>.25) {
             const bool center=center_facing_;const float offset=center_offset_;
-            reset();center_facing_=center;center_offset_=offset;seen_=true;device_=device;mode_=settings.turn_character;time_=now;
+            reset();center_facing_=center;center_offset_=offset;seen_=true;device_=device;time_=now;
         }
         const auto input=radial_stick(axes,settings.deadzone);
         if(!ready_) {
             time_=now;
             if(input.x!=0 || input.y!=0) return {true,false};
-            if(center_facing_ && settings.turn_character) {camera_heading=wrap_heading(body_heading+center_offset_);camera_pitch=0;}
+            if(center_facing_) {camera_heading=wrap_heading(body_heading+center_offset_);camera_pitch=0;}
             center_facing_=false;
             ready_=true;yaw_=smooth_yaw_=camera_heading;pitch_=smooth_pitch_=std::clamp(camera_pitch,-85.f,85.f);
-            body_bias_=wrap_heading(body_heading-camera_heading);
         }
         const float dt=static_cast<float>(now-time_);time_=now;
         // Match the proven glance conventions: +Y looks up, +X looks right.
@@ -89,6 +86,12 @@ public:
             dingosdk::first_person::damp(pitch_error,pitch_velocity_,pitch_error>0 ? spring.down:spring.up,dt);
             smooth_yaw_=wrap_heading(yaw_+yaw_error);smooth_pitch_=pitch_+pitch_error;
         }
+        // The follow servo keeps the character's facing within the tolerance of
+        // the view direction; the native turn animation provides the rate. Zero
+        // deviation keeps the current facing, past it the body target rides the
+        // tolerance boundary until the look re-centers or the tolerance expands.
+        const float deviation=wrap_heading(body_heading-smooth_yaw_-180.f);
+        body_bias_=wrap_heading(180.f+std::clamp(deviation,-settings.follow_tolerance,settings.follow_tolerance));
         return {true,true,smooth_yaw_,smooth_pitch_,wrap_heading(smooth_yaw_+body_bias_),input.x!=0 || input.y!=0};
     }
 };
