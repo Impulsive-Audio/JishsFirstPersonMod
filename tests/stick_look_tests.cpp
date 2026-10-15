@@ -272,9 +272,9 @@ int main() {
     }
     Config config;config.stick=settings;config.stick.deadzone=.22f;
     config.stick.mount_smoothing=82;config.stick.dismount_smoothing=35;config.stick.smooth_transitions=false;
-    config.board_offset[0]=.11f;config.board_offset[2]=-.13f;config.foot_offset[1]=.22f;
+    config.board_offset[0]=.11f;config.board_offset[2]=-.13f;config.foot_offset[1]=.22f;config.stick.head_motion=70;
     auto path=data_directory()/"settings.ini";write_config(path,config);const auto reloaded=read_config(path);
-    check(reloaded.stick.enabled && reloaded.stick.deadzone==.22f,"stick preferences did not persist");
+    check(reloaded.stick.enabled && reloaded.stick.deadzone==.22f && reloaded.stick.head_motion==70,"stick preferences did not persist");
     check(reloaded.board_offset[0]==.11f && reloaded.board_offset[2]==-.13f && reloaded.foot_offset[1]==.22f,
         "per-mode camera offsets did not persist");
     // Per-mode camera offsets swap between on-foot and on-board memories.
@@ -286,6 +286,31 @@ int main() {
     Config fresh;fresh.spring.offset={.1f,.2f,.3f};fresh.board_offset={.4f,.5f,.6f};fresh.foot_offset={.1f,.2f,.3f};
     adopt_mode_offsets(fresh,1,0);
     check(fresh.spring.offset[0]==.1f && fresh.board_offset[0]==.4f,"first mode overwrote the other mode's offsets");
+    // The head wobble tracks the native camera without leaking sustained turns.
+    HeadWobbleState steady_wobble;
+    const dingosdk::first_person::Quat level{0,0,0,1};
+    check(track_head_wobble(steady_wobble,level,0)[3]==1.f,"first wobble sample was not clean");
+    for(int i=1;i<=180;++i) track_head_wobble(steady_wobble,level,i*.016);
+    check(track_head_wobble(steady_wobble,level,3.0)[3]>.999f,"steady orientation produced head wobble");
+    HeadWobbleState turn_wobble;auto turning=level;float turn_peak{};
+    track_head_wobble(turn_wobble,level,0);
+    const dingosdk::first_person::Quat step{0,std::sin(.02f),0,std::cos(.02f)};
+    for(int i=1;i<=240;++i) {
+        turning=dingosdk::first_person::multiply(step,turning);
+        const auto wobble=track_head_wobble(turn_wobble,turning,i*.016);
+        const float magnitude=std::abs(wobble[0])+std::abs(wobble[2]);
+        if(magnitude>turn_peak) turn_peak=magnitude;
+    }
+    check(turn_peak<.002f,"sustained turn leaked into the head wobble");
+    HeadWobbleState bob_wobble;float bob_peak{};
+    track_head_wobble(bob_wobble,level,0);
+    for(int i=1;i<=180;++i) {
+        const float angle=.03f*std::sin(i*.21f);
+        const dingosdk::first_person::Quat tilt{std::sin(angle*.5f),0,0,std::cos(angle*.5f)};
+        const auto wobble=track_head_wobble(bob_wobble,dingosdk::first_person::multiply(tilt,level),i*.016);
+        if(std::abs(wobble[0])>bob_peak) bob_peak=std::abs(wobble[0]);
+    }
+    check(bob_peak>.0005f && bob_peak<.1f,"head bob did not pass through the wobble filter");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");

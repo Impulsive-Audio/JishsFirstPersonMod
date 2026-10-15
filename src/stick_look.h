@@ -5,7 +5,7 @@
 namespace jishsfirstpersonmod {
 struct StickSettings {
     bool enabled{},invert_y{};
-    float yaw_speed=120,pitch_speed=90,deadzone=.15f;
+    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_motion=100;
     bool smooth_transitions=true;
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
@@ -44,6 +44,42 @@ inline dingosdk::first_person::Vec3 yaw_anchored_position(const dingosdk::first_
     const float half=yaw*0.5f;
     return dingosdk::first_person::add({head[12],head[13],head[14]},
         dingosdk::first_person::rotate(dingosdk::first_person::Quat{0,std::sin(half),0,std::cos(half)},offset));
+}
+inline float rotation_angle(const dingosdk::first_person::Quat& q) { return 2.f*std::acos(std::clamp(std::fabs(q[3]),0.f,1.f)); }
+inline dingosdk::first_person::Quat scale_rotation(const dingosdk::first_person::Quat& rotation,float strength) {
+    using namespace dingosdk::first_person;
+    return normalized(Quat{rotation[0]*strength,rotation[1]*strength,rotation[2]*strength,1.f+(rotation[3]-1.f)*strength});
+}
+struct HeadWobbleState {
+    dingosdk::first_person::Quat average_delta{0,0,0,1},wobble{0,0,0,1},previous{0,0,0,1};
+    double last{};
+};
+// Extracts the native head camera's high-frequency wobble: per-frame deltas
+// are compared against their own slow average so sustained turns cancel, and
+// only bob-rate deltas accumulate (with a short leak and a hard angle cap).
+inline dingosdk::first_person::Quat track_head_wobble(HeadWobbleState& state,
+    const dingosdk::first_person::Quat& orientation,double now) {
+    using namespace dingosdk::first_person;
+    if(state.last==0 || now-state.last>0.1) {
+        state.previous=orientation;state.average_delta={0,0,0,1};state.wobble={0,0,0,1};state.last=now;
+        return {0,0,0,1};
+    }
+    const float dt=std::clamp(static_cast<float>(now-state.last),1e-4f,.1f);state.last=now;
+    auto delta=multiply(conjugate(state.previous),orientation);
+    if(delta[3]<0.f) delta={-delta[0],-delta[1],-delta[2],-delta[3]};
+    state.previous=orientation;
+    const auto blend=[&](const Quat& a,const Quat& b,float t) {
+        const float flip=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]<0.f ? -1.f:1.f;
+        return normalized(Quat{a[0]+(b[0]*flip-a[0])*t,a[1]+(b[1]*flip-a[1])*t,
+                                a[2]+(b[2]*flip-a[2])*t,a[3]+(b[3]*flip-a[3])*t});
+    };
+    state.average_delta=blend(state.average_delta,delta,std::clamp(dt/0.4f,0.f,1.f));
+    state.wobble=blend(state.wobble,{0,0,0,1},std::clamp(dt/0.3f,0.f,1.f));
+    if(rotation_angle(delta)<0.7f*dt) {
+        state.wobble=normalized(multiply(state.wobble,multiply(conjugate(state.average_delta),delta)));
+        if(const float angle=rotation_angle(state.wobble);angle>0.07f) state.wobble=scale_rotation(state.wobble,0.07f/angle);
+    }
+    return state.wobble;
 }
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {

@@ -496,6 +496,9 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(ImGui::SliderFloat("Horizontal sensitivity",&config.stick.yaw_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         fit_control("Vertical sensitivity");
         if(ImGui::SliderFloat("Vertical sensitivity",&config.stick.pitch_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        fit_control("Head motion");
+        if(ImGui::SliderFloat("Head motion",&config.stick.head_motion,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        help_marker("Re-adds the native head camera's natural bob and sway on top of your look. 0 uses the fully stabilized view.");
         float deadzone=config.stick.deadzone*100;
         fit_control("Stick deadzone",true);
         if(ImGui::SliderFloat("Stick deadzone",&deadzone,1,50,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) {
