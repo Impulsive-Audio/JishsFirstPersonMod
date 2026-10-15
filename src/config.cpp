@@ -115,6 +115,9 @@ Config read_config(const std::filesystem::path& path) {
     cfg.board.deadzone=number("board_deadzone",.10f);
     cfg.board.center_smoothing=number("board_center_smoothing",35);
     cfg.board.center_pitch=number("board_center_pitch",0);
+    cfg.board.lean_look_down=boolean("board_lean_look_down",true);
+    cfg.board.lean_forward=number("board_lean_forward",.086f);
+    cfg.board.lean_down=number("board_lean_down",.077f);
     cfg.stick.enabled=boolean("stick_look",false);
     cfg.stick.turn_character=boolean("stick_turn_character",false);
     cfg.stick.invert_y=boolean("stick_invert_y",false);
@@ -140,7 +143,9 @@ Config read_config(const std::filesystem::path& path) {
        !std::isfinite(cfg.stick.deadzone) || cfg.stick.deadzone<.01f || cfg.stick.deadzone>.5f)
         throw std::runtime_error("Stick look settings outside supported ranges");
     if(!std::isfinite(cfg.stick.lean_forward) || cfg.stick.lean_forward<0 || cfg.stick.lean_forward>.3f ||
-       !std::isfinite(cfg.stick.lean_down) || cfg.stick.lean_down<0 || cfg.stick.lean_down>.3f)
+       !std::isfinite(cfg.stick.lean_down) || cfg.stick.lean_down<0 || cfg.stick.lean_down>.3f ||
+       !std::isfinite(cfg.board.lean_forward) || cfg.board.lean_forward<0 || cfg.board.lean_forward>.3f ||
+       !std::isfinite(cfg.board.lean_down) || cfg.board.lean_down<0 || cfg.board.lean_down>.3f)
         throw std::runtime_error("Look-down lean must be 0–30 centimetres.");
     if(!dingosdk::first_person::valid(cfg.look_spring)) throw std::runtime_error("Look smoothing outside supported ranges");
     if(!cfg.link_smoothing && !cfg.look_smoothing_initialized) {
@@ -246,7 +251,8 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
             <<"\nboard_yaw_limit="<<cfg.board.yaw_limit<<"\nboard_pitch_limit="<<cfg.board.pitch_limit<<"\nboard_invert_y="<<cfg.board.invert_y
             <<"\nboard_yaw_speed="<<cfg.board.yaw_speed<<"\nboard_pitch_speed="<<cfg.board.pitch_speed
             <<"\nboard_deadzone="<<cfg.board.deadzone<<"\nboard_center_smoothing="<<cfg.board.center_smoothing
-            <<"\nboard_center_pitch="<<cfg.board.center_pitch<<'\n';
+            <<"\nboard_center_pitch="<<cfg.board.center_pitch
+            <<"\nboard_lean_look_down="<<cfg.board.lean_look_down<<"\nboard_lean_forward="<<cfg.board.lean_forward<<"\nboard_lean_down="<<cfg.board.lean_down<<'\n';
         out<<"menu_combo="<<cfg.menu_combo<<'\n';
         out<<"menu_key="<<cfg.menu_key<<'\n';
         out.flush(); if(!out) throw std::runtime_error("Writing settings failed.");

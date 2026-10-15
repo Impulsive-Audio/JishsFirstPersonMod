@@ -193,8 +193,14 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
                         if(attached && !flip_owned) matrix=bail_view.attach(matrix,head);
-                        lean=movement.mode==1 && aim.active && config.stick.lean_look_down;
-                        if(lean) { const auto shift=look_down_lean(matrix,aim.pitch,config.stick.lean_forward,config.stick.lean_down);matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2]; }
+                        lean=(movement.mode==1 || movement.mode==2) && aim.active &&
+                            (movement.mode==1 ? config.stick.lean_look_down:config.board.lean_look_down);
+                        if(lean) {
+                            const bool foot=movement.mode==1;
+                            const auto shift=look_down_lean(matrix,aim.pitch,foot ? config.stick.lean_forward:config.board.lean_forward,
+                                foot ? config.stick.lean_down:config.board.lean_down);
+                            matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2];
+                        }
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
                         const bool mount_handoff=config.stick.enabled && movement.mounting;
                         handoff.up=handoff.down=handoff.left=handoff.right=(mount_handoff || movement.mode==2) ? config.stick.mount_smoothing:config.stick.dismount_smoothing;

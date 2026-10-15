@@ -560,6 +560,17 @@ void draw_panel_frame(const PanelFrame& frame) {
         board_slider("Horizontal look limit",config.board.yaw_limit,0,180,"%.0f degrees");
         board_slider("Vertical look limit",config.board.pitch_limit,0,85,"%.0f degrees");
         help_marker("Limits free look left/right of forward and up/down from your centre pitch. Button glance angles stay independent.");
+        if(readable_checkbox("Lean camera forward when looking down",&config.board.lean_look_down)) board_change();
+        help_marker("Moves the camera slightly forward and down as you look down, so your board stays out of the view.");
+        ImGui::BeginDisabled(!config.board.lean_look_down);
+        float board_lean_cm=config.board.lean_forward*100;
+        fit_control("Look-down lean forward");
+        if(ImGui::SliderFloat("Look-down lean forward",&board_lean_cm,0,30,"%.1f cm",ImGuiSliderFlags_AlwaysClamp)) { config.board.lean_forward=board_lean_cm*.01f;board_change(); }
+        board_lean_cm=config.board.lean_down*100;
+        fit_control("Look-down lean down");
+        if(ImGui::SliderFloat("Look-down lean down",&board_lean_cm,0,30,"%.1f cm",ImGuiSliderFlags_AlwaysClamp)) { config.board.lean_down=board_lean_cm*.01f;board_change(); }
+        help_marker("Camera shift at full look-down, scaled by how far down you look.");
+        ImGui::EndDisabled();
         board_slider("On Board Free Look Smoothing",config.board.look_smoothing,0,100,"%.0f%%");
         help_marker("Smooths the camera while looking, like a dolly camera. Zero responds immediately; higher values add more lag. Native skating input is never smoothed by this setting.");
         if(readable_checkbox("Modifier Key Keeps Right Stick Input Held",&config.board.keep_native_input)) board_change();
