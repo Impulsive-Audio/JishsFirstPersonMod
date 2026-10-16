@@ -5,7 +5,7 @@
 namespace jishsfirstpersonmod {
 struct StickSettings {
     bool enabled{},invert_y{},world_lock{};
-    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_smoothing=0,head_roll=100;
+    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_smoothing=0,head_roll=100,head_sway=100;
     bool smooth_transitions=true;
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
@@ -80,6 +80,31 @@ struct HeadMotionState {
     dingosdk::first_person::Quat tilt{0,0,0,1};
     double last{};
 };
+struct HeadSwayState {
+    dingosdk::first_person::Vec3 reference{},smoothed{};
+    double last{};bool ready{};
+};
+// The head's physical motion relative to the game camera: the rest relationship
+// is tracked over seconds so walk bob, sway and leans ride through while the rig
+// offset stays put. The smoothing amount damps the result before it is applied.
+inline dingosdk::first_person::Vec3 track_head_sway(HeadSwayState& state,
+    const dingosdk::first_person::Vec3& head,const dingosdk::first_person::Vec3& camera,double now,float smoothing) {
+    using namespace dingosdk::first_person;
+    const auto local=subtract(head,camera);
+    if(!state.ready || now-state.last>.25) {
+        state.reference=state.smoothed=local;state.ready=true;state.last=now;
+        return {};
+    }
+    const float dt=std::clamp(static_cast<float>(now-state.last),1e-4f,.1f);state.last=now;
+    const float track=std::clamp(dt/6.f,0.f,1.f);
+    const float damp=smoothing<=0.f ? 1.f:std::clamp(dt/(0.02f+0.78f*smoothing/100.f),0.f,1.f);
+    const auto detail=subtract(local,state.reference);
+    for(unsigned i=0;i<3;++i) {
+        state.reference[i]+=detail[i]*track;
+        state.smoothed[i]+=(detail[i]-state.smoothed[i])*damp;
+    }
+    return state.smoothed;
+}
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {
     bool ready_{},seen_{},center_facing_{};

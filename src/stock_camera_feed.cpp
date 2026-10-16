@@ -45,6 +45,7 @@ std::uintptr_t smoothing_camera{};
 std::array<std::uintptr_t,5> transition_owner{};
 FakieMirror fakie_state{};
 HeadMotionState head_motion_state{};
+HeadSwayState head_sway_state{};
 bool from_stock(void* caller) {
     HMODULE owner{};return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         reinterpret_cast<LPCWSTR>(caller),&owner) && owner==stock_module;
@@ -52,7 +53,7 @@ bool from_stock(void* caller) {
 void reset_camera_smoothing() {
     reset_body_flip();flip_camera.reset();
     collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
-    smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;fakie_state={};head_motion_state={};
+    smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;fakie_state={};head_motion_state={};head_sway_state={};
 }
 bool write_spectator_render(std::uintptr_t client,std::uintptr_t camera,const Matrix& pose,float fov) {
     auto rejected=[](const std::string& reason) {
@@ -195,13 +196,16 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             else matrix=aim_board_body_local(matrix,aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,frame);
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
-                        if(attached && !flip_owned) matrix=bail_view.attach(matrix,head);
+                        // On foot the stable game camera keeps the position: per-mode offsets
+                        // land exactly as configured, with the head's local motion added back.
+                        const bool native_foot_position=movement.mode==1 && !bail && !jump_camera_action(movement);
+                        if(attached && !flip_owned && !native_foot_position) matrix=bail_view.attach(matrix,head);
                         lean=(movement.mode==1 || movement.mode==2) && aim.active &&
                             (movement.mode==1 ? config.stick.lean_look_down:config.board.lean_look_down);
                         if(lean) {
                             const bool foot=movement.mode==1;
                             const auto info=bail_view.info();
-                            if(foot && head.valid && info.calibrated) {
+                            if(foot && !native_foot_position && head.valid && info.calibrated) {
                                 // Steep look-down pitches the head, which swings the
                                 // calibrated attachment offset around the head and drags
                                 // the camera back into the body past ~70 degrees. During
@@ -215,6 +219,12 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                                     foot ? config.stick.lean_down:config.board.lean_down);
                                 matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2];
                             }
+                        }
+                        if(native_foot_position && head.valid && aim.active && !config.stick.world_lock && config.stick.head_sway>0.f) {
+                            const dingosdk::first_person::Vec3 head_at{head.head[12],head.head[13],head.head[14]};
+                            const auto sway=track_head_sway(head_sway_state,head_at,{native[12],native[13],native[14]},frame,config.stick.head_smoothing);
+                            const float amount=config.stick.head_sway/100.f;
+                            for(unsigned i=0;i<3;++i) matrix[12+i]+=sway[i]*amount;
                         }
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
                         const bool mount_handoff=config.stick.enabled && movement.mounting;

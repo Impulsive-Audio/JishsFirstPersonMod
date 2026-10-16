@@ -322,6 +322,15 @@ int main() {
     const auto rolled_pitch=aim_camera_native(pitching_pose,riding,false,0.f,.5f,pitch_state,.18);
     check(rotation_angle(multiply(conjugate(orientation(full_pitch)),orientation(rolled_pitch)))<.001f,
         "head roll limit suppressed the pitch");
+    // The sway follows the head's local motion while holding its rest relationship.
+    HeadSwayState sway_state;
+    const dingosdk::first_person::Vec3 head_at{1,2,3},camera_at{1,1.8f,2.9f};
+    check(dingosdk::first_person::length(track_head_sway(sway_state,head_at,camera_at,0,0.f))<.001f,"first sway sample was not clean");
+    for(int i=1;i<=90;++i) track_head_sway(sway_state,head_at,camera_at,i*.016,0.f);
+    check(dingosdk::first_person::length(track_head_sway(sway_state,head_at,camera_at,1.5,0.f))<.001f,"steady head produced sway");
+    const dingosdk::first_person::Vec3 lifted{1,2.05f,3};
+    const auto leaning=track_head_sway(sway_state,lifted,camera_at,1.6,0.f);
+    check(std::abs(leaning[1]-.05f)<.01f && std::abs(leaning[0])<.01f,"head lean did not pass into the sway");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");
