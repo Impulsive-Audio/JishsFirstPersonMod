@@ -46,49 +46,27 @@ inline dingosdk::first_person::Vec3 yaw_anchored_position(const dingosdk::first_
         dingosdk::first_person::rotate(dingosdk::first_person::Quat{0,std::sin(half),0,std::cos(half)},offset));
 }
 inline float rotation_angle(const dingosdk::first_person::Quat& q) { return 2.f*std::acos(std::clamp(std::fabs(q[3]),0.f,1.f)); }
-inline dingosdk::first_person::Quat scale_rotation(const dingosdk::first_person::Quat& rotation,float strength) {
+// Splits off the world-up yaw so only the character's tilt (pitch and roll)
+// remains: the part of the native camera that rides on top of the look.
+inline dingosdk::first_person::Quat swing_from_level(const dingosdk::first_person::Quat& orientation) {
     using namespace dingosdk::first_person;
-    return normalized(Quat{rotation[0]*strength,rotation[1]*strength,rotation[2]*strength,1.f+(rotation[3]-1.f)*strength});
+    const float length=std::sqrt(orientation[1]*orientation[1]+orientation[3]*orientation[3]);
+    if(length<1e-4f) return orientation;
+    const auto twist=Quat{0,orientation[1]/length,0,orientation[3]/length};
+    return normalized(multiply(conjugate(twist),orientation));
 }
-struct HeadWobbleState {
-    dingosdk::first_person::Quat average_delta{0,0,0,1},wobble{0,0,0,1},previous{0,0,0,1};
-    double last{};
-};
-// Extracts the native head camera's high-frequency wobble: per-frame deltas
-// are compared against their own slow average so sustained turns cancel, and
-// only bob-rate deltas accumulate (with a short leak and a hard angle cap).
-inline dingosdk::first_person::Quat track_head_wobble(HeadWobbleState& state,
-    const dingosdk::first_person::Quat& orientation,double now) {
+inline dingosdk::first_person::Quat blend_rotation(dingosdk::first_person::Quat from,dingosdk::first_person::Quat to,float amount) {
     using namespace dingosdk::first_person;
-    if(state.last==0 || now-state.last>0.1) {
-        state.previous=orientation;state.average_delta={0,0,0,1};state.wobble={0,0,0,1};state.last=now;
-        return {0,0,0,1};
-    }
-    const float dt=std::clamp(static_cast<float>(now-state.last),1e-4f,.1f);state.last=now;
-    auto delta=multiply(conjugate(state.previous),orientation);
-    if(delta[3]<0.f) delta={-delta[0],-delta[1],-delta[2],-delta[3]};
-    state.previous=orientation;
-    const auto blend=[&](const Quat& a,const Quat& b,float t) {
-        const float flip=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]<0.f ? -1.f:1.f;
-        return normalized(Quat{a[0]+(b[0]*flip-a[0])*t,a[1]+(b[1]*flip-a[1])*t,
-                                a[2]+(b[2]*flip-a[2])*t,a[3]+(b[3]*flip-a[3])*t});
-    };
-    state.average_delta=blend(state.average_delta,delta,std::clamp(dt/0.4f,0.f,1.f));
-    state.wobble=blend(state.wobble,{0,0,0,1},std::clamp(dt/0.3f,0.f,1.f));
-    if(rotation_angle(delta)<1.2f*dt) {
-        state.wobble=normalized(multiply(state.wobble,multiply(conjugate(state.average_delta),delta)));
-        if(const float angle=rotation_angle(state.wobble);angle>0.07f) state.wobble=scale_rotation(state.wobble,0.07f/angle);
-    }
-    return state.wobble;
-}
-// The native camera rotation expressed in the skater body's frame: the real
-// head deviation from the torso (bob and sway), bounded by the neck, so a
-// turn or look sweep cannot leak into the wobble.
-inline dingosdk::first_person::Quat body_referenced(const dingosdk::first_person::Matrix& body,
-    const dingosdk::first_person::Matrix& camera) {
-    using namespace dingosdk::first_person;
-    const auto base=multiply(orientation(body),Quat{0,1,0,0});
-    return normalized(multiply(conjugate(base),orientation(camera)));
+    amount=std::clamp(amount,0.f,1.f);
+    float dot=from[0]*to[0]+from[1]*to[1]+from[2]*to[2]+from[3]*to[3];
+    if(dot<0.f) { to={-to[0],-to[1],-to[2],-to[3]};dot=-dot; }
+    if(amount<=0.f) return normalized(from);
+    if(amount>=1.f || dot>.9995f) return normalized(to);
+    const float angle=std::acos(std::clamp(dot,-1.f,1.f));
+    const float scale=std::sin(angle);
+    const float a=std::sin((1.f-amount)*angle)/scale;
+    const float b=std::sin(amount*angle)/scale;
+    return normalized(Quat{from[0]*a+to[0]*b,from[1]*a+to[1]*b,from[2]*a+to[2]*b,from[3]*a+to[3]*b});
 }
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {
@@ -198,6 +176,20 @@ inline dingosdk::first_person::Matrix aim_camera(dingosdk::first_person::Matrix 
     const auto rotation=multiply({0,std::sin(yaw),0,std::cos(yaw)},
                                  {std::sin(pitch),0,0,std::cos(pitch)});
     write(pose,rotation,{pose[12],pose[13],pose[14]});
+    return pose;
+}
+inline dingosdk::first_person::Matrix aim_camera_native(dingosdk::first_person::Matrix pose,const StickAim& aim,float motion) {
+    // The on-foot look keeps its absolute world-up yaw and level pitch, but the
+    // character's own head attitude (bob, sway, tilt, roll) can ride on top:
+    // motion 0 is the level lock, motion 1 follows the live native camera.
+    // The world-up yaw is split off so the native's steering-following yaw
+    // cannot double up with the look.
+    const auto level=aim_camera(pose,aim);
+    if(!aim.active || motion<=0.f) return level;
+    using namespace dingosdk::first_person;
+    const auto tilt=swing_from_level(orientation(pose));
+    const auto alive=normalized(multiply(orientation(level),tilt));
+    write(pose,blend_rotation(orientation(level),alive,motion),{pose[12],pose[13],pose[14]});
     return pose;
 }
 inline dingosdk::first_person::Matrix face_heading(dingosdk::first_person::Matrix pose,float heading) {

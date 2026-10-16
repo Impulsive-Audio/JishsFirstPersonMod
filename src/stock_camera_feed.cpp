@@ -44,7 +44,6 @@ std::uintptr_t collision_world{};
 std::uintptr_t smoothing_camera{};
 std::array<std::uintptr_t,5> transition_owner{};
 FakieMirror fakie_state{};
-HeadWobbleState head_wobble{};
 bool from_stock(void* caller) {
     HMODULE owner{};return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         reinterpret_cast<LPCWSTR>(caller),&owner) && owner==stock_module;
@@ -52,7 +51,7 @@ bool from_stock(void* caller) {
 void reset_camera_smoothing() {
     reset_body_flip();flip_camera.reset();
     collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
-    smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;fakie_state={};head_wobble={};
+    smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;fakie_state={};
 }
 bool write_spectator_render(std::uintptr_t client,std::uintptr_t camera,const Matrix& pose,float fov) {
     auto rejected=[](const std::string& reason) {
@@ -106,14 +105,9 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                         glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(config),{look_pitch.load(),look_yaw.load()},look_frame.load(),config.link_smoothing));
                         const auto stick_aim=stick_camera_aim();
-                        dingosdk::first_person::Quat wobble{0,0,0,1};
-                        if(movement.mode==1) {
-                            const auto head_orientation=movement.body_matrix_valid ? body_referenced(movement.body,native):dingosdk::first_person::orientation(native);
-                            matrix=aim_camera(native,stick_aim);
-                            if(config.stick.head_motion>0.f)
-                                wobble=scale_rotation(track_head_wobble(head_wobble,head_orientation,look_frame.load()),config.stick.head_motion/100.f);
-                        } else matrix=aim_board_body_local(native,stick_aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,look_frame.load());
-                        dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),wobble),glance)),{native[12],native[13],native[14]});
+                        if(movement.mode==1) matrix=aim_camera_native(native,stick_aim,config.stick.head_motion/100.f);
+                        else matrix=aim_board_body_local(native,stick_aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,look_frame.load());
+                        dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{native[12],native[13],native[14]});
                     } else { smoothing.reset();stop_stick_look(); }
                 }
                 note_camera_view(matrix,glance);
@@ -196,14 +190,9 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                             glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(effective),{pitch,yaw},frame,config.link_smoothing));
                             aim=stick_camera_aim();
-                            dingosdk::first_person::Quat wobble{0,0,0,1};
-                            if(movement.mode==1) {
-                                const auto head_orientation=movement.body_matrix_valid ? body_referenced(movement.body,matrix):dingosdk::first_person::orientation(matrix);
-                                matrix=aim_camera(matrix,aim);
-                                if(config.stick.head_motion>0.f)
-                                    wobble=scale_rotation(track_head_wobble(head_wobble,head_orientation,frame),config.stick.head_motion/100.f);
-                            } else matrix=aim_board_body_local(matrix,aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,frame);
-                            dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),wobble),glance)),{matrix[12],matrix[13],matrix[14]});
+                            if(movement.mode==1) matrix=aim_camera_native(matrix,aim,config.stick.head_motion/100.f);
+                            else matrix=aim_board_body_local(matrix,aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,frame);
+                            dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
                         if(attached && !flip_owned) matrix=bail_view.attach(matrix,head);
                         lean=(movement.mode==1 || movement.mode==2) && aim.active &&

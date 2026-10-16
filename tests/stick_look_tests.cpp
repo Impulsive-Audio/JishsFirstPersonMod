@@ -286,43 +286,25 @@ int main() {
     Config fresh;fresh.spring.offset={.1f,.2f,.3f};fresh.board_offset={.4f,.5f,.6f};fresh.foot_offset={.1f,.2f,.3f};
     adopt_mode_offsets(fresh,1,0);
     check(fresh.spring.offset[0]==.1f && fresh.board_offset[0]==.4f,"first mode overwrote the other mode's offsets");
-    // The head wobble tracks the native camera without leaking sustained turns.
-    HeadWobbleState steady_wobble;
-    const dingosdk::first_person::Quat level{0,0,0,1};
-    check(track_head_wobble(steady_wobble,level,0)[3]==1.f,"first wobble sample was not clean");
-    for(int i=1;i<=180;++i) track_head_wobble(steady_wobble,level,i*.016);
-    check(track_head_wobble(steady_wobble,level,3.0)[3]>.999f,"steady orientation produced head wobble");
-    HeadWobbleState turn_wobble;auto turning=level;float turn_peak{};
-    track_head_wobble(turn_wobble,level,0);
-    const dingosdk::first_person::Quat step{0,std::sin(.02f),0,std::cos(.02f)};
-    for(int i=1;i<=240;++i) {
-        turning=dingosdk::first_person::multiply(step,turning);
-        const auto wobble=track_head_wobble(turn_wobble,turning,i*.016);
-        const float magnitude=std::abs(wobble[0])+std::abs(wobble[2]);
-        if(magnitude>turn_peak) turn_peak=magnitude;
-    }
-    check(turn_peak<.002f,"sustained turn leaked into the head wobble");
-    HeadWobbleState bob_wobble;float bob_peak{};
-    track_head_wobble(bob_wobble,level,0);
-    for(int i=1;i<=180;++i) {
-        const float angle=.03f*std::sin(i*.5f);
-        const dingosdk::first_person::Quat tilt{std::sin(angle*.5f),0,0,std::cos(angle*.5f)};
-        const auto wobble=track_head_wobble(bob_wobble,dingosdk::first_person::multiply(tilt,level),i*.016);
-        if(std::abs(wobble[0])>bob_peak) bob_peak=std::abs(wobble[0]);
-    }
-    check(bob_peak>.006f && bob_peak<.05f,"head bob did not pass through the wobble filter");
-    // Body-referenced extraction returns only the head's deviation from the torso.
-    // Quaternion sign is not meaningful for a rotation, so compare via angles.
-    const auto facing_body=board_pose(30,0,0);
-    Matrix aligned_camera=pose;
-    write(aligned_camera,multiply(orientation(facing_body),Quat{0,1,0,0}),{3,4,5});
-    const auto clean=body_referenced(facing_body,aligned_camera);
-    check(rotation_angle(clean)<.001f,"aligned camera produced a body-referenced deviation");
-    Matrix nodding_camera=pose;
-    write(nodding_camera,multiply(multiply(orientation(facing_body),Quat{0,1,0,0}),Quat{std::sin(.025f),0,0,std::cos(.025f)}),{3,4,5});
-    auto nod=body_referenced(facing_body,nodding_camera);
-    if(nod[3]<0.f) nod={-nod[0],-nod[1],-nod[2],-nod[3]};
-    check(std::abs(rotation_angle(nod)-.05f)<.001f && std::abs(nod[0]-std::sin(.025f))<.001f,"head nod missing from body-referenced extraction");
+    // The on-foot look stays absolute while the native head attitude rides on top.
+    const auto yaw_quat=Quat{0,std::sin(.125f),0,std::cos(.125f)};
+    check(rotation_angle(swing_from_level(yaw_quat))<.001f,"world yaw leaked into the head swing");
+    const auto tilt_quat=multiply(Quat{std::sin(.1f),0,0,std::cos(.1f)},yaw_quat);
+    check(std::abs(rotation_angle(swing_from_level(tilt_quat))-.2f)<.01f,"head tilt missing from the swing");
+    check(std::abs(rotation_angle(blend_rotation(Quat{0,0,0,1},Quat{std::sin(.3f),0,0,std::cos(.3f)},.5f))-.3f)<.01f,"motion blend midpoint off");
+    StickAim riding;riding.active=true;riding.heading=40;riding.pitch=-10;
+    Matrix steering_pose=pose;
+    write(steering_pose,yaw_quat,{0,0,0});
+    const auto level_view=aim_camera_native(steering_pose,riding,0.f);
+    const auto alive_view=aim_camera_native(steering_pose,riding,1.f);
+    check(std::abs(wrap_heading(matrix_heading(alive_view)-matrix_heading(level_view)))<.001f,
+        "native steering yaw doubled into the on-foot view");
+    Matrix rolling_pose=pose;
+    write(rolling_pose,Quat{0,0,std::sin(.35f),std::cos(.35f)},{0,0,0});
+    const auto flat_view=aim_camera_native(rolling_pose,riding,0.f);
+    const auto rolled_view=aim_camera_native(rolling_pose,riding,1.f);
+    const auto roll_difference=multiply(conjugate(orientation(flat_view)),orientation(rolled_view));
+    check(std::abs(rotation_angle(roll_difference)-.7f)<.01f,"native roll did not pass into the on-foot view");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");
