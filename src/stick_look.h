@@ -84,11 +84,10 @@ struct HeadSwayState {
     dingosdk::first_person::Vec3 reference{},smoothed{};
     double last{};bool ready{};
 };
-// The head's physical motion relative to the skater's own root bone: both are
-// raw skeleton poses, so stabilisation lag cannot leak in. The rest relationship
-// is tracked over seconds so walk bob, sway and leans ride through while the
-// posture mean stays put. The smoothing amount damps the result before it is
-// applied.
+// The head's physical motion relative to the game camera: the rest relationship
+// is tracked over seconds so walk bob, sway and leans ride through while the rig
+// offset stays put. The camera's own stabilisation damps the result naturally.
+// The smoothing amount damps it further before it is applied.
 inline dingosdk::first_person::Vec3 track_head_sway(HeadSwayState& state,
     const dingosdk::first_person::Vec3& head,const dingosdk::first_person::Vec3& reference,double now,float smoothing) {
     using namespace dingosdk::first_person;

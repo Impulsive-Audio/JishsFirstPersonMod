@@ -107,7 +107,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                         glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(config),{look_pitch.load(),look_yaw.load()},look_frame.load(),config.link_smoothing));
                         const auto stick_aim=stick_camera_aim();
-                        if(movement.mode==1) matrix=aim_camera_native(native,stick_aim,config.stick.world_lock,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,look_frame.load());
+                        if(movement.mode==1) matrix=aim_camera_native(native,stick_aim,config.stick.world_lock || jump_camera_action(movement),config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,look_frame.load());
                         else matrix=aim_board_body_local(native,stick_aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,look_frame.load());
                         dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{native[12],native[13],native[14]});
                     } else { smoothing.reset();stop_stick_look(); }
@@ -192,13 +192,13 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                             glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(effective),{pitch,yaw},frame,config.link_smoothing));
                             aim=stick_camera_aim();
-                            if(movement.mode==1) matrix=aim_camera_native(matrix,aim,config.stick.world_lock,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,frame);
+                            if(movement.mode==1) matrix=aim_camera_native(matrix,aim,config.stick.world_lock || jump_camera_action(movement),config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,frame);
                             else matrix=aim_board_body_local(matrix,aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,frame);
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
                         // On foot the stable game camera keeps the position: per-mode offsets
                         // land exactly as configured, with the head's local motion added back.
-                        const bool native_foot_position=movement.mode==1 && !bail;
+                        const bool native_foot_position=movement.mode==1 && !bail && bail_view.info().getup_camera_phase==0;
                         if(attached && !flip_owned && !native_foot_position) matrix=bail_view.attach(matrix,head);
                         lean=(movement.mode==1 || movement.mode==2) && aim.active &&
                             (movement.mode==1 ? config.stick.lean_look_down:config.board.lean_look_down);
@@ -220,10 +220,9 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                                 matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2];
                             }
                         }
-                        if(native_foot_position && head.valid && aim.active && !config.stick.world_lock) {
+                        if(native_foot_position && head.valid && aim.active && !config.stick.world_lock && !jump_camera_action(movement)) {
                             const dingosdk::first_person::Vec3 head_at{head.head[12],head.head[13],head.head[14]};
-                            const dingosdk::first_person::Vec3 root_at{head.root[12],head.root[13],head.root[14]};
-                            const auto sway=track_head_sway(head_sway_state,head_at,root_at,frame,config.stick.head_smoothing);
+                            const auto sway=track_head_sway(head_sway_state,head_at,{native[12],native[13],native[14]},frame,config.stick.head_smoothing);
                             for(unsigned i=0;i<3;++i) matrix[12+i]+=sway[i];
                         }
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
