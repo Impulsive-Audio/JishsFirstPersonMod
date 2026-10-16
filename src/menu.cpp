@@ -510,9 +510,6 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(ImGui::SliderFloat("Horizontal sensitivity",&config.stick.yaw_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         fit_control("Vertical sensitivity");
         if(ImGui::SliderFloat("Vertical sensitivity",&config.stick.pitch_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        fit_control("Head motion");
-        if(ImGui::SliderFloat("Head motion",&config.stick.head_motion,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        help_marker("How much of the character's own head motion (bob, sway, tilt, roll) is applied to the view.");
         fit_control("Head motion smoothing");
         if(ImGui::SliderFloat("Head motion smoothing",&config.stick.head_smoothing,0,100,"%.0f",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         help_marker("How much the head motion is damped before it reaches the view. Heavy smoothing will lag fast tumbles.");

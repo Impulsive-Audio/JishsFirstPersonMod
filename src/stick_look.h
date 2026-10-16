@@ -5,7 +5,7 @@
 namespace jishsfirstpersonmod {
 struct StickSettings {
     bool enabled{},invert_y{},world_lock{};
-    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_motion=100,head_smoothing=0;
+    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_smoothing=0;
     bool smooth_transitions=true;
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
@@ -54,10 +54,6 @@ inline dingosdk::first_person::Quat swing_from_level(const dingosdk::first_perso
     if(length<1e-4f) return orientation;
     const auto twist=Quat{0,orientation[1]/length,0,orientation[3]/length};
     return normalized(multiply(conjugate(twist),orientation));
-}
-inline dingosdk::first_person::Quat scale_rotation(const dingosdk::first_person::Quat& rotation,float strength) {
-    using namespace dingosdk::first_person;
-    return normalized(Quat{rotation[0]*strength,rotation[1]*strength,rotation[2]*strength,1.f+(rotation[3]-1.f)*strength});
 }
 inline dingosdk::first_person::Quat blend_toward(dingosdk::first_person::Quat from,dingosdk::first_person::Quat to,float amount) {
     using namespace dingosdk::first_person;
@@ -180,22 +176,20 @@ inline dingosdk::first_person::Matrix aim_camera(dingosdk::first_person::Matrix 
     return pose;
 }
 inline dingosdk::first_person::Matrix aim_camera_native(dingosdk::first_person::Matrix pose,const StickAim& aim,
-    bool world_lock,float motion,float smoothing,HeadMotionState& state,double now) {
+    bool world_lock,float smoothing,HeadMotionState& state,double now) {
     // The on-foot look keeps its absolute world-up yaw and level pitch; the
-    // character's own head attitude (bob, sway, tilt, roll) is scaled by the
-    // motion amount and damped by the smoothing amount before riding on top.
-    // The world-up yaw is split off so the native's steering-following yaw
-    // cannot double up with the look.
+    // character's own head attitude (bob, sway, tilt, roll) is damped by the
+    // smoothing amount before riding on top. The world-up yaw is split off so
+    // the native's steering-following yaw cannot double up with the look.
     const auto level=aim_camera(pose,aim);
-    if(!aim.active || world_lock || motion<=0.f) return level;
+    if(!aim.active || world_lock) return level;
     using namespace dingosdk::first_person;
     const auto raw=swing_from_level(orientation(pose));
     const float dt=std::clamp(static_cast<float>(now-state.last),1e-4f,.1f);
     const bool fresh=smoothing<=0.f || state.last==0 || now-state.last>0.1;
     state.last=now;
     state.tilt=fresh ? raw:blend_toward(state.tilt,raw,std::clamp(dt/(0.02f+0.78f*smoothing/100.f),0.f,1.f));
-    write(pose,normalized(multiply(orientation(level),scale_rotation(state.tilt,std::clamp(motion,0.f,1.f)))),
-        {pose[12],pose[13],pose[14]});
+    write(pose,normalized(multiply(orientation(level),state.tilt)),{pose[12],pose[13],pose[14]});
     return pose;
 }
 inline dingosdk::first_person::Matrix face_heading(dingosdk::first_person::Matrix pose,float heading) {

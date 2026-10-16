@@ -126,12 +126,11 @@ Config read_config(const std::filesystem::path& path) {
     cfg.board.lean_down=number("board_lean_down",.077f);
     cfg.stick.enabled=boolean("stick_look",false);
     // Retired look-follow keys; consumed so older settings files still load.
-    number("stick_follow_tolerance",0);boolean("stick_turn_character",false);
+    number("stick_follow_tolerance",0);boolean("stick_turn_character",false);number("stick_head_motion",100);
     cfg.stick.invert_y=boolean("stick_invert_y",false);
     cfg.stick.yaw_speed=number("stick_yaw_speed",120);
     cfg.stick.pitch_speed=number("stick_pitch_speed",90);
     cfg.stick.deadzone=number("stick_deadzone",.15f);
-    cfg.stick.head_motion=number("stick_head_motion",100);
     cfg.stick.head_smoothing=number("stick_head_smoothing",0);
     cfg.stick.world_lock=boolean("world_view_lock",false);
     const float menu_key=number("menu_key",VK_INSERT);
@@ -151,7 +150,6 @@ Config read_config(const std::filesystem::path& path) {
     if(!std::isfinite(cfg.stick.yaw_speed) || cfg.stick.yaw_speed<1 || cfg.stick.yaw_speed>720 ||
        !std::isfinite(cfg.stick.pitch_speed) || cfg.stick.pitch_speed<1 || cfg.stick.pitch_speed>720 ||
         !std::isfinite(cfg.stick.deadzone) || cfg.stick.deadzone<.01f || cfg.stick.deadzone>.5f ||
-        !std::isfinite(cfg.stick.head_motion) || cfg.stick.head_motion<0 || cfg.stick.head_motion>100 ||
         !std::isfinite(cfg.stick.head_smoothing) || cfg.stick.head_smoothing<0 || cfg.stick.head_smoothing>100)
         throw std::runtime_error("Stick look settings outside supported ranges");
     if(!std::isfinite(cfg.stick.lean_forward) || cfg.stick.lean_forward<0 || cfg.stick.lean_forward>.3f ||
@@ -199,7 +197,6 @@ void validate_config(const Config& cfg) {
     if(!std::isfinite(cfg.stick.yaw_speed) || cfg.stick.yaw_speed<1 || cfg.stick.yaw_speed>720 ||
        !std::isfinite(cfg.stick.pitch_speed) || cfg.stick.pitch_speed<1 || cfg.stick.pitch_speed>720 ||
         !std::isfinite(cfg.stick.deadzone) || cfg.stick.deadzone<.01f || cfg.stick.deadzone>.5f ||
-        !std::isfinite(cfg.stick.head_motion) || cfg.stick.head_motion<0 || cfg.stick.head_motion>100 ||
         !std::isfinite(cfg.stick.head_smoothing) || cfg.stick.head_smoothing<0 || cfg.stick.head_smoothing>100)
         throw std::runtime_error("Stick look settings outside supported ranges.");
     if(!dingosdk::first_person::valid(cfg.stick_spring)) throw std::runtime_error("Stick smoothing outside supported ranges");
@@ -259,7 +256,7 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
             <<"\nstick_strength_left="<<stick_spring.left<<"\nstick_strength_right="<<stick_spring.right<<'\n';
         out<<"stick_look="<<cfg.stick.enabled
             <<"\nstick_invert_y="<<cfg.stick.invert_y<<"\nstick_yaw_speed="<<cfg.stick.yaw_speed
-            <<"\nstick_pitch_speed="<<cfg.stick.pitch_speed<<"\nstick_deadzone="<<cfg.stick.deadzone<<"\nstick_head_motion="<<cfg.stick.head_motion
+            <<"\nstick_pitch_speed="<<cfg.stick.pitch_speed<<"\nstick_deadzone="<<cfg.stick.deadzone
             <<"\nstick_head_smoothing="<<cfg.stick.head_smoothing<<"\nworld_view_lock="<<cfg.stick.world_lock<<'\n';
         out<<"smooth_transitions="<<cfg.stick.smooth_transitions<<"\nmount_smoothing="<<cfg.stick.mount_smoothing
             <<"\ndismount_smoothing="<<cfg.stick.dismount_smoothing<<'\n';
