@@ -516,9 +516,6 @@ void draw_panel_frame(const PanelFrame& frame) {
         fit_control("Head roll");
         if(ImGui::SliderFloat("Head roll",&config.stick.head_roll,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         help_marker("How much of the head's roll (side-to-side banking) is applied. Pitch and tumble pass through fully.");
-        fit_control("Head sway");
-        if(ImGui::SliderFloat("Head sway",&config.stick.head_sway,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        help_marker("How much of the character's physical head motion (walk bob, sway, leans) moves the camera position.");
         if(ImGui::Checkbox("World-locked view",&config.stick.world_lock)) stick_change();
         help_marker("Pins the horizon level and discards the character's head motion entirely.");
         float deadzone=config.stick.deadzone*100;

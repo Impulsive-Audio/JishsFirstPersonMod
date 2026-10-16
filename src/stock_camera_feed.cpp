@@ -198,7 +198,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         }
                         // On foot the stable game camera keeps the position: per-mode offsets
                         // land exactly as configured, with the head's local motion added back.
-                        const bool native_foot_position=movement.mode==1 && !bail && !jump_camera_action(movement);
+                        const bool native_foot_position=movement.mode==1 && !bail;
                         if(attached && !flip_owned && !native_foot_position) matrix=bail_view.attach(matrix,head);
                         lean=(movement.mode==1 || movement.mode==2) && aim.active &&
                             (movement.mode==1 ? config.stick.lean_look_down:config.board.lean_look_down);
@@ -220,11 +220,11 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                                 matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2];
                             }
                         }
-                        if(native_foot_position && head.valid && aim.active && !config.stick.world_lock && config.stick.head_sway>0.f) {
+                        if(native_foot_position && head.valid && aim.active && !config.stick.world_lock) {
                             const dingosdk::first_person::Vec3 head_at{head.head[12],head.head[13],head.head[14]};
-                            const auto sway=track_head_sway(head_sway_state,head_at,{native[12],native[13],native[14]},frame,config.stick.head_smoothing);
-                            const float amount=config.stick.head_sway/100.f;
-                            for(unsigned i=0;i<3;++i) matrix[12+i]+=sway[i]*amount;
+                            const dingosdk::first_person::Vec3 root_at{head.root[12],head.root[13],head.root[14]};
+                            const auto sway=track_head_sway(head_sway_state,head_at,root_at,frame,config.stick.head_smoothing);
+                            for(unsigned i=0;i<3;++i) matrix[12+i]+=sway[i];
                         }
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
                         const bool mount_handoff=config.stick.enabled && movement.mounting;

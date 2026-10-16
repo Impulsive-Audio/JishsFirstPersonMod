@@ -5,7 +5,7 @@
 namespace jishsfirstpersonmod {
 struct StickSettings {
     bool enabled{},invert_y{},world_lock{};
-    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_smoothing=0,head_roll=100,head_sway=100;
+    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_smoothing=0,head_roll=100;
     bool smooth_transitions=true;
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
@@ -84,13 +84,15 @@ struct HeadSwayState {
     dingosdk::first_person::Vec3 reference{},smoothed{};
     double last{};bool ready{};
 };
-// The head's physical motion relative to the game camera: the rest relationship
-// is tracked over seconds so walk bob, sway and leans ride through while the rig
-// offset stays put. The smoothing amount damps the result before it is applied.
+// The head's physical motion relative to the skater's own root bone: both are
+// raw skeleton poses, so stabilisation lag cannot leak in. The rest relationship
+// is tracked over seconds so walk bob, sway and leans ride through while the
+// posture mean stays put. The smoothing amount damps the result before it is
+// applied.
 inline dingosdk::first_person::Vec3 track_head_sway(HeadSwayState& state,
-    const dingosdk::first_person::Vec3& head,const dingosdk::first_person::Vec3& camera,double now,float smoothing) {
+    const dingosdk::first_person::Vec3& head,const dingosdk::first_person::Vec3& reference,double now,float smoothing) {
     using namespace dingosdk::first_person;
-    const auto local=subtract(head,camera);
+    const auto local=subtract(head,reference);
     if(!state.ready || now-state.last>.25) {
         state.reference=state.smoothed=local;state.ready=true;state.last=now;
         return {};
