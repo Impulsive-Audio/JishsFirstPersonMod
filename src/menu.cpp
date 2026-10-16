@@ -513,6 +513,9 @@ void draw_panel_frame(const PanelFrame& frame) {
         fit_control("Head motion smoothing");
         if(ImGui::SliderFloat("Head motion smoothing",&config.stick.head_smoothing,0,100,"%.0f",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         help_marker("How much the head motion is damped before it reaches the view. Heavy smoothing will lag fast tumbles.");
+        fit_control("Head roll");
+        if(ImGui::SliderFloat("Head roll",&config.stick.head_roll,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        help_marker("How much of the head's roll (side-to-side banking) is applied. Pitch and tumble pass through fully.");
         if(ImGui::Checkbox("World-locked view",&config.stick.world_lock)) stick_change();
         help_marker("Pins the horizon level and discards the character's head motion entirely.");
         float deadzone=config.stick.deadzone*100;

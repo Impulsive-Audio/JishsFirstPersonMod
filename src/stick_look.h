@@ -5,7 +5,7 @@
 namespace jishsfirstpersonmod {
 struct StickSettings {
     bool enabled{},invert_y{},world_lock{};
-    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_smoothing=0;
+    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_smoothing=0,head_roll=100;
     bool smooth_transitions=true;
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
@@ -55,6 +55,21 @@ inline dingosdk::first_person::Quat swing_from_level(const dingosdk::first_perso
     const auto twist=Quat{0,orientation[1]/length,0,orientation[3]/length};
     return normalized(multiply(conjugate(twist),orientation));
 }
+inline dingosdk::first_person::Quat scale_rotation(const dingosdk::first_person::Quat& rotation,float strength) {
+    using namespace dingosdk::first_person;
+    return normalized(Quat{rotation[0]*strength,rotation[1]*strength,rotation[2]*strength,1.f+(rotation[3]-1.f)*strength});
+}
+// Limits the roll part of a tilt: the rotation about the view's backward axis
+// is scaled, while pitch and sway pass through untouched.
+inline dingosdk::first_person::Quat limit_roll(const dingosdk::first_person::Quat& tilt,float roll) {
+    using namespace dingosdk::first_person;
+    if(roll>=1.f) return tilt;
+    const float length=std::sqrt(tilt[2]*tilt[2]+tilt[3]*tilt[3]);
+    if(length<1e-4f) return tilt;
+    const auto twist=Quat{0,0,tilt[2]/length,tilt[3]/length};
+    const auto rest=normalized(multiply(conjugate(twist),tilt));
+    return normalized(multiply(scale_rotation(twist,std::clamp(roll,0.f,1.f)),rest));
+}
 inline dingosdk::first_person::Quat blend_toward(dingosdk::first_person::Quat from,dingosdk::first_person::Quat to,float amount) {
     using namespace dingosdk::first_person;
     const float flip=from[0]*to[0]+from[1]*to[1]+from[2]*to[2]+from[3]*to[3]<0.f ? -1.f:1.f;
@@ -70,10 +85,10 @@ class StickLookState {
     bool ready_{},seen_{},center_facing_{};
     unsigned device_{};
     double time_{};
-    float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},center_offset_{};
+    float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},center_offset_{},center_pitch_{};
 public:
     void reset() { *this={}; }
-    void recenter_facing(float camera_offset=180.f) { reset();center_facing_=true;center_offset_=camera_offset; }
+    void recenter_facing(float camera_offset=180.f,float camera_pitch=0.f) { reset();center_facing_=true;center_offset_=camera_offset;center_pitch_=camera_pitch; }
     void seed(const StickSettings& settings,unsigned device,double now,float yaw,float pitch,float body_heading) {
         reset();ready_=seen_=true;device_=device;time_=now;
         yaw_=smooth_yaw_=yaw;pitch_=smooth_pitch_=std::clamp(pitch,-85.f,85.f);
@@ -90,7 +105,7 @@ public:
         if(!ready_) {
             time_=now;
             if(input.x!=0 || input.y!=0) return {true,false};
-            if(center_facing_) {camera_heading=wrap_heading(body_heading+center_offset_);camera_pitch=0;}
+            if(center_facing_) {camera_heading=wrap_heading(body_heading+center_offset_);camera_pitch=center_pitch_;}
             center_facing_=false;
             ready_=true;yaw_=smooth_yaw_=camera_heading;pitch_=smooth_pitch_=std::clamp(camera_pitch,-85.f,85.f);
         }
@@ -176,7 +191,7 @@ inline dingosdk::first_person::Matrix aim_camera(dingosdk::first_person::Matrix 
     return pose;
 }
 inline dingosdk::first_person::Matrix aim_camera_native(dingosdk::first_person::Matrix pose,const StickAim& aim,
-    bool world_lock,float smoothing,HeadMotionState& state,double now) {
+    bool world_lock,float smoothing,float roll,HeadMotionState& state,double now) {
     // The on-foot look keeps its absolute world-up yaw and level pitch; the
     // character's own head attitude (bob, sway, tilt, roll) is damped by the
     // smoothing amount before riding on top. The world-up yaw is split off so
@@ -189,7 +204,7 @@ inline dingosdk::first_person::Matrix aim_camera_native(dingosdk::first_person::
     const bool fresh=smoothing<=0.f || state.last==0 || now-state.last>0.1;
     state.last=now;
     state.tilt=fresh ? raw:blend_toward(state.tilt,raw,std::clamp(dt/(0.02f+0.78f*smoothing/100.f),0.f,1.f));
-    write(pose,normalized(multiply(orientation(level),state.tilt)),{pose[12],pose[13],pose[14]});
+    write(pose,normalized(multiply(orientation(level),limit_roll(state.tilt,roll))),{pose[12],pose[13],pose[14]});
     return pose;
 }
 inline dingosdk::first_person::Matrix face_heading(dingosdk::first_person::Matrix pose,float heading) {

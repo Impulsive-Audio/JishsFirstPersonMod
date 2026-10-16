@@ -295,21 +295,33 @@ int main() {
     HeadMotionState motion_state;
     Matrix steering_pose=pose;
     write(steering_pose,yaw_quat,{0,0,0});
-    const auto level_view=aim_camera_native(steering_pose,riding,true,0.f,motion_state,0);
-    const auto alive_view=aim_camera_native(steering_pose,riding,false,0.f,motion_state,.016);
+    const auto level_view=aim_camera_native(steering_pose,riding,true,0.f,1.f,motion_state,0);
+    const auto alive_view=aim_camera_native(steering_pose,riding,false,0.f,1.f,motion_state,.016);
     check(std::abs(wrap_heading(matrix_heading(alive_view)-matrix_heading(level_view)))<.001f,
         "native steering yaw doubled into the on-foot view");
     Matrix rolling_pose=pose;
     write(rolling_pose,Quat{0,0,std::sin(.35f),std::cos(.35f)},{0,0,0});
-    const auto flat_view=aim_camera_native(rolling_pose,riding,true,0.f,motion_state,.032);
-    const auto rolled_view=aim_camera_native(rolling_pose,riding,false,0.f,motion_state,.048);
+    const auto flat_view=aim_camera_native(rolling_pose,riding,true,0.f,1.f,motion_state,.032);
+    const auto rolled_view=aim_camera_native(rolling_pose,riding,false,0.f,1.f,motion_state,.048);
     const auto roll_difference=multiply(conjugate(orientation(flat_view)),orientation(rolled_view));
     check(std::abs(rotation_angle(roll_difference)-.7f)<.01f,"native roll did not pass into the on-foot view");
     HeadMotionState damp_state;
-    aim_camera_native(steering_pose,riding,false,0.f,damp_state,.1);
-    const auto damped_view=aim_camera_native(rolling_pose,riding,false,80.f,damp_state,.116);
+    aim_camera_native(steering_pose,riding,false,0.f,1.f,damp_state,.1);
+    const auto damped_view=aim_camera_native(rolling_pose,riding,false,80.f,1.f,damp_state,.116);
     check(rotation_angle(multiply(conjugate(orientation(flat_view)),orientation(damped_view)))<.1f,
         "head motion smoothing did not damp the roll");
+    // The roll slider scales banking while pitch passes untouched.
+    HeadMotionState roll_state;
+    const auto roll_view=aim_camera_native(rolling_pose,riding,false,0.f,.5f,roll_state,.14);
+    check(std::abs(rotation_angle(multiply(conjugate(orientation(flat_view)),orientation(roll_view)))-.35f)<.01f,
+        "head roll limit did not halve the banking");
+    Matrix pitching_pose=pose;
+    write(pitching_pose,Quat{std::sin(.2f),0,0,std::cos(.2f)},{0,0,0});
+    HeadMotionState pitch_state;
+    const auto full_pitch=aim_camera_native(pitching_pose,riding,false,0.f,0.f,pitch_state,.16);
+    const auto rolled_pitch=aim_camera_native(pitching_pose,riding,false,0.f,.5f,pitch_state,.18);
+    check(rotation_angle(multiply(conjugate(orientation(full_pitch)),orientation(rolled_pitch)))<.001f,
+        "head roll limit suppressed the pitch");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");
