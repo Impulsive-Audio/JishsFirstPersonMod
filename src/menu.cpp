@@ -512,7 +512,12 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(ImGui::SliderFloat("Vertical sensitivity",&config.stick.pitch_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         fit_control("Head motion");
         if(ImGui::SliderFloat("Head motion",&config.stick.head_motion,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
-        help_marker("How much of the character's own head attitude blends into the view. 100 follows the head fully (tilts and rolls with it); 0 locks the horizon level.");
+        help_marker("How much of the character's own head motion (bob, sway, tilt, roll) is applied to the view.");
+        fit_control("Head motion smoothing");
+        if(ImGui::SliderFloat("Head motion smoothing",&config.stick.head_smoothing,0,100,"%.0f",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        help_marker("How much the head motion is damped before it reaches the view. Heavy smoothing will lag fast tumbles.");
+        if(ImGui::Checkbox("World-locked view",&config.stick.world_lock)) stick_change();
+        help_marker("Pins the horizon level and discards the character's head motion entirely.");
         float deadzone=config.stick.deadzone*100;
         fit_control("Stick deadzone",true);
         if(ImGui::SliderFloat("Stick deadzone",&deadzone,1,50,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) {

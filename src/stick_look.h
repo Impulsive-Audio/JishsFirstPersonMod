@@ -4,8 +4,8 @@
 #include <cmath>
 namespace jishsfirstpersonmod {
 struct StickSettings {
-    bool enabled{},invert_y{};
-    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_motion=100;
+    bool enabled{},invert_y{},world_lock{};
+    float yaw_speed=120,pitch_speed=90,deadzone=.15f,head_motion=100,head_smoothing=0;
     bool smooth_transitions=true;
     bool lock_mount_jump=true;
     bool lock_hippy_jump=false;
@@ -55,19 +55,20 @@ inline dingosdk::first_person::Quat swing_from_level(const dingosdk::first_perso
     const auto twist=Quat{0,orientation[1]/length,0,orientation[3]/length};
     return normalized(multiply(conjugate(twist),orientation));
 }
-inline dingosdk::first_person::Quat blend_rotation(dingosdk::first_person::Quat from,dingosdk::first_person::Quat to,float amount) {
+inline dingosdk::first_person::Quat scale_rotation(const dingosdk::first_person::Quat& rotation,float strength) {
     using namespace dingosdk::first_person;
-    amount=std::clamp(amount,0.f,1.f);
-    float dot=from[0]*to[0]+from[1]*to[1]+from[2]*to[2]+from[3]*to[3];
-    if(dot<0.f) { to={-to[0],-to[1],-to[2],-to[3]};dot=-dot; }
-    if(amount<=0.f) return normalized(from);
-    if(amount>=1.f || dot>.9995f) return normalized(to);
-    const float angle=std::acos(std::clamp(dot,-1.f,1.f));
-    const float scale=std::sin(angle);
-    const float a=std::sin((1.f-amount)*angle)/scale;
-    const float b=std::sin(amount*angle)/scale;
-    return normalized(Quat{from[0]*a+to[0]*b,from[1]*a+to[1]*b,from[2]*a+to[2]*b,from[3]*a+to[3]*b});
+    return normalized(Quat{rotation[0]*strength,rotation[1]*strength,rotation[2]*strength,1.f+(rotation[3]-1.f)*strength});
 }
+inline dingosdk::first_person::Quat blend_toward(dingosdk::first_person::Quat from,dingosdk::first_person::Quat to,float amount) {
+    using namespace dingosdk::first_person;
+    const float flip=from[0]*to[0]+from[1]*to[1]+from[2]*to[2]+from[3]*to[3]<0.f ? -1.f:1.f;
+    return normalized(Quat{from[0]+(to[0]*flip-from[0])*amount,from[1]+(to[1]*flip-from[1])*amount,
+                            from[2]+(to[2]*flip-from[2])*amount,from[3]+(to[3]*flip-from[3])*amount});
+}
+struct HeadMotionState {
+    dingosdk::first_person::Quat tilt{0,0,0,1};
+    double last{};
+};
 struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
 class StickLookState {
     bool ready_{},seen_{},center_facing_{};
@@ -178,18 +179,23 @@ inline dingosdk::first_person::Matrix aim_camera(dingosdk::first_person::Matrix 
     write(pose,rotation,{pose[12],pose[13],pose[14]});
     return pose;
 }
-inline dingosdk::first_person::Matrix aim_camera_native(dingosdk::first_person::Matrix pose,const StickAim& aim,float motion) {
-    // The on-foot look keeps its absolute world-up yaw and level pitch, but the
-    // character's own head attitude (bob, sway, tilt, roll) can ride on top:
-    // motion 0 is the level lock, motion 1 follows the live native camera.
+inline dingosdk::first_person::Matrix aim_camera_native(dingosdk::first_person::Matrix pose,const StickAim& aim,
+    bool world_lock,float motion,float smoothing,HeadMotionState& state,double now) {
+    // The on-foot look keeps its absolute world-up yaw and level pitch; the
+    // character's own head attitude (bob, sway, tilt, roll) is scaled by the
+    // motion amount and damped by the smoothing amount before riding on top.
     // The world-up yaw is split off so the native's steering-following yaw
     // cannot double up with the look.
     const auto level=aim_camera(pose,aim);
-    if(!aim.active || motion<=0.f) return level;
+    if(!aim.active || world_lock || motion<=0.f) return level;
     using namespace dingosdk::first_person;
-    const auto tilt=swing_from_level(orientation(pose));
-    const auto alive=normalized(multiply(orientation(level),tilt));
-    write(pose,blend_rotation(orientation(level),alive,motion),{pose[12],pose[13],pose[14]});
+    const auto raw=swing_from_level(orientation(pose));
+    const float dt=std::clamp(static_cast<float>(now-state.last),1e-4f,.1f);
+    const bool fresh=smoothing<=0.f || state.last==0 || now-state.last>0.1;
+    state.last=now;
+    state.tilt=fresh ? raw:blend_toward(state.tilt,raw,std::clamp(dt/(0.02f+0.78f*smoothing/100.f),0.f,1.f));
+    write(pose,normalized(multiply(orientation(level),scale_rotation(state.tilt,std::clamp(motion,0.f,1.f)))),
+        {pose[12],pose[13],pose[14]});
     return pose;
 }
 inline dingosdk::first_person::Matrix face_heading(dingosdk::first_person::Matrix pose,float heading) {

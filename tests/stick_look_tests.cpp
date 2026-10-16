@@ -286,25 +286,36 @@ int main() {
     Config fresh;fresh.spring.offset={.1f,.2f,.3f};fresh.board_offset={.4f,.5f,.6f};fresh.foot_offset={.1f,.2f,.3f};
     adopt_mode_offsets(fresh,1,0);
     check(fresh.spring.offset[0]==.1f && fresh.board_offset[0]==.4f,"first mode overwrote the other mode's offsets");
-    // The on-foot look stays absolute while the native head attitude rides on top.
+    // The on-foot look stays absolute while scaled, damped head motion rides on top.
     const auto yaw_quat=Quat{0,std::sin(.125f),0,std::cos(.125f)};
     check(rotation_angle(swing_from_level(yaw_quat))<.001f,"world yaw leaked into the head swing");
     const auto tilt_quat=multiply(Quat{std::sin(.1f),0,0,std::cos(.1f)},yaw_quat);
     check(std::abs(rotation_angle(swing_from_level(tilt_quat))-.2f)<.01f,"head tilt missing from the swing");
-    check(std::abs(rotation_angle(blend_rotation(Quat{0,0,0,1},Quat{std::sin(.3f),0,0,std::cos(.3f)},.5f))-.3f)<.01f,"motion blend midpoint off");
     StickAim riding;riding.active=true;riding.heading=40;riding.pitch=-10;
+    HeadMotionState motion_state;
     Matrix steering_pose=pose;
     write(steering_pose,yaw_quat,{0,0,0});
-    const auto level_view=aim_camera_native(steering_pose,riding,0.f);
-    const auto alive_view=aim_camera_native(steering_pose,riding,1.f);
+    const auto level_view=aim_camera_native(steering_pose,riding,false,0.f,0.f,motion_state,0);
+    const auto alive_view=aim_camera_native(steering_pose,riding,false,1.f,0.f,motion_state,.016);
     check(std::abs(wrap_heading(matrix_heading(alive_view)-matrix_heading(level_view)))<.001f,
         "native steering yaw doubled into the on-foot view");
     Matrix rolling_pose=pose;
     write(rolling_pose,Quat{0,0,std::sin(.35f),std::cos(.35f)},{0,0,0});
-    const auto flat_view=aim_camera_native(rolling_pose,riding,0.f);
-    const auto rolled_view=aim_camera_native(rolling_pose,riding,1.f);
+    const auto flat_view=aim_camera_native(rolling_pose,riding,false,0.f,0.f,motion_state,.032);
+    const auto rolled_view=aim_camera_native(rolling_pose,riding,false,1.f,0.f,motion_state,.048);
     const auto roll_difference=multiply(conjugate(orientation(flat_view)),orientation(rolled_view));
     check(std::abs(rotation_angle(roll_difference)-.7f)<.01f,"native roll did not pass into the on-foot view");
+    const auto locked_view=aim_camera_native(rolling_pose,riding,true,1.f,0.f,motion_state,.064);
+    check(rotation_angle(multiply(conjugate(orientation(flat_view)),orientation(locked_view)))<.001f,
+        "world lock did not discard the head motion");
+    const auto half_view=aim_camera_native(rolling_pose,riding,false,.5f,0.f,motion_state,.08);
+    check(std::abs(rotation_angle(multiply(conjugate(orientation(flat_view)),orientation(half_view)))-.35f)<.01f,
+        "head motion scale did not halve the roll");
+    HeadMotionState damp_state;
+    aim_camera_native(steering_pose,riding,false,1.f,0.f,damp_state,.1);
+    const auto damped_view=aim_camera_native(rolling_pose,riding,false,1.f,80.f,damp_state,.116);
+    check(rotation_angle(multiply(conjugate(orientation(flat_view)),orientation(damped_view)))<.1f,
+        "head motion smoothing did not damp the roll");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");
