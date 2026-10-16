@@ -259,7 +259,9 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             bail_view.accept_displayed_position(corrected);
                         } else { collision.reset();collision_world=0; }
                         collision_seed={matrix[12],matrix[13],matrix[14]};collision_seed_ready=true;
-                        if(!bail && valid) bail_view.remember(matrix,native,head,normal && !flip_owned && !lean);
+                        if(!bail && valid) bail_view.remember(matrix,native,head,normal && !flip_owned);
+                        // The lean only displaces the displayed pose: native-vs-head stays intact, so
+                        // the attachment offset keeps tracking the live per-mode offsets.
                     }
                 }
             }
