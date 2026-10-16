@@ -296,13 +296,15 @@ int main() {
     Matrix steering_pose=pose;
     write(steering_pose,yaw_quat,{0,0,0});
     const auto level_view=aim_camera_native(steering_pose,riding,true,0.f,1.f,motion_state,0);
-    const auto alive_view=aim_camera_native(steering_pose,riding,false,0.f,1.f,motion_state,.016);
+    HeadMotionState alive_state;
+    const auto alive_view=aim_camera_native(steering_pose,riding,false,0.f,1.f,alive_state,.016);
     check(std::abs(wrap_heading(matrix_heading(alive_view)-matrix_heading(level_view)))<.001f,
         "native steering yaw doubled into the on-foot view");
     Matrix rolling_pose=pose;
     write(rolling_pose,Quat{0,0,std::sin(.35f),std::cos(.35f)},{0,0,0});
     const auto flat_view=aim_camera_native(rolling_pose,riding,true,0.f,1.f,motion_state,.032);
-    const auto rolled_view=aim_camera_native(rolling_pose,riding,false,0.f,1.f,motion_state,.048);
+    HeadMotionState roll_live;
+    const auto rolled_view=aim_camera_native(rolling_pose,riding,false,0.f,1.f,roll_live,.048);
     const auto roll_difference=multiply(conjugate(orientation(flat_view)),orientation(rolled_view));
     check(std::abs(rotation_angle(roll_difference)-.7f)<.01f,"native roll did not pass into the on-foot view");
     HeadMotionState damp_state;

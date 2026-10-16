@@ -46,6 +46,7 @@ std::array<std::uintptr_t,5> transition_owner{};
 FakieMirror fakie_state{};
 HeadMotionState head_motion_state{};
 HeadSwayState head_sway_state{};
+double foot_action_hold{};
 bool from_stock(void* caller) {
     HMODULE owner{};return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         reinterpret_cast<LPCWSTR>(caller),&owner) && owner==stock_module;
@@ -53,7 +54,7 @@ bool from_stock(void* caller) {
 void reset_camera_smoothing() {
     reset_body_flip();flip_camera.reset();
     collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
-    smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;fakie_state={};head_motion_state={};head_sway_state={};
+    smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;fakie_state={};head_motion_state={};head_sway_state={};foot_action_hold=0;
 }
 bool write_spectator_render(std::uintptr_t client,std::uintptr_t camera,const Matrix& pose,float fov) {
     auto rejected=[](const std::string& reason) {
@@ -107,7 +108,9 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                         glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(config),{look_pitch.load(),look_yaw.load()},look_frame.load(),config.link_smoothing));
                         const auto stick_aim=stick_camera_aim();
-                        if(movement.mode==1) matrix=aim_camera_native(native,stick_aim,config.stick.world_lock || jump_camera_action(movement),config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,look_frame.load());
+                        const bool look_foot_action=jump_camera_action(movement);
+                        if(look_foot_action) foot_action_hold=look_frame.load()+0.35;
+                        if(movement.mode==1) matrix=aim_camera_native(native,stick_aim,config.stick.world_lock || look_foot_action || look_frame.load()<foot_action_hold,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,look_frame.load());
                         else matrix=aim_board_body_local(native,stick_aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,look_frame.load());
                         dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{native[12],native[13],native[14]});
                     } else { smoothing.reset();stop_stick_look(); }
@@ -192,7 +195,9 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                             glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(effective),{pitch,yaw},frame,config.link_smoothing));
                             aim=stick_camera_aim();
-                            if(movement.mode==1) matrix=aim_camera_native(matrix,aim,config.stick.world_lock || jump_camera_action(movement),config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,frame);
+                            const bool foot_action=jump_camera_action(movement);
+                            if(foot_action) foot_action_hold=frame+0.35;
+                            if(movement.mode==1) matrix=aim_camera_native(matrix,aim,config.stick.world_lock || foot_action || frame<foot_action_hold,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,frame);
                             else matrix=aim_board_body_local(matrix,aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,frame);
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
@@ -220,9 +225,13 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                                 matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2];
                             }
                         }
-                        if(native_foot_position && head.valid && aim.active && !config.stick.world_lock && !jump_camera_action(movement)) {
+                        if(native_foot_position && head.valid && aim.active && !config.stick.world_lock && !jump_camera_action(movement) && frame>=foot_action_hold) {
                             const dingosdk::first_person::Vec3 head_at{head.head[12],head.head[13],head.head[14]};
-                            const auto sway=track_head_sway(head_sway_state,head_at,{native[12],native[13],native[14]},frame,config.stick.head_smoothing);
+                            auto sway=track_head_sway(head_sway_state,head_at,{native[12],native[13],native[14]},frame,config.stick.head_smoothing);
+                            // The camera's own stabilisation lags during hard accelerations; bound
+                            // the result so those transients cannot throw the camera around.
+                            const float length=std::sqrt(sway[0]*sway[0]+sway[1]*sway[1]+sway[2]*sway[2]);
+                            if(length>0.06f) { const float scale=0.06f/length;sway[0]*=scale;sway[1]*=scale;sway[2]*=scale; }
                             for(unsigned i=0;i<3;++i) matrix[12+i]+=sway[i];
                         }
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
