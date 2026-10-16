@@ -32,20 +32,19 @@ int main() {
     auto diagonal=radial_stick({1,1},.15f);check(std::abs(std::hypot(diagonal.x,diagonal.y)-1)<.00001f,"diagonal faster than straight");
     StickSettings settings;settings.enabled=true;Settings spring;
     StickLookState state;
-    auto coupled=settings;coupled.turn_character=true;
     StickLookState recentered;recentered.recenter_facing();
-    check(!recentered.update(coupled,{1,0},true,1,0,45,90,spring,20).active,"dismount recenter skipped neutral stick");
-    const auto centered=recentered.update(coupled,{},true,1,.016,45,90,spring,20);
+    check(!recentered.update(settings,{1,0},true,1,0,45,90,spring,20).active,"dismount recenter skipped neutral stick");
+    const auto centered=recentered.update(settings,{},true,1,.016,45,90,spring,20);
     check(centered.active && centered.heading==-90 && centered.body_heading==90 && centered.pitch==0,
         "dismount/recovery recenter faces into the body");
-    const auto facing=recentered.update(coupled,{1,0},true,1,.116,45,90,spring);
-    check(std::abs(std::abs(wrap_heading(facing.body_heading-facing.heading))-180.f)<.001f,"recentered camera and character diverged");
+    const auto facing=recentered.update(settings,{1,0},true,1,.116,45,90,spring);
+    check(std::abs(wrap_heading(facing.body_heading-facing.heading-180.f))<.001f,"looking did not turn the character with the view");
     recentered.recenter_facing();
     const auto camera_only=recentered.update(settings,{},true,1,.132,45,90,spring,20);
-    check(camera_only.heading==45 && camera_only.pitch==20,"camera-only mode was recentered");
+    check(camera_only.heading==-90 && camera_only.pitch==0,"recenter applied without the mode selector");
     for(const float heading:{-179.f,-90.f,0.f,90.f,179.f}) {
         StickLookState dismounted;dismounted.recenter_facing();
-        const auto outward=dismounted.update(coupled,{},true,1,0,heading,heading,spring);
+        const auto outward=dismounted.update(settings,{},true,1,0,heading,heading,spring);
         const auto camera=aim_camera(Matrix{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},outward);
         const auto body=face_heading(Matrix{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},heading);
         // Viewing direction is camera -Z; character facing is body +Z.
@@ -54,13 +53,13 @@ int main() {
             "dismount view did not face outward without turning the character");
     }
     StickLookState bail_center;bail_center.recenter_facing(180.f);
-    check(!bail_center.update(coupled,{1,0},true,1,0,45,90,spring,20).active,"bail recenter skipped neutral stick");
-    const auto bail_centered=bail_center.update(coupled,{},true,1,.016,45,90,spring,20);
+    check(!bail_center.update(settings,{1,0},true,1,0,45,90,spring,20).active,"bail recenter skipped neutral stick");
+    const auto bail_centered=bail_center.update(settings,{},true,1,.016,45,90,spring,20);
     check(bail_centered.active && bail_centered.heading==-90 && bail_centered.body_heading==90 && bail_centered.pitch==0,
         "bail recenter did not reverse camera while preserving character facing");
-    const auto bail_turned=bail_center.update(coupled,{1,0},true,1,.116,45,90,spring);
-    check(std::abs(std::abs(wrap_heading(bail_turned.body_heading-bail_turned.heading))-180.f)<.001f,
-        "character lock lost outward camera offset after bail");
+    const auto bail_turned=bail_center.update(settings,{1,0},true,1,.116,45,90,spring);
+    check(std::abs(wrap_heading(bail_turned.body_heading-bail_turned.heading-180.f))<.001f,
+        "bail recenter did not follow the view");
     check(!state.update(settings,{1,0},true,1,0,0,0,spring).active,"held stick armed without neutral");
     check(state.update(settings,{},true,1,.016,0,0,spring).active,"neutral did not arm");
     auto aim=state.update(settings,{1,0},true,1,.116,0,0,spring);
@@ -76,11 +75,19 @@ int main() {
     for(int i=1;i<=120;++i) aim=state.update(settings,{0,1},true,1,i/60.,0,0,spring);
     check(aim.pitch==85,"pitch not clamped");
     auto held=state.update(settings,{},true,1,2.016,0,0,spring);check(held.pitch==85,"release recentered analog view");
-    settings.turn_character=true;
-    check(!state.update(settings,{1,0},true,1,2.032,0,0,spring).active,"mode switch skipped neutral");
-    state.update(settings,{},true,1,2.048,30,10,spring);
+    state.reset();state.update(settings,{},true,1,2.048,30,10,spring);
     aim=state.update(settings,{1,0},true,1,2.148,30,10,spring);
-    check(std::abs(aim.body_heading+2)<.001f && std::abs(aim.heading-18)<.001f,"camera/body heading bias doubled rotation");
+    check(std::abs(aim.heading-18)<.001f && std::abs(wrap_heading(aim.body_heading-aim.heading-180.f))<.001f,
+        "character did not follow the view while looking");
+    // The left stick is walk input only: moving follows the view, and no stick
+    // direction can steer the character.
+    StickLookState walker;
+    const auto walk=walker.update(settings,{},true,1,0,45,10,spring,0,{0,1});
+    check(walk.active && walk.manual && std::abs(wrap_heading(walk.body_heading-225.f))<.001f,
+        "walking did not follow the view");
+    const auto sidestep=walker.update(settings,{},true,1,.016,45,10,spring,0,{-1,0});
+    check(std::abs(wrap_heading(sidestep.body_heading-225.f))<.001f,
+        "left stick direction changed the character facing");
     check(!state.update(settings,{},true,2,2.164,0,0,spring).capture ||
         state.update(settings,{},true,2,2.164,0,0,spring).heading==0,"device change retained old view");
     settings.invert_y=true;state.reset();state.update(settings,{},true,1,0,0,0,spring);
@@ -193,6 +200,22 @@ int main() {
     check(aim_board_body_local(head_view,{true,true,-15,0,0},crouch,false,0.75f,true,mirror_state,10.0)==head_view,
         "invalid body frame changed the camera");
     check(aim_board_body_local(head_view,{},{},false,0.f,false,mirror_state,10.0)==head_view,"inactive board look changed the camera");
+    // On-foot look-down lean: user-calibrated 0.086 m forward and 0.077 m down at full look-down.
+    check(look_down_lean(pose,30.f,.086f,.077f)[0]==0 && look_down_lean(pose,30.f,.086f,.077f)[1]==0 && look_down_lean(pose,30.f,.086f,.077f)[2]==0,
+        "look-down lean applied while looking up");
+    const auto lean_full=look_down_lean(pose,-85.f,.086f,.077f);
+    check(std::abs(lean_full[0])<1e-6f && std::abs(lean_full[1]+0.077f)<1e-6f && std::abs(lean_full[2]+0.086f)<1e-6f,
+        "look-down lean offsets wrong at full down");
+    const auto lean_mid=look_down_lean(pose,-42.5f,.086f,.077f);
+    check(std::abs(lean_mid[1]+0.0385f)<1e-6f && std::abs(lean_mid[2]+0.043f)<1e-6f,
+        "look-down lean did not scale with pitch");
+    // The yaw-anchored head position keeps the calibrated offset level-relative:
+    // a pitched head and a level head with the same yaw must anchor identically.
+    const Matrix pitched_head=board_pose(0,-80,0);
+    const Matrix level_head=board_pose(0,0,0);
+    const dingosdk::first_person::Vec3 anchor_offset{0.f,0.05f,-0.084f};
+    check(yaw_anchored_position(pitched_head,anchor_offset)==yaw_anchored_position(level_head,anchor_offset),
+        "yaw anchor swung the offset with head pitch");
     auto body=face_heading(pose,90);check(body[12]==3 && body[13]==4 && body[14]==5 && body[3]==7 && body[7]==8 && body[11]==9,"native motion position/metadata changed");
     CameraTransition handoff;
     Settings transition_settings;transition_settings.enabled=true;
@@ -249,8 +272,67 @@ int main() {
     }
     Config config;config.stick=settings;config.stick.deadzone=.22f;
     config.stick.mount_smoothing=82;config.stick.dismount_smoothing=35;config.stick.smooth_transitions=false;
+    config.board_offset[0]=.11f;config.board_offset[2]=-.13f;config.foot_offset[1]=.22f;config.stick.head_smoothing=40;config.stick.world_lock=true;
     auto path=data_directory()/"settings.ini";write_config(path,config);const auto reloaded=read_config(path);
-    check(reloaded.stick.enabled && reloaded.stick.turn_character && reloaded.stick.deadzone==.22f,"stick preferences did not persist");
+    check(reloaded.stick.enabled && reloaded.stick.deadzone==.22f && reloaded.stick.head_smoothing==40 && reloaded.stick.world_lock,"stick preferences did not persist");
+    check(reloaded.board_offset[0]==.11f && reloaded.board_offset[2]==-.13f && reloaded.foot_offset[1]==.22f,
+        "per-mode camera offsets did not persist");
+    // Per-mode camera offsets swap between on-foot and on-board memories.
+    Config modes;modes.spring.offset={.1f,.2f,.3f};modes.board_offset={.4f,.5f,.6f};modes.foot_offset={.7f,.8f,.9f};
+    adopt_mode_offsets(modes,1,2);
+    check(modes.spring.offset[0]==.7f && modes.board_offset[2]==.3f,"foot mode did not adopt its stored offsets");
+    adopt_mode_offsets(modes,2,1);
+    check(modes.spring.offset[0]==.1f && modes.foot_offset[0]==.7f,"board mode did not restore its stored offsets");
+    Config fresh;fresh.spring.offset={.1f,.2f,.3f};fresh.board_offset={.4f,.5f,.6f};fresh.foot_offset={.1f,.2f,.3f};
+    adopt_mode_offsets(fresh,1,0);
+    check(fresh.spring.offset[0]==.1f && fresh.board_offset[0]==.4f,"first mode overwrote the other mode's offsets");
+    // The on-foot look stays absolute while damped head motion rides on top.
+    const auto yaw_quat=Quat{0,std::sin(.125f),0,std::cos(.125f)};
+    check(rotation_angle(swing_from_level(yaw_quat))<.001f,"world yaw leaked into the head swing");
+    const auto tilt_quat=multiply(Quat{std::sin(.1f),0,0,std::cos(.1f)},yaw_quat);
+    check(std::abs(rotation_angle(swing_from_level(tilt_quat))-.2f)<.01f,"head tilt missing from the swing");
+    StickAim riding;riding.active=true;riding.heading=40;riding.pitch=-10;
+    HeadMotionState motion_state;
+    Matrix steering_pose=pose;
+    write(steering_pose,yaw_quat,{0,0,0});
+    const auto level_view=aim_camera_native(steering_pose,riding,true,0.f,1.f,motion_state,0);
+    HeadMotionState alive_state;
+    const auto alive_view=aim_camera_native(steering_pose,riding,false,0.f,1.f,alive_state,.016);
+    check(std::abs(wrap_heading(matrix_heading(alive_view)-matrix_heading(level_view)))<.001f,
+        "native steering yaw doubled into the on-foot view");
+    Matrix rolling_pose=pose;
+    write(rolling_pose,Quat{0,0,std::sin(.35f),std::cos(.35f)},{0,0,0});
+    const auto flat_view=aim_camera_native(rolling_pose,riding,true,0.f,1.f,motion_state,.032);
+    HeadMotionState roll_live;
+    const auto rolled_view=aim_camera_native(rolling_pose,riding,false,0.f,1.f,roll_live,.048);
+    const auto roll_difference=multiply(conjugate(orientation(flat_view)),orientation(rolled_view));
+    check(std::abs(rotation_angle(roll_difference)-.7f)<.01f,"native roll did not pass into the on-foot view");
+    HeadMotionState damp_state;
+    aim_camera_native(steering_pose,riding,false,0.f,1.f,damp_state,.1);
+    const auto damped_view=aim_camera_native(rolling_pose,riding,false,80.f,1.f,damp_state,.116);
+    check(rotation_angle(multiply(conjugate(orientation(flat_view)),orientation(damped_view)))<.1f,
+        "head motion smoothing did not damp the roll");
+    // The roll slider scales banking while pitch passes untouched.
+    HeadMotionState roll_state;
+    const auto roll_view=aim_camera_native(rolling_pose,riding,false,0.f,.5f,roll_state,.14);
+    check(std::abs(rotation_angle(multiply(conjugate(orientation(flat_view)),orientation(roll_view)))-.35f)<.01f,
+        "head roll limit did not halve the banking");
+    Matrix pitching_pose=pose;
+    write(pitching_pose,Quat{std::sin(.2f),0,0,std::cos(.2f)},{0,0,0});
+    HeadMotionState pitch_state;
+    const auto full_pitch=aim_camera_native(pitching_pose,riding,false,0.f,0.f,pitch_state,.16);
+    const auto rolled_pitch=aim_camera_native(pitching_pose,riding,false,0.f,.5f,pitch_state,.18);
+    check(rotation_angle(multiply(conjugate(orientation(full_pitch)),orientation(rolled_pitch)))<.001f,
+        "head roll limit suppressed the pitch");
+    // The sway follows the head's local motion while holding its rest relationship.
+    HeadSwayState sway_state;
+    const dingosdk::first_person::Vec3 head_at{1,2,3},camera_at{1,1.8f,2.9f};
+    check(dingosdk::first_person::length(track_head_sway(sway_state,head_at,camera_at,0,0.f))<.001f,"first sway sample was not clean");
+    for(int i=1;i<=90;++i) track_head_sway(sway_state,head_at,camera_at,i*.016,0.f);
+    check(dingosdk::first_person::length(track_head_sway(sway_state,head_at,camera_at,1.5,0.f))<.001f,"steady head produced sway");
+    const dingosdk::first_person::Vec3 lifted{1,2.05f,3};
+    const auto leaning=track_head_sway(sway_state,lifted,camera_at,1.6,0.f);
+    check(std::abs(leaning[1]-.05f)<.01f && std::abs(leaning[0])<.01f,"head lean did not pass into the sway");
     check(!reloaded.stick.smooth_transitions && reloaded.stick.mount_smoothing==82 && reloaded.stick.dismount_smoothing==35,"independent handoff controls did not persist");
     config.stick.mount_smoothing=101;bool rejected=false;try {validate_config(config);} catch(...) {rejected=true;}
     check(rejected,"invalid handoff strength accepted");
@@ -259,7 +341,7 @@ int main() {
     const auto migration_path=module_directory()/"migration.ini";
     for(bool linked:{false,true}) for(bool foot_off:{false,true}) {
         { std::ofstream old(migration_path); old<<"[JishsFirstPersonMod]\nspring=1\nstrength_up=12\nstrength_down=23\nstrength_left=34\nstrength_right=45\nlink_smoothing="<<linked
-            <<"\nlook_smoothing_initialized=1\nlook_spring=1\nlook_strength_up=21\nlook_strength_down=32\nlook_strength_left=43\nlook_strength_right=54\ndisable_spring_on_foot="<<foot_off<<"\nbald_first_person=obsolete\n"; }
+            <<"\nlook_smoothing_initialized=1\nlook_spring=1\nlook_strength_up=21\nlook_strength_down=32\nlook_strength_left=43\nlook_strength_right=54\ndisable_spring_on_foot="<<foot_off<<"\nbald_first_person=1\n"; }
         auto migrated=read_config(migration_path);
         check(migrated.settings_migrated && migrated.stick_smoothing_initialized,"legacy migration not detected");
         check(migrated.stick_spring.enabled==!(linked && foot_off),"legacy on-foot switch changed");
@@ -268,7 +350,7 @@ int main() {
         auto roundtrip=read_config(migration_path);
         check(!roundtrip.settings_migrated && roundtrip.stick_spring.up==migrated.stick_spring.up,"migration repeated or lost");
         std::ifstream saved(migration_path);std::stringstream text;text<<saved.rdbuf();
-        check(text.str().find("bald_first_person")==std::string::npos,"retired option saved");
+        check(text.str().find("bald_first_person")!=std::string::npos,"restored option not saved");
         roundtrip.look_spring.up=99;roundtrip.spring.up=98;
         check(roundtrip.stick_spring.up==migrated.stick_spring.up,"stick strengths linked after migration");
     }

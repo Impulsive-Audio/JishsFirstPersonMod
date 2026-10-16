@@ -183,9 +183,9 @@ int main() {
     // character changes facing ownership, never positional attachment.
     // Camera smoothing must not add a positional residual to the
     // already configured camera/head target, including during mount locks.
-    for(const bool turn_character:{false,true}) for(const float strength:{10.f,90.f}) {
+    for(const float strength:{10.f,90.f}) {
         CameraTransition head_locked;Settings cfg=handoff;cfg.enabled=true;
-        Config camera;camera.stick.enabled=true;camera.stick.turn_character=turn_character;
+        Config camera;camera.stick.enabled=true;
         cfg.up=cfg.down=cfg.left=cfg.right=strength;
         auto apply_head=[&](Matrix pose,int mode,double time,bool mounting,bool stick,auto state) {
             const auto result=head_locked.apply(pose,cfg,1,mode,stick,time,state,&spring,&look,

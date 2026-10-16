@@ -103,6 +103,7 @@ bool send_camera(const Config& before,const Config& after,std::string& error) {
     return accepted;
 }
 CameraCycleRequests cycle_requests;
+int last_camera_mode{}; // Foot (1) / board (2) per-mode offset memory tracking.
 bool remember_cycle_preference(bool pending,bool enabled) {
     Command command;command.kind=CommandKind::cycle_restore;command.action=pending ? 1:0;command.enabled=enabled;
     return submit_command(command);
@@ -255,6 +256,26 @@ void read_hook(void* user,void* model) {
             submit_stock_command(command);snapshot=menu_snapshot();
         }
         if(initial_sync) { std::string error; if(!send_camera(native,snapshot.config,error)) log("Initial stock camera settings sync: "+error); }
+    }
+    // Per-mode camera offsets: adopt the offsets stored for the camera mode the
+    // player switched to, saving the live offsets into the other mode's memory
+    // and syncing the changed values to the native camera settings.
+    const int camera_mode=movement.mode;
+    if((camera_mode==1 || camera_mode==2) && camera_mode!=last_camera_mode) {
+        auto updated=snapshot.config;
+        adopt_mode_offsets(updated,camera_mode,last_camera_mode);
+        last_camera_mode=camera_mode;
+        if(updated.spring.offset!=snapshot.config.spring.offset ||
+           updated.board_offset!=snapshot.config.board_offset ||
+           updated.foot_offset!=snapshot.config.foot_offset) {
+            Command command;command.kind=CommandKind::camera_settings;command.per_mode_offsets=true;
+            command.spring=updated.spring;command.value=updated.fov;
+            command.board_offset=updated.board_offset;command.foot_offset=updated.foot_offset;
+            const auto before=snapshot.config;
+            submit_stock_command(command);snapshot=menu_snapshot();
+            std::string error;
+            if(!send_camera(before,snapshot.config,error)) log("Per-mode camera offsets: "+error);
+        }
     }
     const auto effective=effective_camera_config(snapshot.config,stock_first_person_requested() && !game_camera_suspended(),camera_state,movement);
     if(spring_lock.owns_lock() && !is_v2()) {

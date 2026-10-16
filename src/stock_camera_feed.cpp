@@ -44,6 +44,9 @@ std::uintptr_t collision_world{};
 std::uintptr_t smoothing_camera{};
 std::array<std::uintptr_t,5> transition_owner{};
 FakieMirror fakie_state{};
+HeadMotionState head_motion_state{};
+HeadSwayState head_sway_state{};
+double foot_action_hold{};
 bool from_stock(void* caller) {
     HMODULE owner{};return GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         reinterpret_cast<LPCWSTR>(caller),&owner) && owner==stock_module;
@@ -51,7 +54,7 @@ bool from_stock(void* caller) {
 void reset_camera_smoothing() {
     reset_body_flip();flip_camera.reset();
     collision.reset();collision_seed_ready=collision_player_ready=false;collision_world=0;
-    smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;fakie_state={};
+    smoothing.reset();transition.reset();bail_view.reset();set_bail_view_suspended(false);smoothing_camera=0;fakie_state={};head_motion_state={};head_sway_state={};foot_action_hold=0;
 }
 bool write_spectator_render(std::uintptr_t client,std::uintptr_t camera,const Matrix& pose,float fov) {
     auto rejected=[](const std::string& reason) {
@@ -91,7 +94,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
     if(compatibility::enabled() && input && (!watched || camera==watched) && stock_first_person_requested() && from_stock(_ReturnAddress())) {
         watched_camera=camera;Matrix native{};
         if(dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(input),native) && dingosdk::valid_flight_transform(native)) {
-            auto matrix=native;auto movement=live_camera_movement();
+            auto matrix=native;auto movement=live_camera_movement();active_camera_mode=movement.mode;
             const auto state=comfort_snapshot();const auto settings=menu_snapshot();const auto& config=settings.config;
             if(config.look_only) {
                 dingosdk::first_person::Quat glance{0,0,0,1};
@@ -105,7 +108,10 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                         glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(config),{look_pitch.load(),look_yaw.load()},look_frame.load(),config.link_smoothing));
                         const auto stick_aim=stick_camera_aim();
-                        matrix=movement.mode==2 ? aim_board_body_local(native,stick_aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,look_frame.load()):aim_camera(native,stick_aim);
+                        const bool look_foot_action=jump_camera_action(movement);
+                        if(look_foot_action) foot_action_hold=look_frame.load()+0.35;
+                        if(movement.mode==1) matrix=aim_camera_native(native,stick_aim,config.stick.world_lock || look_foot_action || look_frame.load()<foot_action_hold,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,look_frame.load());
+                        else matrix=aim_board_body_local(native,stick_aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,look_frame.load());
                         dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{native[12],native[13],native[14]});
                     } else { smoothing.reset();stop_stick_look(); }
                 }
@@ -114,7 +120,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                 original_transform(camera,&matrix);return;
             }
             const auto head=read_animation_head(state);const auto pitch=look_pitch.load(),yaw=look_yaw.load();
-            bool suspended{},changed{};StickAim aim{};BailViewInfo view;
+            bool suspended{},changed{};StickAim aim{};bool lean{};BailViewInfo view;
             dingosdk::first_person::Quat glance{0,0,0,1};
             const double frame=look_frame.load();
             {
@@ -189,10 +195,45 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             const Matrix identity_pose{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
                             glance=dingosdk::first_person::orientation(smoothing.apply(identity_pose,glance_settings(effective),{pitch,yaw},frame,config.link_smoothing));
                             aim=stick_camera_aim();
-                            matrix=movement.mode==2 ? aim_board_body_local(matrix,aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,frame):aim_camera(matrix,aim);
+                            const bool foot_action=jump_camera_action(movement);
+                            if(foot_action) foot_action_hold=frame+0.35;
+                            if(movement.mode==1) matrix=aim_camera_native(matrix,aim,config.stick.world_lock || foot_action || frame<foot_action_hold,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,frame);
+                            else matrix=aim_board_body_local(matrix,aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,frame);
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
-                        if(attached && !flip_owned) matrix=bail_view.attach(matrix,head);
+                        // On foot the stable game camera keeps the position: per-mode offsets
+                        // land exactly as configured, with the head's local motion added back.
+                        const bool native_foot_position=movement.mode==1 && !bail && bail_view.info().getup_camera_phase==0;
+                        if(attached && !flip_owned && !native_foot_position) matrix=bail_view.attach(matrix,head);
+                        lean=(movement.mode==1 || movement.mode==2) && aim.active &&
+                            (movement.mode==1 ? config.stick.lean_look_down:config.board.lean_look_down);
+                        if(lean) {
+                            const bool foot=movement.mode==1;
+                            const auto info=bail_view.info();
+                            if(foot && !native_foot_position && head.valid && info.calibrated) {
+                                // Steep look-down pitches the head, which swings the
+                                // calibrated attachment offset around the head and drags
+                                // the camera back into the body past ~70 degrees. During
+                                // on-foot look, anchor the position with the head's yaw
+                                // only and add the measured pitch-dependent lean.
+                                const auto anchored=yaw_anchored_position(head.head,info.offset);
+                                const auto shift=look_down_lean(matrix,aim.pitch,config.stick.lean_forward,config.stick.lean_down);
+                                matrix[12]=anchored[0]+shift[0];matrix[13]=anchored[1]+shift[1];matrix[14]=anchored[2]+shift[2];
+                            } else {
+                                const auto shift=look_down_lean(matrix,aim.pitch,foot ? config.stick.lean_forward:config.board.lean_forward,
+                                    foot ? config.stick.lean_down:config.board.lean_down);
+                                matrix[12]+=shift[0];matrix[13]+=shift[1];matrix[14]+=shift[2];
+                            }
+                        }
+                        if(native_foot_position && head.valid && aim.active && !config.stick.world_lock && !jump_camera_action(movement) && frame>=foot_action_hold) {
+                            const dingosdk::first_person::Vec3 head_at{head.head[12],head.head[13],head.head[14]};
+                            auto sway=track_head_sway(head_sway_state,head_at,{native[12],native[13],native[14]},frame,config.stick.head_smoothing);
+                            // The camera's own stabilisation lags during hard accelerations; bound
+                            // the result so those transients cannot throw the camera around.
+                            const float length=std::sqrt(sway[0]*sway[0]+sway[1]*sway[1]+sway[2]*sway[2]);
+                            if(length>0.06f) { const float scale=0.06f/length;sway[0]*=scale;sway[1]*=scale;sway[2]*=scale; }
+                            for(unsigned i=0;i<3;++i) matrix[12+i]+=sway[i];
+                        }
                         dingosdk::first_person::Settings handoff;handoff.enabled=config.stick.smooth_transitions;
                         const bool mount_handoff=config.stick.enabled && movement.mounting;
                         handoff.up=handoff.down=handoff.left=handoff.right=(mount_handoff || movement.mode==2) ? config.stick.mount_smoothing:config.stick.dismount_smoothing;
@@ -237,6 +278,8 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         } else { collision.reset();collision_world=0; }
                         collision_seed={matrix[12],matrix[13],matrix[14]};collision_seed_ready=true;
                         if(!bail && valid) bail_view.remember(matrix,native,head,normal && !flip_owned);
+                        // The lean only displaces the displayed pose: native-vs-head stays intact, so
+                        // the attachment offset keeps tracking the live per-mode offsets.
                     }
                 }
             }

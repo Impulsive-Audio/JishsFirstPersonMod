@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace jishsfirstpersonmod {
-enum class CommandKind { remember_marker_glance, board_settings, look_only, set_enabled, binding, angle, camera_settings, retry_save, link_smoothing, look_settings, stick_smoothing, comfort_options, stick_settings, apply_preset, recommended_preset=apply_preset, menu_key, spring_on_foot, toggle_glances, cycle_restore, bail_collision, lock_body_flips, third_person_recovery, spectator_first_person };
+enum class CommandKind { remember_marker_glance, board_settings, look_only, set_enabled, binding, angle, camera_settings, retry_save, link_smoothing, look_settings, stick_smoothing, comfort_options, stick_settings, apply_preset, recommended_preset=apply_preset, menu_key, spring_on_foot, toggle_glances, cycle_restore, bail_collision, bald_hair, lock_body_flips, third_person_recovery, spectator_first_person };
 struct Command {
     CommandKind kind{};
     unsigned action{}; // 0 toggle, 1..4 directional glances
@@ -15,6 +15,8 @@ struct Command {
     bool enabled{};
     bool third_person_bailing{},on_board_only{};
     dingosdk::first_person::Settings spring;
+    bool per_mode_offsets{}; // camera_settings: also apply the per-mode offset memories.
+    dingosdk::first_person::Vec3 board_offset{},foot_offset{};
     StickSettings stick;
     BoardLookSettings board;
     Config preset;

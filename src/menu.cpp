@@ -1,6 +1,7 @@
 #include "menu.h"
 #include <imgui_internal.h>
 #include "bail_collision.h"
+#include "first_person_hair.h"
 #include "comfort_policy.h"
 #include "player_state_contract.h"
 #include "stick_runtime.h"
@@ -293,6 +294,13 @@ void draw_panel_frame(const PanelFrame& frame) {
         else if(config.third_person_bailing) ImGui::TextWrapped("Turn off Third person while bailing to use bail camera collision.");
         else if(!bail_collision_available()) ImGui::TextWrapped("Bail camera collision is unavailable. See the mod log.");
         if(!comfort.bail_available) ImGui::TextWrapped("Automatic bail switching is unavailable. See the mod log.");
+        ImGui::BeginDisabled(!first_person_hair_available());
+        if(readable_checkbox("Bald in first person",&config.bald_first_person)) {
+            Command command;command.kind=CommandKind::bald_hair;command.enabled=config.bald_first_person;submit_command(command);
+        }
+        help_marker("Temporarily uses the smooth bald hairstyle on your screen. Other players see your original hair. Your hair returns in third person and when this is turned off. Hair colour and saved outfits are kept.");
+        ImGui::EndDisabled();
+        if(!first_person_hair_available()) ImGui::TextWrapped("Temporary bald hairstyle is unavailable. See the mod log.");
         ImGui::BeginDisabled(!comfort.board_available);
         if(readable_checkbox("First person on board only",&config.on_board_only)) comfort_change();
         help_marker("Uses third person while walking. First person returns when you get on the board.");
@@ -433,8 +441,23 @@ void draw_panel_frame(const PanelFrame& frame) {
                 fit_control(label);
                 if(ImGui::SliderFloat(label,&value,low,high,format,ImGuiSliderFlags_AlwaysClamp)) settings_change(config);
             };
-            ImGui::TextUnformatted("Position offset (metres)");
-            slider("Right",config.spring.offset[0],-3,3,"%.3f"); slider("Up",config.spring.offset[1],-3,3,"%.3f"); slider("Forward",config.spring.offset[2],-3,3,"%.3f");
+            const int camera_mode=active_camera_mode.load();
+            const auto mode_slider=[&](const char* label,float& value,unsigned axis,int mode) {
+                fit_control(label);
+                ImGui::PushID(mode);
+                if(ImGui::SliderFloat(label,&value,-3,3,"%.3f",ImGuiSliderFlags_AlwaysClamp)) {
+                    if(camera_mode==mode) config.spring.offset[axis]=value;
+                    Command cmd;cmd.kind=CommandKind::camera_settings;cmd.spring=config.spring;cmd.value=config.fov;
+                    cmd.per_mode_offsets=true;cmd.board_offset=config.board_offset;cmd.foot_offset=config.foot_offset;
+                    submit_command(cmd);
+                }
+                ImGui::PopID();
+            };
+            ImGui::TextUnformatted(camera_mode==1 ? "On-foot offset (metres) - current":"On-foot offset (metres)");
+            mode_slider("Right",config.foot_offset[0],0,1); mode_slider("Up",config.foot_offset[1],1,1); mode_slider("Forward",config.foot_offset[2],2,1);
+            ImGui::TextUnformatted(camera_mode==2 ? "On-board offset (metres) - current":"On-board offset (metres)");
+            mode_slider("Right",config.board_offset[0],0,2); mode_slider("Up",config.board_offset[1],1,2); mode_slider("Forward",config.board_offset[2],2,2);
+            ImGui::TextWrapped("Each camera keeps its own offsets; the set marked current applies live when you move a slider.");
             ImGui::TextUnformatted("Rotation offset (degrees)");
             slider("Pitch",config.spring.rotation[0],-180,180,"%.1f"); slider("Yaw",config.spring.rotation[1],-180,180,"%.1f"); slider("Roll",config.spring.rotation[2],-180,180,"%.1f");
             ImGui::TextUnformatted("Smoothing strength");
@@ -483,18 +506,18 @@ void draw_panel_frame(const PanelFrame& frame) {
         ImGui::EndDisabled();
         if(!stick_runtime_ready()) ImGui::TextWrapped("Right-stick look is unavailable. See the mod log.");
         ImGui::BeginDisabled(!config.stick.enabled);
-        ImGui::BeginDisabled(config.look_only);
-        int mode=config.stick.turn_character ? 1:0;
-        fit_control("Look mode",true);
-        if(ImGui::Combo("Look mode",&mode,"Camera only\0Camera and character\0")) {
-            config.stick.turn_character=mode==1;stick_change();
-        }
-        help_marker("Camera only lets you look without turning your skater. Camera and character turns your skater too. Compatibility mode uses camera only.");
-        ImGui::EndDisabled();
         fit_control("Horizontal sensitivity");
         if(ImGui::SliderFloat("Horizontal sensitivity",&config.stick.yaw_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
         fit_control("Vertical sensitivity");
         if(ImGui::SliderFloat("Vertical sensitivity",&config.stick.pitch_speed,1,720,"%.0f deg/s",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        fit_control("Head motion smoothing");
+        if(ImGui::SliderFloat("Head motion smoothing",&config.stick.head_smoothing,0,100,"%.0f",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        help_marker("How much the head motion is damped before it reaches the view. Heavy smoothing will lag fast tumbles.");
+        fit_control("Head roll");
+        if(ImGui::SliderFloat("Head roll",&config.stick.head_roll,0,100,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) stick_change();
+        help_marker("How much of the head's roll (side-to-side banking) is applied. Pitch and tumble pass through fully.");
+        if(ImGui::Checkbox("World-locked view",&config.stick.world_lock)) stick_change();
+        help_marker("Pins the horizon level and discards the character's head motion entirely.");
         float deadzone=config.stick.deadzone*100;
         fit_control("Stick deadzone",true);
         if(ImGui::SliderFloat("Stick deadzone",&deadzone,1,50,"%.0f%%",ImGuiSliderFlags_AlwaysClamp)) {
@@ -502,6 +525,17 @@ void draw_panel_frame(const PanelFrame& frame) {
         }
         help_marker("Ignore small stick movements to prevent camera drift. Increase this if the camera moves by itself.");
         if(readable_checkbox("Invert Y",&config.stick.invert_y)) stick_change();
+        if(readable_checkbox("Lean camera forward when looking down",&config.stick.lean_look_down)) stick_change();
+        help_marker("Moves the camera slightly forward and down as you look down, so your body stays out of the view.");
+        ImGui::BeginDisabled(!config.stick.lean_look_down);
+        float lean_cm=config.stick.lean_forward*100;
+        fit_control("Look-down lean forward");
+        if(ImGui::SliderFloat("Look-down lean forward",&lean_cm,0,30,"%.1f cm",ImGuiSliderFlags_AlwaysClamp)) { config.stick.lean_forward=lean_cm*.01f;stick_change(); }
+        lean_cm=config.stick.lean_down*100;
+        fit_control("Look-down lean down");
+        if(ImGui::SliderFloat("Look-down lean down",&lean_cm,0,30,"%.1f cm",ImGuiSliderFlags_AlwaysClamp)) { config.stick.lean_down=lean_cm*.01f;stick_change(); }
+        help_marker("Camera shift at full look-down, scaled by how far down you look. Tune these so your body stays out of the view at your usual camera settings.");
+        ImGui::EndDisabled();
         if(readable_checkbox("Allow looking during jumps and climbing",&config.stick.look_during_parkour)) stick_change();
         help_marker("Enables right-stick look and button glances during climbing and supported jumps. Leave this off to keep ReSkate's normal view during climbing and attached jumps. These actions turn only the camera. This does not change head attachment, and look still pauses while getting on the board.");
         ImGui::EndDisabled();
@@ -541,6 +575,17 @@ void draw_panel_frame(const PanelFrame& frame) {
         board_slider("Horizontal look limit",config.board.yaw_limit,0,180,"%.0f degrees");
         board_slider("Vertical look limit",config.board.pitch_limit,0,85,"%.0f degrees");
         help_marker("Limits free look left/right of forward and up/down from your centre pitch. Button glance angles stay independent.");
+        if(readable_checkbox("Lean camera forward when looking down",&config.board.lean_look_down)) board_change();
+        help_marker("Moves the camera slightly forward and down as you look down, so your board stays out of the view.");
+        ImGui::BeginDisabled(!config.board.lean_look_down);
+        float board_lean_cm=config.board.lean_forward*100;
+        fit_control("Look-down lean forward");
+        if(ImGui::SliderFloat("Look-down lean forward",&board_lean_cm,0,30,"%.1f cm",ImGuiSliderFlags_AlwaysClamp)) { config.board.lean_forward=board_lean_cm*.01f;board_change(); }
+        board_lean_cm=config.board.lean_down*100;
+        fit_control("Look-down lean down");
+        if(ImGui::SliderFloat("Look-down lean down",&board_lean_cm,0,30,"%.1f cm",ImGuiSliderFlags_AlwaysClamp)) { config.board.lean_down=board_lean_cm*.01f;board_change(); }
+        help_marker("Camera shift at full look-down, scaled by how far down you look.");
+        ImGui::EndDisabled();
         board_slider("On Board Free Look Smoothing",config.board.look_smoothing,0,100,"%.0f%%");
         help_marker("Smooths the camera while looking, like a dolly camera. Zero responds immediately; higher values add more lag. Native skating input is never smoothed by this setting.");
         if(readable_checkbox("Modifier Key Keeps Right Stick Input Held",&config.board.keep_native_input)) board_change();

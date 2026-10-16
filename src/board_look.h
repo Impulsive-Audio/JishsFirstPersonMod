@@ -9,6 +9,8 @@ struct BoardLookSettings {
     float yaw_speed=330,pitch_speed=270,deadzone=.10f;
     float center_smoothing=35,center_pitch{},look_smoothing=12;
     float yaw_limit=85,pitch_limit=60;
+    bool lean_look_down=true;
+    float lean_forward=0.086f,lean_down=0.077f;
 };
 struct StickInputPolicy {
     std::uint32_t mask{};

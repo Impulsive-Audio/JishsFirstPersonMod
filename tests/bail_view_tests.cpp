@@ -150,10 +150,9 @@ int main(int argc,char** argv) {
     for(bool foot_spring:{false,true}) {
         config.disable_spring_on_foot=foot_spring;
         check(camera_look_allowed(config,state,movement),"foot Spring suppression blocked verified recovery");
-        config.stick.turn_character=true;
         check(!character_facing_allowed(state,movement),"recovery permitted character turning");
     }
-    StickLookState stick;StickSettings options;options.enabled=true;options.turn_character=false;
+    StickLookState stick;StickSettings options;options.enabled=true;
     Settings no_spring;
     check(!stick.update(options,{1,0},true,1,0,0,0,no_spring).active,"held recovery input bypassed neutral safeguard");
     auto neutral=stick.update(options,{},true,1,.016,0,0,no_spring);

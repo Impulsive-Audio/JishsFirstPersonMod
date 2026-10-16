@@ -42,6 +42,7 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         case CommandKind::toggle_glances: next.toggle_glances=command.enabled;immediate=true;break;
         case CommandKind::remember_marker_glance: next.remember_marker_glance=command.enabled;immediate=true;break;
         case CommandKind::bail_collision: next.bail_camera_collision=command.enabled;immediate=true;break;
+        case CommandKind::bald_hair: next.bald_first_person=command.enabled;immediate=true;break;
         case CommandKind::binding:
             if(command.action>6) throw std::runtime_error("Unknown controller action.");
             if(command.action==6) next.menu_combo=command.mask;
@@ -51,7 +52,10 @@ bool SettingsStore::submit(const Command& command,std::uint64_t now) {
         case CommandKind::angle:
             if(command.action<1 || command.action>4) throw std::runtime_error("Unknown look direction.");
             next.look[command.action-1].angle=command.value; break;
-        case CommandKind::camera_settings: next.spring=command.spring; next.fov=command.value; break;
+        case CommandKind::camera_settings:
+            next.spring=command.spring; next.fov=command.value;
+            if(command.per_mode_offsets) { next.board_offset=command.board_offset; next.foot_offset=command.foot_offset; }
+            break;
         case CommandKind::link_smoothing:
             if(!command.enabled && !next.look_smoothing_initialized) {
                 next.look_spring=next.spring; next.look_spring.offset={}; next.look_spring.rotation={};
