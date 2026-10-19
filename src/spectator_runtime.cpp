@@ -104,6 +104,9 @@ void initialize_spectator(std::uintptr_t game,std::uintptr_t stock,SpectatorRend
     using namespace dingosdk;
     if(supported.load()) return;
     game_base=game;stock_base=stock;render_writer=writer;
+    // Select the verified ReSkate layout before any signature is checked.
+    const std::string_view stock_version=stock_contract::selected ? std::string_view(stock_contract::selected->version):std::string_view{};
+    spectator::select_layout(stock_version=="2.1.1");
     const auto unavailable=[&](const std::string& reason) {
         std::lock_guard lock(spectator_mutex);
         feedback="Spectator preference can be saved; runtime unavailable: "+reason;
@@ -129,7 +132,7 @@ void initialize_spectator(std::uintptr_t game,std::uintptr_t stock,SpectatorRend
     }
     if(result!=HookOk) { unavailable("render hook installation failed: "+hook_failure_description(result));return; }
     { std::lock_guard lock(spectator_mutex);feedback="Spectator view: follow camera. Use the First Person binding while watching.";supported=true; }
-    log("Spectator head view: verified ReSkate 2.0.7 ID/slot/generation bridge and party camera/render callbacks.");
+    log("Spectator head view: verified ReSkate "+(stock_version.empty() ? std::string("unknown"):std::string(stock_version))+" ID/slot/generation bridge and party camera/render callbacks.");
 }
 void update_spectator_session(bool watching,const Config& config,std::uintptr_t next_context,bool blocked,std::uintptr_t client) {
     const bool previously_enabled=preference_seen.exchange(config.spectator_first_person);

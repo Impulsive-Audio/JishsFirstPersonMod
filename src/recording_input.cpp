@@ -16,6 +16,10 @@ NativeRecordingReader native_reader() {
     using namespace stock_contract;
     if(!selected) return nullptr;
     std::uintptr_t rva{};
+    // Signature checked before hooking: the reader is a plain function on the
+    // stock Binds page, and 2.1.1 rebuilt it at a different address with a
+    // different body.
+    const char* prefix_hex=nullptr;
     const std::string_view hash(selected->sha256);
     if(hash==contracts[4].sha256) rva=0x3e55a0;
     else if(hash==contracts[5].sha256) rva=0x3e5f40;
@@ -24,17 +28,20 @@ NativeRecordingReader native_reader() {
     else if(hash==contracts[8].sha256 || hash==contracts[9].sha256) rva=0x3d00f0;
     else if(std::string_view(selected->version)=="2.0.8") rva=0xc1e1e0;
     else if(std::string_view(selected->version)=="2.0.7") rva=0x3f87e0;
-    // 2.1.1 rebuilt the controller reader; until it is re-derived this feature stays off.
-    else if(std::string_view(selected->version)=="2.1.1") return nullptr;
+    else if(std::string_view(selected->version)=="2.1.1") { rva=0xdea9e0;prefix_hex="4885c90f84520200004c8bdc5541564883ec78488b05c6bd98004833c4488944"; }
     else if(uses_v206_layout(selected)) rva=0x3e8940;
     else return nullptr;
+    if(!prefix_hex) prefix_hex="4885c90f84c8010000488bc45641564883ec78";
     const auto module=GetModuleHandleW(L"reskate.dll");
     if(!module) return nullptr;
     const auto address=reinterpret_cast<std::uintptr_t>(module)+rva;
-    constexpr unsigned char prologue[]{0x48,0x85,0xc9,0x0f,0x84,0xc8,0x01,0x00,0x00,0x48,0x8b,0xc4,0x56,0x41,0x56,0x48,0x83,0xec,0x78};
-    std::array<unsigned char,sizeof(prologue)> actual{};
-    if(!dingosdk::memory::read_bytes(address,actual.data(),actual.size()) ||
-       !std::equal(actual.begin(),actual.end(),std::begin(prologue))) return nullptr;
+    const std::string_view prefix(prefix_hex);
+    if(prefix.size()%2) return nullptr;
+    std::array<unsigned char,64> actual{};
+    const auto length=prefix.size()/2;
+    if(length>actual.size() || !dingosdk::memory::read_bytes(address,actual.data(),length)) return nullptr;
+    auto nibble=[](char c) { return c<='9' ? c-'0':c-'a'+10; };
+    for(std::size_t i=0;i<length;++i) if(actual[i]!=(nibble(prefix[2*i])*16+nibble(prefix[2*i+1]))) return nullptr;
     log("Recording uses ReSkate's native Binds-page controller reader.");
     return reinterpret_cast<NativeRecordingReader>(address);
 }

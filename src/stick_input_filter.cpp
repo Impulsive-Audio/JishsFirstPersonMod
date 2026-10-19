@@ -278,13 +278,16 @@ bool install_stick_input_filter() {
        !add("GetRawInputBuffer",reinterpret_cast<void*>(&filtered_buffer),&buffer)) return false;
     original_data=reinterpret_cast<RawData>(data);original_buffer=reinterpret_cast<RawBuffer>(buffer);
     const auto stock=GetModuleHandleW(L"reskate.dll");const auto base=reinterpret_cast<std::uintptr_t>(stock);
-    const bool hid_verified=stock && stock_contract::selected && std::string_view(stock_contract::selected->version)=="2.0.7" &&
+    const std::string_view hid_version=stock_contract::selected ? std::string_view(stock_contract::selected->version):std::string_view{};
+    const bool hid_supported=hid_version=="2.0.7" || hid_version=="2.1.1";
+    if(hid_supported) select_layout(hid_version=="2.1.1");
+    const bool hid_verified=stock && stock_contract::selected && hid_supported &&
         verified_stock_hid([](std::uintptr_t address,void* data,std::size_t size) { return memory::read_bytes(address,data,size); },base);
     if(hid_verified) {
         void* original{};auto* target=reinterpret_cast<void*>(base+stock_hid_rva);
         if(owned_hook_prepare(target,reinterpret_cast<void*>(&filtered_stock_hid),&original)!=HookOk) return false;
         original_hid=reinterpret_cast<StockHid>(original);pending.push_back(target);
-    } else log("Glance emote blocking unavailable: shared ReSkate 2.0.7 HID handler did not verify. Existing stick filters remain available.");
+    } else log("Glance emote blocking unavailable: shared ReSkate HID handler did not verify. Existing stick filters remain available.");
     if(!prepare_direct_input(pending)) log("DirectInput gesture coverage incomplete: device adapters could not be prepared.");
     if(!prepare_native_hid(pending)) return false;
     for(auto* target:pending) if(hook_queue_enable(target)!=HookOk) return false;
