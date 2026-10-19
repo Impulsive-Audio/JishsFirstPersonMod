@@ -13,3 +13,21 @@ install.ps1
 /build.log
 /configure.log
 /tests.log
+# Build and IDE artifacts
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.user
+CMakeUserPresets.json
+.vs/
+out/
+
+# Local logs and editor/OS noise
+*.log
+*.bak
+Thumbs.db
+.DS_Store
+
+# Reverse-engineering scratch (REA/Frida one-off scripts)
+.rea-scratch/
