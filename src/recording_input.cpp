@@ -48,6 +48,7 @@ NativeRecordingReader native_reader() {
 }
 // Independent Windows snapshots remain readable when stock's XInput hooks
 // intentionally return neutral gameplay input to the game behind its menu.
+bool initialize_panel_recording() { return true; }
 dingosdk::ControllerInput recording_controller() {
     RecordingInputAccess access;
     static const auto reader=native_reader();

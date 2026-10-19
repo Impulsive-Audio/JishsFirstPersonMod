@@ -154,13 +154,15 @@ int main(int argc,char** argv) {
     }
     StickLookState stick;StickSettings options;options.enabled=true;
     Settings no_spring;
-    check(!stick.update(options,{1,0},true,1,0,0,0,no_spring).active,"held recovery input bypassed neutral safeguard");
+    const auto held_recovery=stick.update(options,{1,0},true,1,0,0,0,no_spring);
+    check(held_recovery.active && std::abs(held_recovery.heading)<.001f,"held recovery input must arm instantly at the current heading");
     auto neutral=stick.update(options,{},true,1,.016,0,0,no_spring);
     check(neutral.active && neutral.heading==0 && neutral.pitch==0,"recovery did not enter at zero offset");
     const auto right=stick.update(options,{1,0},true,1,.032,0,0,no_spring);
     check(right.active && right.heading<0,"recovery right stick direction reversed");
     check(!stick.update(options,{},false,1,.048,0,0,no_spring).active,"lost control retained recovery look");
-    check(!stick.update(options,{1,0},true,2,.064,0,0,no_spring).active,"controller change bypassed neutral safeguard");
+    const auto changed=stick.update(options,{1,0},true,2,.064,0,0,no_spring);
+    check(changed.active && std::abs(changed.heading)<.001f,"controller change must arm immediately at the current heading");
     CameraTransition transition;Settings handoff;handoff.enabled=true;
     const auto bail_pose=aim_head_relative(recovery,relative);
     transition.apply(bail_pose,handoff,1,1,true,0,{},nullptr,nullptr,true,true,true);

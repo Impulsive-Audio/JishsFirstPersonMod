@@ -62,4 +62,11 @@ void load_panel_fonts();
 void draw_panel(HWND window,bool visible);
 void draw_panel_frame(const PanelFrame& frame);
 void publish_menu_error(const std::string& error);
+// The embedded page prepares whatever the binding recorder needs. The fork
+// resolves ReSkate's reader lazily, so there is nothing to install here.
+bool initialize_panel_recording();
+// Menu backends: the embedded ReSkate page is the default. Setting
+// JISH_COMPANION_MENU=1 keeps the legacy companion panel available.
+bool companion_ui_enabled();
+bool start_embedded_menu();
 }

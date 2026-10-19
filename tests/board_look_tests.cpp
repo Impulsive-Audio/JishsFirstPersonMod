@@ -33,7 +33,7 @@ int main() { try {
     check(aim.active && !aim.capture && aim.pitch==12,"resting pitch or normal skating capture incorrect");
     input.buttons=settings.modifier;
     aim=state.update(settings,{1,0},true,input,.01);
-    check(aim.capture && aim.heading==0,"held trick stick was not captured pending neutral");
+    check(aim.capture && aim.heading<-.5f,"held stick did not steer immediately on capture");
     state.update(settings,{},true,input,.02);
     aim=state.update(settings,{1,1},true,input,.12);
     check(aim.capture && aim.heading<0 && aim.pitch>12,"look directions incorrect");
@@ -111,11 +111,12 @@ int main() { try {
         }
         for(int i=13;i<=16;++i) {
             pad.buttons=keep.modifier;
-            const StickAxes axes=i<15 ? StickAxes{.7f,.5f}:StickAxes{.01f,0};
+            // Deadzone-sized input must never disturb a return in progress.
+            const StickAxes axes{.01f,0};
             auto returning=camera.update(keep,axes,true,pad,i*.01);
             pad.buttons=0;auto expected=reference.update(keep,axes,true,pad,i*.01);
             check(std::abs(returning.heading-expected.heading)<.00001f && std::abs(returning.pitch-expected.pitch)<.00001f,
-                "modifier re-press or deadzone/native input disturbed auto-center trajectory");
+                "deadzone input disturbed auto-center trajectory");
         }
         pad.buttons=keep.modifier;auto interrupted=camera.update(keep,{1,1},true,pad,.17);
         pad.buttons=0;auto uninterrupted=reference.update(keep,{},true,pad,.17);

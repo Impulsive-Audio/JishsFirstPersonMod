@@ -123,10 +123,12 @@ int main() {
     auto resumed=stick.update(settings,{1,0},true,1,.048,0,0,immediate);
     check(resumed.active && resumed.manual && resumed.heading==80 && resumed.pitch==20,"held input could not resume from shown view");
     stick.update(settings,{1,0},false,1,.064,80,0,immediate);
-    check(!stick.update(settings,{1,0},true,2,.080,80,0,immediate).active,"device/focus reset bypassed neutral");
+    const auto device_reset=stick.update(settings,{1,0},true,2,.080,80,0,immediate);
+    check(device_reset.active && device_reset.heading==80,"device/focus reset must arm immediately at the shown view");
     StickLookState reentry;
-    check(!reentry.update(settings,{1,0},true,1,0,65,100,immediate,27).active,
-        "resumed analog look bypassed neutral entry");
+    const auto held_entry=reentry.update(settings,{1,0},true,1,0,65,100,immediate,27);
+    check(held_entry.active && held_entry.heading==65 && held_entry.pitch==27,
+        "held analog re-entry must arm at the displayed view");
     const auto from_display=reentry.update(settings,{},true,1,.016,65,100,immediate,27);
     check(from_display.active && from_display.heading==65 && from_display.pitch==27,
         "analog re-entry recentered displayed pitch");

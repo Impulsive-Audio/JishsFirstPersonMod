@@ -135,7 +135,9 @@ DWORD WINAPI worker(void*) noexcept {
         if (!jishsfirstpersonmod::install_hooks(base)) {
             jishsfirstpersonmod::publish_runtime(false,false,"Camera hooks failed. See JishsFirstPersonMod.log."); status = 3; return 0;
         }
-        if(!jishsfirstpersonmod::start_menu()) { status=3;return 0; }
+        const bool menu_started=jishsfirstpersonmod::companion_ui_enabled()
+            ? jishsfirstpersonmod::start_menu():jishsfirstpersonmod::start_embedded_menu();
+        if(!menu_started) { status=3;return 0; }
         jishsfirstpersonmod::compatibility::enable();rollback.committed=true;
         status = 2;
         jishsfirstpersonmod::log("initialised once; controller requests feed the existing native ReSkate camera");

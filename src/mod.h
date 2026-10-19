@@ -90,4 +90,6 @@ bool take_toggle_request() noexcept;
 bool take_reload_request() noexcept;
 bool overlay_available(bool& visible) noexcept;
 bool start_menu();
+bool companion_ui_enabled();
+bool start_embedded_menu();
 }

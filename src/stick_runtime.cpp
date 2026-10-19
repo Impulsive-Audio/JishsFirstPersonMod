@@ -20,6 +20,22 @@
 #include <atomic>
 namespace jishsfirstpersonmod {
 namespace {
+std::atomic<float> live_right_x{},live_right_y{},live_left_x{},live_left_y{};
+std::atomic<unsigned> live_buttons{};
+}
+void publish_live_input(const GameplayInput& input) {
+    live_right_x.store(input.right_x,std::memory_order_relaxed);
+    live_right_y.store(input.right_y,std::memory_order_relaxed);
+    live_left_x.store(input.left_x,std::memory_order_relaxed);
+    live_left_y.store(input.left_y,std::memory_order_relaxed);
+    live_buttons.store(input.buttons,std::memory_order_relaxed);
+}
+LiveInput live_input() {
+    return {live_right_x.load(std::memory_order_relaxed),live_right_y.load(std::memory_order_relaxed),
+        live_left_x.load(std::memory_order_relaxed),live_left_y.load(std::memory_order_relaxed),
+        live_buttons.load(std::memory_order_relaxed)};
+}
+namespace {
 using Matrix=dingosdk::first_person::Matrix;
 using Motion=void(*)(std::uintptr_t,std::uintptr_t,const Matrix*,std::uint8_t);
 Motion original_motion{};
@@ -208,6 +224,7 @@ bool stick_captures_input(unsigned slot,std::uint32_t buttons) {
     return mask && (mask==~0u || (buttons&mask)==mask);
 }
 void tick_stick_look(const Config& config,const GameplayInput& input,const ComfortSnapshot& owner,bool inhibited) {
+    publish_live_input(input);
     const double time=now();const auto movement=live_camera_movement();
     const auto head=read_animation_head(owner);
     Matrix body{};const bool body_valid=owner.rig && dingosdk::memory::read(owner.rig+0x4720,body) && dingosdk::valid_flight_transform(body);

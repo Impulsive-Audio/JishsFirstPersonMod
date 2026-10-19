@@ -48,6 +48,7 @@ add_library(JishsFirstPersonMod SHARED
     src/body_flip_runtime.cpp src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/bail_collision.cpp src/first_person_hair.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
     src/proven_debug.cpp src/proven_input.cpp src/stick_runtime.cpp src/stick_input_filter.cpp vendor/Extension/UI/Overlay/playstation_input.cpp
     src/debug_tools.cpp
+    src/embedded_menu.cpp src/embedded_runtime.cpp
     vendor/Engine/Game/Build/image_identity.cpp src/menu_renderer.cpp src/recording_input.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc")
 target_compile_definitions(JishsFirstPersonMod PRIVATE JISH_MOD_VERSION="${PROJECT_VERSION}")

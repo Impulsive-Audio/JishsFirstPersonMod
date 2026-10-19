@@ -25,6 +25,7 @@ inline short stick_short(float value) {
 // Relative view angles stay with the skater; native input never uses camera damping.
 class BoardLookState {
     bool ready_{},armed_{},holding_{},capturing_{},centering_{},modifier_centering_{};
+    bool centering_yaw_{},centering_pitch_{};
     unsigned device_{};
     std::uint32_t modifier_{};
     double time_{};
@@ -63,19 +64,25 @@ public:
             }
         }
         if(capture) {
-            if(holding_ && deflected && centering_) {
-                target_yaw_=yaw_;target_pitch_=pitch_;yaw_velocity_=pitch_velocity_=0;
-                centering_=modifier_centering_=false;
-            }
-            // Native position is latched before requiring neutral camera input.
-            if(!holding_ && !deflected) holding_=true;
+            // Input is accepted from the first captured frame; a return in
+            // progress yields per axis to input that pulls away from centre.
+            holding_=true;
             // A modifier-release return survives re-capture until actual look input.
             if(!(settings.continue_auto_center && centering_ && modifier_centering_)) {
                 centering_=holding_ && !deflected && settings.center_on_stick;modifier_centering_=false;
+                if(centering_) centering_yaw_=centering_pitch_=true;
+            }
+            bool suppress_x=false,suppress_y=false;
+            if(centering_) {
+                if(centering_yaw_ && deflected && (-stick.x)*(0.f-yaw_)<0) {centering_yaw_=false;target_yaw_=yaw_;yaw_velocity_=0;}
+                if(centering_pitch_ && deflected && (stick.y*(settings.invert_y ? -1.f:1.f))*(settings.center_pitch-pitch_)<0) {centering_pitch_=false;target_pitch_=pitch_;pitch_velocity_=0;}
+                if(!centering_yaw_ && !centering_pitch_) centering_=modifier_centering_=false;
+                suppress_x=centering_yaw_ && stick.x!=0;
+                suppress_y=centering_pitch_ && stick.y!=0;
             }
             if(holding_ && deflected) {
-                target_yaw_-=stick.x*settings.yaw_speed*dt;
-                target_pitch_+=stick.y*settings.pitch_speed*dt*(settings.invert_y ? -1.f:1.f);
+                if(!suppress_x) target_yaw_-=stick.x*settings.yaw_speed*dt;
+                if(!suppress_y) target_pitch_+=stick.y*settings.pitch_speed*dt*(settings.invert_y ? -1.f:1.f);
             }
         } else {
             holding_=false;
@@ -83,13 +90,17 @@ public:
                 // Modifier release has priority regardless of the physical stick.
                 if(!(settings.continue_auto_center && centering_ && modifier_centering_)) {
                     centering_=modifier_centering_=settings.center_on_modifier;
+                    if(centering_) centering_yaw_=centering_pitch_=true;
                     target_yaw_=yaw_;target_pitch_=pitch_;yaw_velocity_=pitch_velocity_=0;
                 }
             }
             if(!settings.center_on_modifier) centering_=modifier_centering_=false;
         }
         capturing_=capture;clamp();
-        if(centering_) { target_yaw_=0;target_pitch_=settings.center_pitch; }
+        if(centering_) {
+            if(centering_yaw_) target_yaw_=0; else target_yaw_=yaw_;
+            if(centering_pitch_) target_pitch_=settings.center_pitch; else target_pitch_=pitch_;
+        }
         const float strength=centering_ ? settings.center_smoothing:capture ? settings.look_smoothing:0;
         float yaw_error=yaw_-target_yaw_,pitch_error=pitch_-target_pitch_;
         dingosdk::first_person::damp(yaw_error,yaw_velocity_,strength,dt);
@@ -98,6 +109,7 @@ public:
         if(centering_ && std::abs(yaw_)<.001f && std::abs(pitch_-settings.center_pitch)<.001f &&
             std::abs(yaw_velocity_)<.01f && std::abs(pitch_velocity_)<.01f) {
             yaw_=target_yaw_=0;pitch_=target_pitch_=settings.center_pitch;
+            centering_yaw_=centering_pitch_=false;
             yaw_velocity_=pitch_velocity_=0;centering_=modifier_centering_=false;
         }
         return {capture,true,yaw_,pitch_,0,capture && holding_ && deflected};

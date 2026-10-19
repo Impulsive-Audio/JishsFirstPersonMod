@@ -12,6 +12,7 @@ struct FrameFlags {
     int mode{},action{},custom_mode{},yield{},reason{},sub_offset{-1},sub_vtable{-1};
     bool eligible{},suspended{},requested{},active{},jumping{},mounting{};
     bool aim_capture{},aim_active{};
+    float right_x{},right_y{},left_x{},left_y{};unsigned buttons{};
     float aim_yaw{},aim_pitch{};
 };
 void publish(const dingosdk::first_person::Matrix& native,const dingosdk::first_person::Matrix& final,

@@ -119,6 +119,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                 debug::FrameFlags flags{};flags.mode=movement.mode;flags.custom_mode=movement.custom_mode;
                 flags.jumping=movement.jumping;flags.mounting=movement.mounting;flags.yield=1;
                 flags.sub_offset=movement.substate_offset;flags.sub_vtable=movement.substate_vtable_rva;
+                {const auto raw=live_input();flags.right_x=raw.right_x;flags.right_y=raw.right_y;flags.left_x=raw.left_x;flags.left_y=raw.left_y;flags.buttons=raw.buttons;}
                 flags.requested=stock_first_person_requested();flags.active=stock_first_person_active();
                 debug::publish(native,native,have_shown?&shown:nullptr,flags);
             }
@@ -167,6 +168,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                 debug::FrameFlags flags{};flags.mode=movement.mode;flags.custom_mode=movement.custom_mode;
                 flags.jumping=movement.jumping;flags.mounting=movement.mounting;flags.eligible=look_ok;
                 flags.sub_offset=movement.substate_offset;flags.sub_vtable=movement.substate_vtable_rva;
+                {const auto raw=live_input();flags.right_x=raw.right_x;flags.right_y=raw.right_y;flags.left_x=raw.left_x;flags.left_y=raw.left_y;flags.buttons=raw.buttons;}
                 flags.yield=look_ok?0:1;flags.requested=stock_first_person_requested();flags.active=stock_first_person_active();
                 flags.aim_yaw=look_yaw.load();flags.aim_pitch=look_pitch.load();
                 debug::publish(native,matrix,have_shown?&shown:nullptr,flags);
@@ -349,6 +351,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                 debug::FrameFlags flags{};flags.mode=movement.mode;flags.custom_mode=movement.custom_mode;flags.action=action;
                 flags.jumping=movement.jumping;flags.mounting=movement.mounting;flags.eligible=look_ok;
                 flags.sub_offset=movement.substate_offset;flags.sub_vtable=movement.substate_vtable_rva;
+                {const auto raw=live_input();flags.right_x=raw.right_x;flags.right_y=raw.right_y;flags.left_x=raw.left_x;flags.left_y=raw.left_y;flags.buttons=raw.buttons;}
                 flags.suspended=suspended;flags.yield=(!look_ok || suspended)?1:0;
                 flags.reason=(overrides?0:1)|(mount_block?2:0)|(mode_block?4:0)|(action_block?8:0);
                 flags.requested=stock_first_person_requested();flags.active=stock_first_person_active();

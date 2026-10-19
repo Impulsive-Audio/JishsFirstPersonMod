@@ -113,6 +113,7 @@ struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{
     float pitch_base{};};
 class StickLookState {
     bool ready_{},seen_{},center_facing_{};
+    bool centering_yaw_{},centering_pitch_{};float target_yaw_{},target_pitch_{};
     unsigned device_{};
     double time_{};
     float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},center_offset_{},center_pitch_{},pitch_base_{};
@@ -134,13 +135,37 @@ public:
         const auto input=radial_stick(axes,settings.deadzone);
         if(!ready_) {
             time_=now;
-            if(input.x!=0 || input.y!=0) return {true,false};
-            if(center_facing_) {camera_heading=wrap_heading(body_heading+center_offset_);camera_pitch=center_pitch_;}
-            center_facing_=false;
-            ready_=true;yaw_=smooth_yaw_=camera_heading;pitch_=smooth_pitch_=std::clamp(camera_pitch,-85.f,85.f);pitch_base_=pitch_;
+            // Arm from the view that is on screen right now. A pending recenter
+            // becomes a target the servo pulls toward; the player can always
+            // steer, and pushing away from the target hands that axis over.
+            yaw_=smooth_yaw_=camera_heading;pitch_=smooth_pitch_=std::clamp(camera_pitch,-85.f,85.f);pitch_base_=pitch_;
+            if(center_facing_) {
+                // Recenter owns the heading only; the pitch is left exactly
+                // where the handoff left it, matching the old dismount feel.
+                target_yaw_=wrap_heading(body_heading+center_offset_);
+                target_pitch_=pitch_;centering_pitch_=false;
+                centering_yaw_=true;
+            } else {
+                target_yaw_=yaw_;target_pitch_=pitch_;centering_yaw_=centering_pitch_=false;
+            }
+            center_facing_=false;ready_=true;
         }
         const float dt=static_cast<float>(now-time_);time_=now;
-        // Match the proven glance conventions: +Y looks up, +X looks right.
+        if(centering_yaw_) {
+            const float error=wrap_heading(target_yaw_-yaw_);
+            // +x decreases yaw, so input.x*error>0 means the stick is pulling away.
+            if(input.x!=0 && input.x*error>0) centering_yaw_=false;
+            else if(std::abs(error)<.01f) { yaw_=target_yaw_;centering_yaw_=false; }
+            else yaw_=wrap_heading(yaw_+error*(1.f-std::exp(-dt/.09f)));
+        }
+        const float pitch_dir=input.y*(settings.invert_y ? -1.f:1.f);
+        if(centering_pitch_) {
+            const float error=target_pitch_-pitch_;
+            if(pitch_dir!=0 && pitch_dir*error<0) centering_pitch_=false;
+            else if(std::abs(error)<.01f) { pitch_=target_pitch_;centering_pitch_=false; }
+            else pitch_=pitch_+error*(1.f-std::exp(-dt/.11f));
+        }
+        // Player input always applies; the servo never swallows it.
         yaw_=wrap_heading(yaw_-input.x*settings.yaw_speed*dt);
         pitch_=std::clamp(pitch_+input.y*settings.pitch_speed*dt*(settings.invert_y ? -1.f:1.f),-85.f,85.f);
         // The left stick is walk input only: moving follows the view, so the

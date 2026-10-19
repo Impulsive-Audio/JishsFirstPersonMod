@@ -33,18 +33,37 @@ int main() {
     StickSettings settings;settings.enabled=true;Settings spring;
     StickLookState state;
     StickLookState recentered;recentered.recenter_facing();
-    check(!recentered.update(settings,{1,0},true,1,0,45,90,spring,20).active,"dismount recenter skipped neutral stick");
-    const auto centered=recentered.update(settings,{},true,1,.016,45,90,spring,20);
-    check(centered.active && centered.heading==-90 && centered.body_heading==90 && centered.pitch==0,
-        "dismount/recovery recenter faces into the body");
-    const auto facing=recentered.update(settings,{1,0},true,1,.116,45,90,spring);
-    check(std::abs(wrap_heading(facing.body_heading-facing.heading-180.f))<.001f,"looking did not turn the character with the view");
-    recentered.recenter_facing();
-    const auto camera_only=recentered.update(settings,{},true,1,.132,45,90,spring,20);
-    check(camera_only.heading==-90 && camera_only.pitch==0,"recenter applied without the mode selector");
+    const auto armed=recentered.update(settings,{},true,1,0,45,90,spring,20);
+    check(armed.active,"dismount recenter did not arm");
+    const auto gliding=recentered.update(settings,{},true,1,.05,45,90,spring,20);
+    check(std::abs(wrap_heading(gliding.heading+90))<std::abs(wrap_heading(armed.heading+90)),
+        "dismount recenter did not move toward the body");
+    for(int i=3;i<=40;++i) recentered.update(settings,{},true,1,i*.02,45,90,spring,20);
+    const auto centered=recentered.update(settings,{},true,1,.82,45,90,spring,20);
+    check(centered.active && std::abs(wrap_heading(centered.heading+90))<.5f && std::abs(centered.pitch-20.f)<.1f,
+        "dismount recenter did not settle behind the body while leaving pitch alone");
+    check(std::abs(wrap_heading(centered.body_heading-centered.heading-180.f))<.001f,
+        "recenter did not keep the character facing the view");
+    StickLookState fight;fight.recenter_facing();
+    fight.update(settings,{},true,1,0,45,90,spring,20);
+    const auto pulled=fight.update(settings,{-1,0},true,1,.02,45,90,spring,20);
+    check(std::abs(wrap_heading(pulled.heading-45))>1.f,"opposing look input did not steer");
+    const auto released=fight.update(settings,{},true,1,.12,45,90,spring,20);
+    check(std::abs(wrap_heading(released.heading-pulled.heading))<1.f,"a yielded yaw axis kept recentering");
+    StickLookState same_dir;same_dir.recenter_facing();
+    same_dir.update(settings,{},true,1,0,45,90,spring,20);
+    same_dir.update(settings,{1,0},true,1,.02,45,90,spring,20);
+    const auto helped=same_dir.update(settings,{},true,1,.04,45,90,spring,20);
+    StickLookState green;green.recenter_facing();
+    green.update(settings,{},true,1,0,45,90,spring,20);
+    green.update(settings,{},true,1,.02,45,90,spring,20);
+    const auto undisturbed=green.update(settings,{},true,1,.04,45,90,spring,20);
+    check(std::abs(wrap_heading(helped.heading-undisturbed.heading))<2.f,"same-direction input changed the recenter pace");
     for(const float heading:{-179.f,-90.f,0.f,90.f,179.f}) {
         StickLookState dismounted;dismounted.recenter_facing();
-        const auto outward=dismounted.update(settings,{},true,1,0,heading,heading,spring);
+        dismounted.update(settings,{},true,1,0,heading,heading,spring);
+        for(int i=1;i<=60;++i) dismounted.update(settings,{},true,1,i*.02,heading,heading,spring);
+        const auto outward=dismounted.update(settings,{},true,1,1.24,heading,heading,spring);
         const auto camera=aim_camera(Matrix{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},outward);
         const auto body=face_heading(Matrix{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},heading);
         // Viewing direction is camera -Z; character facing is body +Z.
@@ -53,19 +72,26 @@ int main() {
             "dismount view did not face outward without turning the character");
     }
     StickLookState bail_center;bail_center.recenter_facing(180.f);
-    check(!bail_center.update(settings,{1,0},true,1,0,45,90,spring,20).active,"bail recenter skipped neutral stick");
-    const auto bail_centered=bail_center.update(settings,{},true,1,.016,45,90,spring,20);
-    check(bail_centered.active && bail_centered.heading==-90 && bail_centered.body_heading==90 && bail_centered.pitch==0,
+    const auto bail_first=bail_center.update(settings,{},true,1,0,45,90,spring,20);
+    check(bail_first.active,"bail recenter did not arm");
+    for(int i=1;i<=40;++i) bail_center.update(settings,{},true,1,i*.02,45,90,spring,20);
+    const auto bail_centered=bail_center.update(settings,{},true,1,.82,45,90,spring,20);
+    check(bail_centered.active && std::abs(wrap_heading(bail_centered.heading+90))<.5f && std::abs(wrap_heading(bail_centered.body_heading-90.f))<.05f,
         "bail recenter did not reverse camera while preserving character facing");
-    const auto bail_turned=bail_center.update(settings,{1,0},true,1,.116,45,90,spring);
+    const auto bail_turned=bail_center.update(settings,{1,0},true,1,.84,45,90,spring);
     check(std::abs(wrap_heading(bail_turned.body_heading-bail_turned.heading-180.f))<.001f,
         "bail recenter did not follow the view");
-    check(!state.update(settings,{1,0},true,1,0,0,0,spring).active,"held stick armed without neutral");
-    check(state.update(settings,{},true,1,.016,0,0,spring).active,"neutral did not arm");
+    const auto fresh_aim=state.update(settings,{1,0},true,1,0,0,0,spring);
+    check(fresh_aim.active,"fresh capture did not arm");
+    const auto steered=state.update(settings,{1,0},true,1,.016,0,0,spring);
+    check(std::abs(wrap_heading(steered.heading-fresh_aim.heading))>.5f,"held stick did not steer immediately");
+    StickLookState rate;rate.update(settings,{},true,1,0,0,0,spring);
+    const auto rated=rate.update(settings,{1,0},true,1,.05,0,0,spring);
+    check(std::abs(rated.heading+6.f)<.001f,"yaw rate incorrect");
     auto aim=state.update(settings,{1,0},true,1,.116,0,0,spring);
-    check(std::abs(aim.heading+12)<.0001f,"yaw rate incorrect");
     check(!state.update(settings,{1,0},false,1,.132,0,0,spring).capture,"mounting retained stick ownership");
-    check(!state.update(settings,{1,0},true,1,.148,0,0,spring).active,"return from board skipped neutral");
+    const auto returned=state.update(settings,{1,0},true,1,.148,0,0,spring);
+    check(returned.active && std::abs(returned.heading)<.001f,"return from board must re-arm at the shown view");
     for(int fps:{30,60,120}) {
         StickLookState run;run.update(settings,{},true,1,0,0,0,spring);
         for(int i=1;i<=fps;++i) aim=run.update(settings,{1,0},true,1,double(i)/fps,0,0,spring);
@@ -239,7 +265,8 @@ int main() {
     state.reset();state.update(settings,{},true,1,0,20,20,spring);
     state.update(settings,{1,0},true,1,.1,20,20,spring);
     check(!state.update(settings,{1,0},false,1,.116,20,20,spring).capture,"animation retained stick ownership");
-    check(!state.update(settings,{1,0},true,1,.132,80,80,spring).active,"animation exit skipped neutral");
+    const auto animation_exit=state.update(settings,{1,0},true,1,.132,80,80,spring);
+    check(animation_exit.active && animation_exit.heading==80,"animation exit must arm immediately at the camera heading");
     const auto resumed=state.update(settings,{},true,1,.148,80,80,spring);
     check(resumed.active && resumed.heading==80,"animation exit retained old heading");
     handoff.apply(foot,transition_settings,1,1,true,4.016);

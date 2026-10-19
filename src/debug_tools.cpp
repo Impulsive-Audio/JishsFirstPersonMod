@@ -156,12 +156,14 @@ void publish(const Matrix& native,const Matrix& final,const Matrix* shown,const 
                     "%d," "%d," "%d," "%d," "%d,"
                     "%d," "%d," "%d," "%d," "%d,"
                     "%.2f,%.2f,"
+                    "%.4f,%.4f,%.4f,%.4f,%u,"
                     "%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,"
                     "%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,"
                     "%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
                     GetTickCount64(),f.mode,f.custom_mode,f.action,f.jumping?1:0,f.mounting?1:0,
                     f.eligible?1:0,f.suspended?1:0,f.requested?1:0,f.active?1:0,f.yield,f.reason,f.sub_offset,f.sub_vtable,
                     f.aim_capture?1:0,f.aim_active?1:0,f.aim_yaw,f.aim_pitch,
+                    f.right_x,f.right_y,f.left_x,f.left_y,f.buttons,
                     n.yaw,n.pitch,n.roll,n.x,n.y,n.z,m.yaw,m.pitch,m.roll,m.x,m.y,m.z,
                     s.yaw,s.pitch,s.roll,s.x,s.y,s.z);
                 rec_buffer+=row;++rec_rows;
@@ -191,7 +193,7 @@ void toggle_recording() noexcept {
     std::filesystem::create_directories(path.parent_path(),error);
     rec_file=std::fopen(path.string().c_str(),"wb");
     if(!rec_file) { log("Debug recording could not open its file");return; }
-    const char* header="time_ms,mode,custom_mode,action,jumping,mounting,eligible,suspended,requested,active,yield,reason,sub_offset,sub_vtable,aim_capture,aim_active,aim_yaw,aim_pitch,"
+    const char* header="time_ms,mode,custom_mode,action,jumping,mounting,eligible,suspended,requested,active,yield,reason,sub_offset,sub_vtable,aim_capture,aim_active,aim_yaw,aim_pitch,right_x,right_y,left_x,left_y,buttons,"
         "native_yaw,native_pitch,native_roll,native_x,native_y,native_z,"
         "mod_yaw,mod_pitch,mod_roll,mod_x,mod_y,mod_z,"
         "shown_yaw,shown_pitch,shown_roll,shown_x,shown_y,shown_z\n";

@@ -32,6 +32,10 @@ struct CameraMovementSample {
     std::array<std::uintptr_t,4> state{};
 };
 CameraMovementSample live_camera_movement();
+// Raw controller axes as the game sees them, for diagnostics and recordings.
+struct LiveInput { float right_x{},right_y{},left_x{},left_y{};unsigned buttons{}; };
+void publish_live_input(const GameplayInput& input);
+LiveInput live_input();
 void tick_hippy_jump(const Config&,const ComfortSnapshot&,CameraMovementSample&,double now);
 void set_bail_view_suspended(bool suspended);
 int live_camera_movement_mode();

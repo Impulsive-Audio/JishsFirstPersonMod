@@ -1,4 +1,5 @@
 #include "menu.h"
+#include <atomic>
 #include "debug_tools.h"
 #include "owned_hooks.h"
 #include <intrin.h>
@@ -146,6 +147,14 @@ std::vector<MenuInput> take_panel_input() {
 }
 void hide_panel() { set_panel_bounds({},false,false,false); }
 void close_panel() {auto& input=state();{std::lock_guard lock(input.mutex);input.hotkey.hidden=true;}hide_panel();}
+bool companion_ui_enabled() {
+    static const bool enabled=[] {
+        char value[8]{};
+        const auto length=GetEnvironmentVariableA("JISH_COMPANION_MENU",value,sizeof value);
+        return length>0 && value[0]!='0';
+    }();
+    return enabled;
+}
 bool panel_gameplay_blocked() {auto& input=state();std::lock_guard lock(input.mutex);return input.router.visible;}
 void panel_binding_recording(bool active) {auto& input=state();std::lock_guard lock(input.mutex);input.binding_recording=active;}
 MenuControllerResult panel_controller_snapshot() {auto& input=state();std::lock_guard lock(input.mutex);return input.controller_frame;}

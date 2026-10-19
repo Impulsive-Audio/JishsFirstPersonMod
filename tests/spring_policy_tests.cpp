@@ -60,7 +60,8 @@ int main() {
     stick.update(control,{},true,1,0,0,0,immediate);
     check(stick.update(control,{1,0},true,1,.016,0,0,immediate).active,"stick setup did not activate");
     check(!stick.update(control,{1,0},false,1,.032,0,0,immediate).active,"camera lock retained stick aim");
-    check(!stick.update(control,{1,0},true,1,.048,90,0,immediate).active,"held stick resumed before neutral");
+    const auto held_resume=stick.update(control,{1,0},true,1,.048,90,0,immediate);
+    check(held_resume.active && held_resume.heading==90,"held stick must arm immediately at the shown view");
     stick.update(control,{},true,1,.064,90,0,immediate);
     check(stick.update(control,{1,0},true,1,.080,90,0,immediate).active,"neutral did not release camera lock");
     movement={};movement.mode=1;movement.jumping=true;movement.hippy.active=true;
