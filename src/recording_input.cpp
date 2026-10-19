@@ -24,6 +24,8 @@ NativeRecordingReader native_reader() {
     else if(hash==contracts[8].sha256 || hash==contracts[9].sha256) rva=0x3d00f0;
     else if(std::string_view(selected->version)=="2.0.8") rva=0xc1e1e0;
     else if(std::string_view(selected->version)=="2.0.7") rva=0x3f87e0;
+    // 2.1.1 rebuilt the controller reader; until it is re-derived this feature stays off.
+    else if(std::string_view(selected->version)=="2.1.1") return nullptr;
     else if(uses_v206_layout(selected)) rva=0x3e8940;
     else return nullptr;
     const auto module=GetModuleHandleW(L"reskate.dll");

@@ -13,6 +13,7 @@ namespace jishsfirstpersonmod {
 bool panel_gameplay_blocked();
 inline std::atomic<int> active_camera_mode{}; // Current live camera mode, foot (1) or board (2).
 struct Config {
+    bool enabled=true; // Master switch; off hands the camera back to ReSkate entirely.
     bool toggle_glances=false;
     bool remember_marker_glance=false;
     NativeControls native; // Observed settings/bindings, never saved in the mod INI.

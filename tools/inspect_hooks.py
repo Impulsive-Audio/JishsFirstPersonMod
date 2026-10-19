@@ -167,6 +167,8 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0, new_
     layout = {0x3a:(0x320,0x328),0x49:(0x321,0x329),0x50:(0x428,0x430),0x6d:(0x2b4,0x2bb),0x79:(0x328,0x330),0x85:(0x478,0x490)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
     if new_callbacks_offset == 0x590 and callbacks_offset == 0x4d0:
         layout = {0x50:(0x430,0x4f0),0x85:(0x490,0x550)}
+    if new_callbacks_offset == 0x5b0 and callbacks_offset == 0x590:
+        layout = {0x85:(0x550,0x570)}
     expected_status = signature(old, new, baseline['status_rva'],166, layout_replacements=layout)
     if status != expected_status:
         raise InspectionError('Status export no longer matches verified implementation')
@@ -182,7 +184,7 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0, new_
         raise InspectionError('Mutex lock thunk ABI changed')
     if new_lock[1].operands[0].imm != signature(old,new,old_lock[1].operands[0].imm) or unlock != signature(old,new,baseline['mutex_unlock_rva']):
         raise InspectionError('Status mutex functions differ from matched ABI')
-    tls_layout = {0x14:(0xe8b8,0xead0)} if old.digest=='8ae11491fca59317e561211e6abffb0e0dc26890a8845c8e1b0217c2c1a0a427' and new.digest=='ef237e13b2c5ade4e24a7bbdd7824680cb79fd6bdf8d1c13340a0d375ddd2fda' else {0x14:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
+    tls_layout = {0x14:(0xe8b8,0xead0)} if old.digest=='8ae11491fca59317e561211e6abffb0e0dc26890a8845c8e1b0217c2c1a0a427' and new.digest=='ef237e13b2c5ade4e24a7bbdd7824680cb79fd6bdf8d1c13340a0d375ddd2fda' else {0x14:(0xe8b8,0xff80)} if new_callbacks_offset==0x5b0 and callbacks_offset==0x590 else {0x14:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
     if accessor != signature(old,new,old_calls[0],160,tls_layout):
         raise InspectionError('State accessor changed')
     def constructor(image, getter, cb_offset, mdl_offset):
@@ -207,7 +209,7 @@ def inspect(old, new, baseline, callbacks_offset=0x4b0, model_offset=0x4e0, new_
         raise InspectionError('FOV writer no longer writes the verified camera field')
     old_init = source_initializer(old)
     init = source_initializer(new)
-    init_tls = {0x29:(0xe8b8,0xead0)} if tls_layout=={0x14:(0xe8b8,0xead0)} else {0x29:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
+    init_tls = {0x29:(0xe8b8,0xead0)} if tls_layout=={0x14:(0xe8b8,0xead0)} else {0x29:(0xe8b8,0xff80)} if tls_layout=={0x14:(0xe8b8,0xff80)} else {0x29:(0xe8a8,0xe8b8)} if new_callbacks_offset==0x4d0 and callbacks_offset==0x4b8 else None
     if signature(old,new,old_init,layout_replacements=init_tls) != init:
         raise InspectionError('SourceTrial initializer changed')
     old_code = old.code(old_init,max(old.function(old_init)[1]-old_init,256))
@@ -273,6 +275,24 @@ def main():
                     if b[key].count(edit) != 1:
                         raise InspectionError('Reviewed 2.0.6 addition missing: '+edit)
                     b[key] = b[key].replace(edit, '', 1)
+        if args.version == "2.1.1" and old_version == "2.0.7":
+            additions = {
+                'Extension/UI/Overlay/overlay.h:DebugAction': ['set_drone_follow,'],
+                'Extension/UI/Overlay/overlay.h:DebugModel': ['booldrone_follow=false;'],
+                'Extension/UI/Overlay/overlay.h:Model': [
+                    'GrindExitModelgrind_exit;',
+                    'KeyframeSmoothingModelkeyframe_smoothing;',
+                    'floatmenu_scale_fullscreen=default_menu_scale;',
+                    'boolmenu_fullscreen=false;'],
+                'Extension/UI/Overlay/overlay_internal.h:State': [
+                    'ComPtr<ID3D12Resource>menu_map_texture,menu_map_upload;',
+                    'ComPtr<ID3D12Resource>mod_icon_texture,mod_icon_upload;'],
+            }
+            for key, edits in additions.items():
+                for edit in edits:
+                    if b[key].count(edit) != 1:
+                        raise InspectionError('Reviewed 2.1.1 addition missing: '+edit)
+                    b[key] = b[key].replace(edit, '', 1)
         # Reviewed 2.0.3 additions: RoadRash follows the bridge's model prefix;
         # State gains input flags and two resource pointers before callbacks.
         # Require precisely these source edits; arbitrary layout changes still fail.
@@ -298,9 +318,9 @@ def main():
         if changed:
             raise InspectionError('Source layout/API changed; investigate: '+', '.join(changed))
         result = inspect(old,new,baseline,0x590 if old_version in ("2.0.6", "2.0.7", "2.0.8") else 0x4d0 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4b8 if old_version.startswith("2.") else 0x4b0,
-                         0x5c0 if old_version in ("2.0.6", "2.0.7", "2.0.8") else 0x500 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4e8 if old_version.startswith("2.") else 0x4e0,
-                         0x590 if args.version in ("2.0.6", "2.0.7", "2.0.8") else 0x4d0 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None,
-                         0x5c0 if args.version in ("2.0.6", "2.0.7", "2.0.8") else 0x500 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None)
+                          0x5c0 if old_version in ("2.0.6", "2.0.7", "2.0.8") else 0x500 if old_version in ("2.0.3", "2.0.4", "2.0.5") else 0x4e8 if old_version.startswith("2.") else 0x4e0,
+                          0x5b0 if args.version == "2.1.1" else 0x590 if args.version in ("2.0.6", "2.0.7", "2.0.8") else 0x4d0 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None,
+                          0x5e0 if args.version == "2.1.1" else 0x5c0 if args.version in ("2.0.6", "2.0.7", "2.0.8") else 0x500 if args.version in ("2.0.3", "2.0.4", "2.0.5") else None)
         print(f'{old_version} -> {args.version}\nSHA-256: {new.digest}')
         for name in FIELDS:
             print(f'{name:24} {baseline[name]:#010x} -> {result[name]:#010x}  OK')

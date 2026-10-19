@@ -324,6 +324,22 @@ int main() {
     const auto rolled_pitch=aim_camera_native(pitching_pose,riding,false,0.f,.5f,pitch_state,.18);
     check(rotation_angle(multiply(conjugate(orientation(full_pitch)),orientation(rolled_pitch)))<.001f,
         "head roll limit suppressed the pitch");
+    // No look aim still composes: the level frame comes from the camera itself,
+    // so the result stays the native pose while the filters keep running.
+    {
+        StickAim idle;
+        HeadMotionState idle_roll;
+        const auto idle_view=aim_camera_native(rolling_pose,idle,false,0.f,1.f,idle_roll,.20);
+        check(rotation_angle(multiply(conjugate(orientation(rolling_pose)),orientation(idle_view)))<.001f,
+            "idle look changed the composed camera");
+        HeadMotionState idle_steer;
+        const auto steer_view=aim_camera_native(steering_pose,idle,false,0.f,1.f,idle_steer,.22);
+        check(rotation_angle(multiply(conjugate(orientation(steering_pose)),orientation(steer_view)))<.001f,
+            "idle look rotated the native steering yaw");
+        HeadMotionState idle_lock;
+        const auto locked_view=aim_camera_native(rolling_pose,idle,true,0.f,1.f,idle_lock,.24);
+        check(std::abs(locked_view[5]-1.f)<.01f,"world lock did not level an idle foot camera");
+    }
     // The sway follows the head's local motion while holding its rest relationship.
     HeadSwayState sway_state;
     const dingosdk::first_person::Vec3 head_at{1,2,3},camera_at{1,1.8f,2.9f};

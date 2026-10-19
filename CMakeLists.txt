@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+option(JISH_DEV_TOOLS "Include the in-game debug HUD and live recorder" ON)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/EHsc> $<$<COMPILE_LANGUAGE:CXX>:/W4> $<$<COMPILE_LANGUAGE:CXX>:/utf-8>)
 set(DETOURS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor/External/detours/src")
 add_library(mod_detours STATIC
@@ -46,9 +47,13 @@ add_library(JishsFirstPersonMod SHARED
     src/spectator_runtime.cpp
     src/body_flip_runtime.cpp src/bootstrap.cpp src/hooks.cpp src/first_person_runtime.cpp src/stock_bridge.cpp src/stock_camera_feed.cpp src/bail_collision.cpp src/first_person_hair.cpp src/native_camera_interop.cpp src/bail_camera_trace.cpp src/head_attachment.cpp src/proven_camera.cpp src/comfort.cpp src/game_camera_ownership.cpp
     src/proven_debug.cpp src/proven_input.cpp src/stick_runtime.cpp src/stick_input_filter.cpp vendor/Extension/UI/Overlay/playstation_input.cpp
+    src/debug_tools.cpp
     vendor/Engine/Game/Build/image_identity.cpp src/menu_renderer.cpp src/recording_input.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/fonts.rc")
 target_compile_definitions(JishsFirstPersonMod PRIVATE JISH_MOD_VERSION="${PROJECT_VERSION}")
+if(JISH_DEV_TOOLS)
+    target_compile_definitions(JishsFirstPersonMod PRIVATE JISH_DEV_TOOLS)
+endif()
 target_include_directories(JishsFirstPersonMod PRIVATE src vendor vendor/Extension/Skater)
 target_link_libraries(JishsFirstPersonMod PRIVATE mod_menu_ui mod_hooks mod_compatibility bcrypt cfgmgr32 hid user32 runtimeobject windowsapp dxguid shell32)
 set_target_properties(JishsFirstPersonMod PROPERTIES PREFIX "" OUTPUT_NAME "JishsFirstPersonMod")

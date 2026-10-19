@@ -55,10 +55,13 @@ inline constexpr bool board_verified=true,bail_verified=true;
 inline constexpr std::uintptr_t movement_parent_offset=0x3b0,offboard_vtable=0x65e8f40,
     active_substate_offset=0x48;
 struct FootState { std::uintptr_t offset,vtable,update; };
-inline constexpr std::array<FootState,3> normal_foot_states{{
+inline constexpr std::array<FootState,4> normal_foot_states{{
     {0x60,0x65e8c20,0x48318a0}, // FollowGround
     {0x1c0,0x65e8c80,0x4832530}, // FollowGroundSlide
-    {0x5b0,0x65e8da0,0x4820860} // Falling
+    {0x5b0,0x65e8da0,0x4820860}, // Falling
+    {0x460,0x65e8d40,0x4833a00}  // FollowTrajectory: jump launch arc before Falling.
+                                // Vtable+0x18 and the inline "OffboardStateFollowTrajectory"
+                                // name verified from the shipped Skate.exe image.
 }};
 inline constexpr std::uintptr_t offboard_owner_site=0x47bf916,offboard_constructor_site=0x48108e9;
 inline constexpr std::array<unsigned char,32> offboard_owner_prefix{

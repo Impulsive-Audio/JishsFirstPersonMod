@@ -134,6 +134,7 @@ Config read_config(const std::filesystem::path& path) {
     cfg.stick.head_smoothing=number("stick_head_smoothing",0);
     cfg.stick.head_roll=number("stick_head_roll",100);
     cfg.stick.world_lock=boolean("world_view_lock",false);
+    cfg.enabled=boolean("mod_enabled",true);
     const float menu_key=number("menu_key",VK_INSERT);
     if(!std::isfinite(menu_key) || menu_key!=std::floor(menu_key) || menu_key<0 || menu_key>255) throw std::runtime_error("Invalid menu key.");
     cfg.menu_key=static_cast<unsigned>(menu_key);
@@ -239,7 +240,7 @@ void write_config(const std::filesystem::path& path,const Config& cfg) {
         for(unsigned i=0;i<3;++i) out<<'\n'<<"foot_offset"<<mode_axis[i]<<'='<<cfg.foot_offset[i];
         out<<"\nstrength_up="<<cfg.spring.up<<"\nstrength_down="<<cfg.spring.down
             <<"\nstrength_left="<<cfg.spring.left<<"\nstrength_right="<<cfg.spring.right<<'\n';
-        out<<"look_only="<<cfg.look_only<<"\ntoggle_glances="<<cfg.toggle_glances<<"\nremember_marker_glance="<<cfg.remember_marker_glance<<'\n';
+        out<<"look_only="<<cfg.look_only<<"\ntoggle_glances="<<cfg.toggle_glances<<"\nremember_marker_glance="<<cfg.remember_marker_glance<<"\nmod_enabled="<<cfg.enabled<<'\n';
         out<<"link_smoothing="<<cfg.link_smoothing<<"\nlook_smoothing_initialized="<<cfg.look_smoothing_initialized
             <<"\nlook_spring="<<cfg.look_spring.enabled<<"\nlook_strength_up="<<cfg.look_spring.up
             <<"\nlook_strength_down="<<cfg.look_spring.down<<"\nlook_strength_left="<<cfg.look_spring.left

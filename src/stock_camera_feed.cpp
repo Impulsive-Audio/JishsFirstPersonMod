@@ -12,12 +12,14 @@
 #include "bail_collision.h"
 #include "body_flip_runtime.h"
 #include "spectator_runtime.h"
+#include "debug_tools.h"
 #include "owned_hooks.h"
 #include "Engine/Core/Platform/memory.h"
 #include "Engine/Game/Build/20260929/client_source_spawn.h"
 #include "Extension/Skater/free_flight.h"
 #include "Extension/Skater/client_source_spawn_internal.h"
 #include <atomic>
+#include <cstring>
 #include <intrin.h>
 #include <chrono>
 #include <mutex>
@@ -78,7 +80,51 @@ bool write_spectator_render(std::uintptr_t client,std::uintptr_t camera,const Ma
     } catch(const dingosdk::client_source::detail::SourceGuard& issue) { return rejected(issue.message); }
       catch(...) { return rejected("Native camera snapshot unavailable."); }
 }
+namespace {
+Matrix written_pose{};
+std::uintptr_t written_camera{},displayed_camera{},displayed_offset{};
+bool calibrate_displayed(std::uintptr_t camera,const Matrix& pose) {
+    if(!camera) return false;
+    Matrix candidate{};
+    for(std::uintptr_t offset=0;offset<0x800;offset+=4) {
+        if(!dingosdk::memory::read_bytes(camera+offset,&candidate,sizeof candidate)) continue;
+        if(std::memcmp(&candidate,&pose,sizeof candidate)==0) { displayed_camera=camera;displayed_offset=offset;return true; }
+    }
+    return false;
+}
+bool read_displayed(std::uintptr_t camera,Matrix& out) {
+    return camera && camera==displayed_camera && displayed_offset &&
+        dingosdk::memory::read_bytes(camera+displayed_offset,&out,sizeof out);
+}
+// Writes the pose, then learns (once) where the camera object keeps it so later
+// frames can read back what the game actually holds, independent of our input.
+void commit_transform(std::uintptr_t camera,const Matrix* pose) {
+    original_transform(camera,pose);
+    if(!camera || !pose) return;
+    if(camera!=displayed_camera || !displayed_offset) calibrate_displayed(camera,*pose);
+    std::memcpy(&written_pose,pose,sizeof written_pose);
+    written_camera=camera;
+}
+}
 void transform_hook(std::uintptr_t camera,const Matrix* input) {
+    Matrix shown{};
+    const bool have_shown=read_displayed(camera,shown);
+    if(!mod_enabled()) {
+        // Disabled: pass the game camera through untouched, but keep the debug
+        // readout alive so the HUD shows what ReSkate is doing.
+        if(input) {
+            Matrix native{};
+            if(dingosdk::memory::read(reinterpret_cast<std::uintptr_t>(input),native) && dingosdk::valid_flight_transform(native)) {
+                const auto movement=live_camera_movement();
+                debug::FrameFlags flags{};flags.mode=movement.mode;flags.custom_mode=movement.custom_mode;
+                flags.jumping=movement.jumping;flags.mounting=movement.mounting;flags.yield=1;
+                flags.sub_offset=movement.substate_offset;flags.sub_vtable=movement.substate_vtable_rva;
+                flags.requested=stock_first_person_requested();flags.active=stock_first_person_active();
+                debug::publish(native,native,have_shown?&shown:nullptr,flags);
+            }
+        }
+        commit_transform(camera,input);return;
+    }
     if(spectator_transform_call(reinterpret_cast<std::uintptr_t>(_ReturnAddress()))) {
         { std::lock_guard lock(smoothing_mutex);reset_camera_smoothing(); }
         Matrix normal{},output{};
@@ -110,14 +156,21 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                         const auto stick_aim=stick_camera_aim();
                         const bool look_foot_action=jump_camera_action(movement);
                         if(look_foot_action) foot_action_hold=look_frame.load()+0.35;
-                        if(movement.mode==1) matrix=aim_camera_native(native,stick_aim,config.stick.world_lock || look_foot_action || look_frame.load()<foot_action_hold,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,look_frame.load());
+                        if(movement.mode==1) matrix=aim_camera_native(native,stick_aim,config.stick.world_lock,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,look_frame.load());
                         else matrix=aim_board_body_local(native,stick_aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,look_frame.load());
                         dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{native[12],native[13],native[14]});
                     } else { smoothing.reset();stop_stick_look(); }
                 }
                 note_camera_view(matrix,glance);
                 record_bail_camera(native,matrix,state,movement,config,{},look_pitch.load(),look_yaw.load(),{},read_animation_head(state),settings.revision);
-                original_transform(camera,&matrix);return;
+                const bool look_ok=camera_look_allowed(config,state,movement);
+                debug::FrameFlags flags{};flags.mode=movement.mode;flags.custom_mode=movement.custom_mode;
+                flags.jumping=movement.jumping;flags.mounting=movement.mounting;flags.eligible=look_ok;
+                flags.sub_offset=movement.substate_offset;flags.sub_vtable=movement.substate_vtable_rva;
+                flags.yield=look_ok?0:1;flags.requested=stock_first_person_requested();flags.active=stock_first_person_active();
+                flags.aim_yaw=look_yaw.load();flags.aim_pitch=look_pitch.load();
+                debug::publish(native,matrix,have_shown?&shown:nullptr,flags);
+                commit_transform(camera,&matrix);return;
             }
             const auto head=read_animation_head(state);const auto pitch=look_pitch.load(),yaw=look_yaw.load();
             bool suspended{},changed{};StickAim aim{};bool lean{};BailViewInfo view;
@@ -197,7 +250,7 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
                             aim=stick_camera_aim();
                             const bool foot_action=jump_camera_action(movement);
                             if(foot_action) foot_action_hold=frame+0.35;
-                            if(movement.mode==1) matrix=aim_camera_native(matrix,aim,config.stick.world_lock || foot_action || frame<foot_action_hold,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,frame);
+                            if(movement.mode==1) matrix=aim_camera_native(matrix,aim,config.stick.world_lock,config.stick.head_smoothing,config.stick.head_roll/100.f,head_motion_state,frame);
                             else matrix=aim_board_body_local(matrix,aim,movement.body,movement.body_matrix_valid,movement.stance_blend,movement.stance_valid,fakie_state,frame);
                             dingosdk::first_person::write(matrix,dingosdk::first_person::normalized(dingosdk::first_person::multiply(dingosdk::first_person::orientation(matrix),glance)),{matrix[12],matrix[13],matrix[14]});
                         }
@@ -286,7 +339,24 @@ void transform_hook(std::uintptr_t camera,const Matrix* input) {
             if(suspended) { suspend_custom_camera();look_pitch=0;look_yaw=0; }
             note_camera_view(matrix,glance);
             record_bail_camera(native,matrix,state,movement,config,aim,pitch,yaw,view,head,settings.revision);
-            original_transform(camera,changed ? &matrix:input);return;
+            {
+                const int action=movement.hippy.active ? 4:movement.hippy.candidate ? 3:movement.mounting ? 1:ordinary_jump_action(movement) ? 2:0;
+                const bool look_ok=camera_look_allowed(config,state,movement);
+                const bool overrides=camera_overrides_allowed(state,movement);
+                const bool mount_block=config.stick.enabled && movement.mounting;
+                const bool mode_block=movement.mode==1 && !movement.custom_mode;
+                const bool action_block=action_camera_locked(config,movement);
+                debug::FrameFlags flags{};flags.mode=movement.mode;flags.custom_mode=movement.custom_mode;flags.action=action;
+                flags.jumping=movement.jumping;flags.mounting=movement.mounting;flags.eligible=look_ok;
+                flags.sub_offset=movement.substate_offset;flags.sub_vtable=movement.substate_vtable_rva;
+                flags.suspended=suspended;flags.yield=(!look_ok || suspended)?1:0;
+                flags.reason=(overrides?0:1)|(mount_block?2:0)|(mode_block?4:0)|(action_block?8:0);
+                flags.requested=stock_first_person_requested();flags.active=stock_first_person_active();
+                flags.aim_yaw=aim.active ? aim.heading:0.f;flags.aim_pitch=aim.active ? aim.pitch:0.f;
+                flags.aim_capture=aim.capture;flags.aim_active=aim.active;
+                debug::publish(native,matrix,have_shown?&shown:nullptr,flags);
+            }
+            commit_transform(camera,changed ? &matrix:input);return;
         }
     }
     if(!stock_first_person_requested() || (camera==watched && from_stock(_ReturnAddress()))) { std::lock_guard lock(smoothing_mutex);reset_camera_smoothing(); }

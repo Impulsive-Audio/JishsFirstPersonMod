@@ -107,18 +107,21 @@ inline dingosdk::first_person::Vec3 track_head_sway(HeadSwayState& state,
     }
     return state.smoothed;
 }
-struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};};
+struct StickAim { bool capture{},active{}; float heading{},pitch{},body_heading{};bool manual{};
+    // Camera pitch captured when the look engaged. The native swing already
+    // carries that pitch, so the applier applies aim.pitch as a delta from it.
+    float pitch_base{};};
 class StickLookState {
     bool ready_{},seen_{},center_facing_{};
     unsigned device_{};
     double time_{};
-    float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},center_offset_{},center_pitch_{};
+    float yaw_{},pitch_{},smooth_yaw_{},smooth_pitch_{},yaw_velocity_{},pitch_velocity_{},center_offset_{},center_pitch_{},pitch_base_{};
 public:
     void reset() { *this={}; }
     void recenter_facing(float camera_offset=180.f,float camera_pitch=0.f) { reset();center_facing_=true;center_offset_=camera_offset;center_pitch_=camera_pitch; }
     void seed(const StickSettings& settings,unsigned device,double now,float yaw,float pitch,float body_heading) {
         reset();ready_=seen_=true;device_=device;time_=now;
-        yaw_=smooth_yaw_=yaw;pitch_=smooth_pitch_=std::clamp(pitch,-85.f,85.f);
+        yaw_=smooth_yaw_=yaw;pitch_=smooth_pitch_=std::clamp(pitch,-85.f,85.f);pitch_base_=pitch_;
     }
     StickAim update(const StickSettings& settings,StickAxes axes,bool eligible,unsigned device,
                     double now,float camera_heading,float body_heading,
@@ -134,7 +137,7 @@ public:
             if(input.x!=0 || input.y!=0) return {true,false};
             if(center_facing_) {camera_heading=wrap_heading(body_heading+center_offset_);camera_pitch=center_pitch_;}
             center_facing_=false;
-            ready_=true;yaw_=smooth_yaw_=camera_heading;pitch_=smooth_pitch_=std::clamp(camera_pitch,-85.f,85.f);
+            ready_=true;yaw_=smooth_yaw_=camera_heading;pitch_=smooth_pitch_=std::clamp(camera_pitch,-85.f,85.f);pitch_base_=pitch_;
         }
         const float dt=static_cast<float>(now-time_);time_=now;
         // Match the proven glance conventions: +Y looks up, +X looks right.
@@ -153,7 +156,7 @@ public:
             smooth_yaw_=wrap_heading(yaw_+yaw_error);smooth_pitch_=pitch_+pitch_error;
         }
         // The character faces the view; the left stick only supplies movement.
-        return {true,true,smooth_yaw_,smooth_pitch_,wrap_heading(smooth_yaw_+180.f),input.x!=0 || input.y!=0 || moving};
+        return {true,true,smooth_yaw_,smooth_pitch_,wrap_heading(smooth_yaw_+180.f),input.x!=0 || input.y!=0 || moving,pitch_base_};
     }
 };
 inline float matrix_heading(const dingosdk::first_person::Matrix& matrix) {
@@ -223,8 +226,16 @@ inline dingosdk::first_person::Matrix aim_camera_native(dingosdk::first_person::
     // character's own head attitude (bob, sway, tilt, roll) is damped by the
     // smoothing amount before riding on top. The world-up yaw is split off so
     // the native's steering-following yaw cannot double up with the look.
-    const auto level=aim_camera(pose,aim);
-    if(!aim.active) return level;
+    // The native swing already carries the camera pitch that was live at
+    // capture, so the look pitch contributes only its delta from that base.
+    // With no look aim (recenter wait, first capture, look stick disabled) the
+    // level frame is derived from the camera itself so the composition stays
+    // mathematically valid: leveling and head-motion filtering keep working and
+    // the result stays the native pose instead of skipping the mod entirely.
+    auto leveled=aim;
+    if(aim.active) leveled.pitch=aim.pitch-aim.pitch_base;
+    else { leveled.active=true;leveled.heading=matrix_heading(pose);leveled.pitch=0.f;leveled.pitch_base=0.f; }
+    const auto level=aim_camera(pose,leveled);
     using namespace dingosdk::first_person;
     const auto raw=swing_from_level(orientation(pose));
     const float dt=std::clamp(static_cast<float>(now-state.last),1e-4f,.1f);

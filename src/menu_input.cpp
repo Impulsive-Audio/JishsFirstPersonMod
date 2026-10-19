@@ -1,4 +1,5 @@
 #include "menu.h"
+#include "debug_tools.h"
 #include "owned_hooks.h"
 #include <intrin.h>
 #include <mutex>

@@ -14,6 +14,8 @@
 #include "glance_controls.h"
 #include "marker_glance.h"
 #include "stick_input_filter.h"
+#include "debug_tools.h"
+#include "client_source_spawn_internal.h"
 namespace jishsfirstpersonmod {
 void tick_mod(std::uintptr_t client) noexcept {
     using namespace dingosdk;
@@ -40,6 +42,33 @@ void tick_mod(std::uintptr_t client) noexcept {
         if(!reported) { reported=true;log("Controller tick reached native client; state="+std::to_string(state)); }
         if(context!=next_context) { context=next_context;camera=0;toggle={};look={};marker_glance.clear();clear_comfort_state(); }
         const auto settings=menu_snapshot();
+        {
+            // F8 master switch, F7 debug HUD, F10 live recording. Polled from the
+            // camera tick so they work during play without the ReSkate menu open.
+            static bool previous[3]{};
+            const int keys[3]{VK_F8,VK_F7,VK_F10};
+            DWORD hotkey_pid{};const auto hotkey_window=GetForegroundWindow();
+            const bool hotkey_focus=hotkey_window && GetWindowThreadProcessId(hotkey_window,&hotkey_pid) && hotkey_pid==GetCurrentProcessId();
+            for(int i=0;i<3;++i) {
+                const bool down=hotkey_focus && (GetAsyncKeyState(keys[i])&0x8000)!=0;
+                if(down && !previous[i]) {
+                    if(i==0) { Command command;command.kind=CommandKind::mod_enabled;command.enabled=!settings.config.enabled;submit_command(command); }
+                    else if(i==1) debug::toggle_hud();
+                    else debug::toggle_recording();
+                }
+                previous[i]=down;
+            }
+        }
+        // Master switch: the settings model is the single source of truth so the
+        // F8 hotkey stays in sync and persists. Disabling only stops our own
+        // camera work; ReSkate keeps whatever first-person state it already had.
+        if(settings.config.enabled!=mod_enabled()) {
+            const bool enabled=settings.config.enabled;
+            set_mod_enabled(enabled);
+            log(enabled ? "Mod enabled" : "Mod disabled: camera handed back to ReSkate");
+        }
+        debug::tick();
+        if(!mod_enabled()) return;
         if(settings.revision!=revision) {
             if(!revision || input_config.stick.lock_mount_jump!=settings.config.stick.lock_mount_jump ||
                 input_config.stick.lock_hippy_jump!=settings.config.stick.lock_hippy_jump ||

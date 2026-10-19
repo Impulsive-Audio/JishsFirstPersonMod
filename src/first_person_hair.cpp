@@ -77,13 +77,18 @@ bool install_hair_capture_filter() {
     using namespace dingosdk;
     using namespace hair_network_contract;
     const auto module=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(L"reskate.dll"));
-    if(!module || !matches(module,capture_rva,capture_bytes) || !matches(module,read_rva,read_bytes) ||
-        !matches(module,array_rva,array_bytes) || !matches(module,caller_rva,caller_bytes)) {
+    const bool v211=stock_contract::uses_v211_layout(stock_contract::selected);
+    const bool verified=v211 ?
+        (matches(module,v211_contract::capture_rva,v211_contract::capture_bytes) && matches(module,v211_contract::read_rva,v211_contract::read_bytes) &&
+         matches(module,v211_contract::array_rva,v211_contract::array_bytes) && matches(module,v211_contract::caller_rva,v211_contract::caller_bytes)) :
+        (matches(module,capture_rva,capture_bytes) && matches(module,read_rva,read_bytes) &&
+         matches(module,array_rva,array_bytes) && matches(module,caller_rva,caller_bytes));
+    if(!module || !verified) {
         log("Local-only bald hairstyle unavailable: ReSkate cosmetic capture contract differs.");return false;
     }
     void* read_forward{};void* capture_forward{};
-    auto* read_target=reinterpret_cast<void*>(module+read_rva);
-    auto* capture_target=reinterpret_cast<void*>(module+capture_rva);
+    auto* read_target=reinterpret_cast<void*>(module+(v211 ? v211_contract::read_rva:read_rva));
+    auto* capture_target=reinterpret_cast<void*>(module+(v211 ? v211_contract::capture_rva:capture_rva));
     auto status=owned_hook_prepare(read_target,reinterpret_cast<void*>(&outgoing_read),&read_forward);
     if(status==HookOk) status=owned_hook_prepare(capture_target,reinterpret_cast<void*>(&outgoing_capture),&capture_forward);
     if(status!=HookOk) { log("Local-only hair capture preparation failed: "+hook_failure_description(status));return false; }

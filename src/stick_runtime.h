@@ -16,6 +16,8 @@ StickInputPolicy stick_input_policy(unsigned slot=~0u);
 bool stick_runtime_ready();
 struct CameraMovementSample {
     int mode{}, custom_mode{};
+    // Raw offboard substate identity, for diagnosing camera-policy gaps.
+    int substate_offset{-1}, substate_vtable_rva{-1};
     bool non_bail{},bail_recovery{},mounting{},jumping{},view_hold{};
     bool recovery_verified{},recovery_controllable{},recovery_override{};
     std::uint32_t recovery_flags{};
