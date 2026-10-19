@@ -1,10 +1,34 @@
-param([string]$ModVersion = "1.33.2", [string]$ReSkateVersion = "2.1.1")
+param([string]$ModVersion = "2.1.1-1", [string]$ReSkateVersion = "2.1.1")
 
 $ErrorActionPreference = 'Stop'
 
-$releaseName = "JishsFirstPersonMod-$ModVersion-reskate-$ReSkateVersion"
+$releaseName = if ($ModVersion.StartsWith($ReSkateVersion)) { "JishsFirstPersonMod-$ModVersion" } else { "JishsFirstPersonMod-$ModVersion-reskate-$ReSkateVersion" }
 
 $releasePath = Join-Path $PSScriptRoot ($releaseName + '.zip')
+
+function Get-RelativePath([string]$Base, [string]$Full) {
+
+    $Base = $Base.TrimEnd('\','/')
+
+    return $Full.Substring($Base.Length).TrimStart('\','/').Replace('\','/')
+
+}
+
+function Add-FileToArchive($Archive, [string]$Full, [string]$Entry) {
+
+    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($Archive, $Full, $Entry, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+
+}
+
+function Add-TreeToArchive($Archive, [string]$Root, [string]$Prefix) {
+
+    foreach ($file in (Get-ChildItem -LiteralPath $Root -Recurse -File)) {
+
+        Add-FileToArchive $Archive $file.FullName ($Prefix + '/' + (Get-RelativePath $Root $file.FullName))
+
+    }
+
+}
 
 Push-Location $PSScriptRoot
 
@@ -28,9 +52,27 @@ try {
 
     [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'release/LICENSE.txt'),$licenseText,[Text.UTF8Encoding]::new($false))
 
-    Compress-Archive -Path release/Mods,release/scripts,release/dinput8.dll,release/LICENSE.txt -DestinationPath $releasePath -Force
-
+    Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    # Build the install archive ourselves so entries always use forward slashes.
+    # Compress-Archive on Windows PowerShell writes backslashes, which some
+    # launcher/zip readers treat as literal filename characters.
+    $stream = [IO.File]::Open($releasePath, [IO.FileMode]::Create)
+
+    $archive = [IO.Compression.ZipArchive]::new($stream, [IO.Compression.ZipArchiveMode]::Create)
+
+    try {
+
+        Add-FileToArchive $archive (Join-Path $PSScriptRoot 'release/dinput8.dll') 'dinput8.dll'
+
+        Add-FileToArchive $archive (Join-Path $PSScriptRoot 'release/LICENSE.txt') 'LICENSE.txt'
+
+        Add-TreeToArchive $archive (Join-Path $PSScriptRoot 'release/Mods') 'Mods'
+
+        Add-TreeToArchive $archive (Join-Path $PSScriptRoot 'release/scripts') 'scripts'
+
+    } finally { $archive.Dispose(); $stream.Dispose() }
 
     $sourcePath = Join-Path $PSScriptRoot ($releaseName + '-source.zip')
 
@@ -42,11 +84,11 @@ try {
 
         foreach ($file in (Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File)) {
 
-            $relative = [IO.Path]::GetRelativePath($PSScriptRoot, $file.FullName).Replace('\','/')
+            $relative = Get-RelativePath $PSScriptRoot $file.FullName
 
-            if ($relative -match '^(build|release|\.hook-tools|\.git)/|(^|/)__pycache__/|^(build-output|build|configure|tests)\.log$|\.zip$|\.pyc$') { continue }
+            if ($relative -match '^(build|release|\.hook-tools|\.git|\.vs)/|(^|/)__pycache__/|^(build-output|build|configure|tests)\.log$|\.zip$|\.pyc$') { continue }
 
-            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $relative, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+            Add-FileToArchive $archive $file.FullName $relative
 
         }
 

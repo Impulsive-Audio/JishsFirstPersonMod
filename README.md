@@ -1,5 +1,7 @@
 # Jish's First Person Mod — Impulsive-Audio fork
 
+Version **2.1.1-1** (mod revision 1 for ReSkate 2.1.1).
+
 First-person camera controls and comfort options for ReSkate, supporting **ReSkate 2.1.1** (2.0.7 retained). Loads through the ReSkate launcher using the included DirectInput proxy. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
 
 ## Install

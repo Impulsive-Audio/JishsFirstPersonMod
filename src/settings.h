@@ -59,6 +59,9 @@ bool initialize_settings();
 MenuSnapshot menu_snapshot();
 bool submit_command(const Command& command);
 bool load_recommended_preset();
+// Default presets shipped with the mod, listed by their file stem.
+std::vector<std::string> bundled_presets();
+bool load_bundled_preset(const std::string& name);
 class PresetLibrary {
 public:
     explicit PresetLibrary(std::filesystem::path directory):directory_(std::move(directory)) {}

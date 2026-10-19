@@ -429,6 +429,34 @@ bool load_personal_preset(const std::string& name) {
     try { Command command;command.kind=CommandKind::apply_preset;command.preset=PresetLibrary(data_directory()/L"presets").load(name);if(!submit_command(command)) return false;if(!menu_snapshot().feedback.starts_with("Mod settings applied.")) live_store->set_feedback(std::string("Preset loaded: ")+name,4000);return true; }
     catch(const std::exception& e) { log(std::string("Preset load failed: ")+e.what());live_store->set_feedback(std::string("Could not load preset: ")+e.what());return false; }
 }
+std::vector<std::string> bundled_presets() {
+    std::vector<std::string> names;
+    try {
+        const auto directory=data_directory()/L"presets/bundled";
+        for(const auto& entry:std::filesystem::directory_iterator(directory)) {
+            if(!entry.is_regular_file() || entry.path().extension()!=L".ini") continue;
+            const auto stem=entry.path().stem().wstring();
+            if(stem==L"recommended") continue;
+            names.emplace_back(stem.begin(),stem.end());
+        }
+        std::sort(names.begin(),names.end());
+    } catch(const std::exception& e) { log(std::string("Cannot list bundled presets: ")+e.what()); }
+    return names;
+}
+bool load_bundled_preset(const std::string& name) {
+    if(!live_store) return false;
+    try {
+        auto file=preset_name(name);file+=L".ini";
+        Command command;command.kind=CommandKind::apply_preset;
+        command.preset=read_config(data_directory()/L"presets/bundled"/file);
+        if(!submit_command(command)) return false;
+        if(!menu_snapshot().feedback.starts_with("Mod settings applied.")) live_store->set_feedback(std::string("Preset loaded: ")+name,4000);
+        return true;
+    } catch(const std::exception& error) {
+        log(std::string("Bundled preset could not load: ")+error.what());
+        live_store->set_feedback(std::string("Could not load preset: ")+error.what());return false;
+    }
+}
 bool load_recommended_preset() {
     if(!live_store) return false;
     try {

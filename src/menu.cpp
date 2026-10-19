@@ -199,20 +199,23 @@ void draw_panel_frame(const PanelFrame& frame) {
         if(!model.status.empty()) ImGui::TextWrapped("%s",model.status.c_str());
         if(!game_camera_suspended() && *game_camera_status()) ImGui::TextWrapped("%s",game_camera_status());
         static std::string selected,pending;
-        static std::vector<std::string> names;
+        static std::vector<std::string> names,bundled;
         static bool refresh=true;
         static char name_text[128]{};
         static int operation=0;
-        if(refresh) { names=personal_presets();refresh=false;
+        if(refresh) { names=personal_presets();bundled=bundled_presets();refresh=false;
             if(std::find(names.begin(),names.end(),selected)==names.end()) selected.clear(); }
         ImGui::SetNextItemWidth(-FLT_MIN);
         if(ImGui::BeginCombo("##Preset",selected.empty() ? "Jish's Recommended":selected.c_str())) {
             if(ImGui::Selectable("Jish's Recommended",selected.empty())) selected.clear();
+            for(const auto& name:bundled) if(ImGui::Selectable(name.c_str(),selected==name)) selected=name;
             for(const auto& name:names) if(ImGui::Selectable(name.c_str(),selected==name)) selected=name;
             ImGui::EndCombo();
         }
         if(ImGui::Button("Load")) { cancel_panel_recording();
-            if(selected.empty()) load_recommended_preset();else load_personal_preset(selected);
+            if(selected.empty()) load_recommended_preset();
+            else if(std::find(bundled.begin(),bundled.end(),selected)!=bundled.end()) load_bundled_preset(selected);
+            else load_personal_preset(selected);
             model=menu_snapshot();config=model.config;
         }
         ImGui::SameLine();
