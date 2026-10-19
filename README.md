@@ -1,67 +1,74 @@
-# Jish's First Person Mod 1.33.2
+# Jish's First Person Mod — Impulsive-Audio fork
 
-Includes modifier-held on-board right-stick free look and a controller-navigable settings panel. Insert opens both settings menus. F9 hides or shows the first-person panel inside Insert. Standalone opening is disabled. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
-
-First-person camera controls and comfort options for ReSkate, updated for **ReSkate 2.0.7**. Loads through the standard ReSkate launcher using the included DirectInput proxy.
+First-person camera controls and comfort options for ReSkate, supporting **ReSkate 2.1.1** (2.0.7 retained). Loads through the ReSkate launcher using the included DirectInput proxy. See [on-board controls](ON_BOARD_FREE_LOOK.md) and [menu controls](CONTROLLER_MENU.md).
 
 ## Install
 
-Close Skate before extracting a locally built package's **Mods**, **scripts**, **dinput8.dll**, and **LICENSE.txt** beside Skate.exe and ReSkateLauncher.exe.
+ReSkate 2.1.x keeps its own copy of the game in its own folder (for example `C:\Users\admin\Games\ReSkate`) instead of the Steam install. Install this mod into **that** folder:
 
-Enable Jish's First Person Mod in the standard launcher. Press **Insert** in-game for settings. Existing preferences are preserved. See [installation details](LAUNCHER_INSTALL.md).
+1. Close Skate — the DirectInput proxy cannot be replaced while it runs.
+2. Extract the package's **Mods**, **scripts**, **dinput8.dll** and **LICENSE.txt** beside `Skate.exe`.
+3. Enable Jish's First Person Mod in the launcher.
+
+For release packaging the launcher installs the ZIP itself, so no script is needed. See [installation details](LAUNCHER_INSTALL.md).
+
+## Settings
+
+**Insert → Skater → First Person.** The mod's settings are drawn *inside* ReSkate's own First Person page, using the stock widgets, fonts and navigation — mouse, keyboard and controller all work exactly as they do elsewhere in that menu.
+
+The older standalone panel is disabled by default. Set the environment variable `JISH_COMPANION_MENU=1` before launching to restore it; **F9** then shows or hides it inside Insert.
+
+ReSkate's own first-person settings remain on the same page. Both can be enabled; this mod's camera takes precedence while it is active.
+
+## Hotkeys
+
+| Key | Action |
+|---|---|
+| **F8** | Mod on/off. Off hands the camera back to ReSkate without leaving first person or changing ReSkate's own settings. |
+| **F9** | Show/hide the companion panel (companion mode only). |
+| **F7** | Debug HUD — dev builds only. |
+| **F10** | Start/stop a camera recording — dev builds only. |
 
 ## Features
 
-- Custom controller glance bindings and right-stick look on foot.
-- Optional Toggle glance controls: press to hold a direction, press again to return; another direction replaces it.
-- Camera/head attachment options for mounting, parkour and hippy jumps.
-- To see the effect of the jump attachment switches, turn Disable Spring on foot off. With it enabled, camera Spring is already disabled during off-board movement, so attachment changes may be less noticeable.
-- Foot/board transition smoothing and independent look smoothing.
-- Optional third person while bailing and first person on board only. In full mode with third-person bailing off, first-person bails follow the headÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢s full rotation and position; right-stick camera look resumes when native movement control is verified.
-- Optional third person while getting up: keep the fall in first person, then return to first person when control resumes. This option defaults off and is available with Third person while bailing off.
-- Camera collision during first-person bails (**WIP**). The camera can still stick near floors and objects; third person while getting up provides an alternative.
-- Coordination with native stabilization, Follow flips and spectator camera ownership.
-- Named personal presets for settings and bindings, plus Jish’s recommended preset.
-- Simple General, Controls and Camera tabs with persistent save feedback.
-- Short menu explanations with (?) hover help, including disabled options.
+- On-board modifier-held free look and on-foot right-stick look, with custom controller glance bindings and optional toggle glances.
+- On-foot camera composition: absolute world-up heading and level pitch, with the character's real head attitude (bob, sway, tilt, roll) riding on top. Adjustable head-motion smoothing and head roll.
+- Walk where you look: the skater always faces the view, so the left stick is movement only.
+- Independent per-mode camera offsets — on foot and on board each keep their own Right/Up/Forward values.
+- Look-down lean on both modes, with separate forward and down distances.
+- World-locked view option.
+- Dismount and bail recenter as a per-axis servo: player input always applies, and pushing away from the return hands that axis over instead of blocking the stick.
+- Jump camera keeps head attitude through the launch instead of yielding to the native camera.
+- Bail camera phases: head-follow while tumbling, head-relative look during controllable recovery, a smoothed leveling pass while getting up, then a seamless return to the normal camera. Optional third person while bailing, third person while getting up, and camera collision (**WIP**).
+- Bald in first person: a local-only scalp swap. Other players still see your normal hair; saved loadouts are not edited.
+- Named personal presets and Jish's recommended preset.
+- Compatibility mode for setups that must leave camera position, FOV and Spring to ReSkate.
 
 ## Compatibility mode
 
-Enable **Compatibility mode (look controls only)** in the mod panel to retain right-stick camera look, directional glances, the First Person checkbox and hotkey, and the bail/board comfort options. Third person while getting up and bail collision require full mode. Camera position, FOV and Spring remain controlled by ReSkate; head attachment, bail camera holds, foot/board transition smoothing and character turning are disabled. Your saved settings are preserved when switching back to full mode.
+Enable **Compatibility mode (look controls only)** in the mod page to retain right-stick camera look, directional glances, the First Person checkbox and hotkey, and the bail/board comfort options. Third person while getting up and bail collision require full mode. Camera position, FOV and Spring remain controlled by ReSkate; head attachment, bail camera holds, foot/board transition smoothing and character turning are disabled. Saved settings are preserved when switching back to full mode.
 
-The compatibility update passed all 24 Windows tests and was confirmed working in-game. See [compatibility release notes](docs/updates/UPDATE_1_21_COMPATIBILITY.md).
+## Supported ReSkate versions
 
-## Recommended controls
+- **2.1.1** — current target; contract, layout and byte patterns verified against the released DLL.
+- **2.0.7** — retained from the previous build.
 
-Load Jish's recommended preset through the Insert panel to apply these bindings:
-
-- LB/L1 + D-pad direction: glance in that direction; release to return.
-- LB/L1 + RB/R1 + D-pad Down: toggle first person.
-- Insert: open settings.
-- F9: hide or show the first-person panel inside Insert.
-
-Controller bindings can be changed. The panel uses Insert and F9. See [detailed settings](SETTINGS.md).
+The supported game build did not change (`fbce74d5…`), so game-side contracts are shared. Spectator, controller HID emote blocking and cosmetic hair capture are selected per ReSkate version; when a build has no verified contract for one of them, that feature logs why it is unavailable and stays off rather than guessing.
 
 ## Diagnostics
 
-Settings are under `scripts/Custom/FirstPerson`; logs are in its `logs` subfolder. The current camera trace is `bail-camera-trace-v11.csv`, covering jumps, mounting, hippy jumps, bails and live settings changes. It records why attachment was selected and whether head data/calibration allowed it, alongside native/final camera positions. Bail diagnostics include uncontrolled/recovery phases, verified control flags, calibrated head target rotation and local recovery look. Camera trace files rotate at 8 MiB; mod and proxy text logs rotate at 1 MiB. Each keeps three older files, with `.1` the newest archive. Logging continues across rotations. Approximate retained budget for current log families is 40 MiB; older trace versions are preserved, and a blocked archive can temporarily exceed the budget while rotation retries.
+Settings live under `scripts/Custom/FirstPerson`; logs are in its `logs` subfolder. The camera trace `bail-camera-trace-v11.csv` covers jumps, mounting, hippy jumps, bails and live settings changes, recording why attachment was selected and whether head data and calibration allowed it. Trace files rotate at 8 MiB; mod and proxy text logs rotate at 1 MiB, keeping three older files each.
+
+Dev builds additionally write `debug-recording-N.csv` from **F10**: per-frame native/displayed/applied camera pose, look aim, yield reason, off-board substate, and raw controller axes and buttons. The **F7** HUD shows the same values live.
 
 ## Build and validation
 
-Windows x64, Visual Studio C++ tools and CMake are required. Run `./build.ps1`, then `./package.ps1`. The release install ZIP contains only Mods, scripts, dinput8.dll and LICENSE.txt.
+Windows x64, Visual Studio C++ tools and CMake are required. Run `./build.ps1`, then `./package.ps1`. The release install ZIP contains only Mods, scripts, dinput8.dll and LICENSE.txt. Configure with `-DJISH_DEV_TOOLS=OFF` to exclude the debug HUD and recorder from a release build.
 
-The combined fork retains upstream tests and adds on-board/menu regressions; see the packaged validation report. ReSkate 2.0.7 uses verified native camera, physics query and spectator contracts. Upstream reports spectator gameplay validation; this combined fork still needs its own gameplay check. Bail collision remains **work in progress**; the new third-person getting-up option provides an alternative. Technical research and gameplay checklists stay in source, including [bail collision research](docs/technical/BAIL_COLLISION_RESEARCH.md) and [getting-up checks](docs/testing/TEST_THIRD_PERSON_RECOVERY.md).
+38 automated tests cover the contract profiles, bridge resolution, camera math, menu layout, bail view, spectator and the embedded page. Technical research and gameplay checklists stay in source, including [bail collision research](docs/technical/BAIL_COLLISION_RESEARCH.md) and [getting-up checks](docs/testing/TEST_THIRD_PERSON_RECOVERY.md).
 
 See [1.28 release notes](docs/updates/UPDATE_1_28.md), [1.26 release notes](docs/updates/UPDATE_1_26.md), [1.25 release notes](docs/updates/UPDATE_1_25.md), [1.24 release notes](docs/updates/UPDATE_1_24.md), [2.0.5 update notes](docs/updates/UPDATE_1_23.md), [2.0.5 offset audit](docs/technical/OFFSET_AUDIT_2_0_5.md), [2.0.4 notes](docs/updates/UPDATE_1_22.md), [previous release notes](docs/updates/UPDATE_1_21.md), and [historical notes](docs/updates/HISTORY.md).
 
 ## License
 
-See [LICENSE.txt](vendor/LICENSE) and dependency license files under vendor/External. The install package contains the project's LICENSE.txt.
-
-With **Third person while bailing** or **Third person while getting up** enabled on ReSkate 2.0.7, **First Person In Camera Cycle** is automatically disabled. The menu explains this override. Your previous preference is retained across game restarts and restored when both automatic third-person options are off. The mod's First Person checkbox and hotkey remain available.
-
-This 1.32 fork includes the working 1.29.1 Sony HID menu fixes. See [local integration notes](docs/updates/LOCAL_1_30_INTEGRATION.md).
-
-Local test update: button glances and on-foot right-stick smoothing are independent. Radial-menu input changes are deferred.
-
-Version 1.32 fixes spectator startup hook ordering and keeps the spectator preference selectable. Tested working on both affected machines; all 34 automated tests pass. See [spectator validation notes](docs/testing/TEST_SPECTATOR_HOOK_1_32.md).
+GPLv3. See [LICENSE.txt](vendor/LICENSE) and dependency license files under `vendor/External`. The install package contains the project's LICENSE.txt.
